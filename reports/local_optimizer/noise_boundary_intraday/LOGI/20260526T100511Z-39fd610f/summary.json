@@ -1,0 +1,38 @@
+{
+  "output_dir": "/home/kidpixel/trading_automation_v2/reports/local_optimizer/noise_boundary_intraday/LOGI/20260526T100511Z-39fd610f",
+  "iterations_completed": 10,
+  "total_iterations": 10,
+  "eligible_iterations": 0,
+  "skipped_iterations": 10,
+  "status": "FINISHED",
+  "score_metric": "return_vs_buy_hold_pct_points",
+  "score_direction": "max",
+  "best_row": null,
+  "recommendations": {
+    "schema_version": 1,
+    "strategy": "noise_boundary_intraday",
+    "symbol": "LOGI",
+    "score_metric": "return_vs_buy_hold_pct_points",
+    "score_direction": "max",
+    "selection_settings": {
+      "top_quantile": 0.95,
+      "score_tolerance_pct": 0.1
+    },
+    "best": null,
+    "recommended": null,
+    "parameters": {},
+    "candidate_pool": {
+      "eligible_rows": 0,
+      "selected_rows": 0,
+      "selection_rule": "no completed rows with finite score"
+    },
+    "notes": [
+      "Aucune itération terminée avec un score exploitable n'a pu être interprétée."
+    ],
+    "path": "/home/kidpixel/trading_automation_v2/reports/local_optimizer/noise_boundary_intraday/LOGI/20260526T100511Z-39fd610f/recommendations.json"
+  },
+  "optimizer_report_paths": {
+    "parquet": "/home/kidpixel/trading_automation_v2/reports/local_optimizer/noise_boundary_intraday/LOGI/20260526T100511Z-39fd610f/optimizer_report.parquet",
+    "html": "/home/kidpixel/trading_automation_v2/reports/local_optimizer/noise_boundary_intraday/LOGI/20260526T100511Z-39fd610f/optimizer_report.html"
+  }
+}

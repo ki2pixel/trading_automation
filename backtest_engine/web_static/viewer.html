@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="fr" x-data="viewerApp()" x-init="init()">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visualiseur de Backtest Interactif</title>
+  <link rel="stylesheet" href="/style.css?v=2026.05.28" />
+  <link rel="stylesheet" href="/viewer.css?v=2026.05.28" />
+  <script src="/vendor/lucide.min.js?v=2026.05.28"></script>
+</head>
+<body>
+  <div class="viewer-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" :class="{ 'open': sidebarOpen }" :style="{ width: sidebarWidth + 'px', minWidth: sidebarWidth + 'px' }">
+      <div class="sidebar-header">
+        <h1><i data-lucide="activity"></i> Backtest Viewer</h1>
+        <p>Visualiseur interactif KLineChart</p>
+      </div>
+
+      <div class="sidebar-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <h3 style="margin-bottom: 0;"><i data-lucide="settings"></i> Configuration</h3>
+        </div>
+        <div class="sidebar-presets">
+          <div class="sidebar-presets-header" @click="presetsExpanded = !presetsExpanded">
+            <span><i data-lucide="bookmark" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 0.3rem;"></i> Presets (<span x-text="presets.length"></span>)</span>
+            <i data-lucide="chevron-down" style="width: 14px; height: 14px; transition: transform 0.2s;" :style="{ transform: presetsExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }"></i>
+          </div>
+          <div class="sidebar-presets-body" x-show="presetsExpanded" x-cloak>
+            <div class="presets-bar">
+              <template x-for="preset in presets" :key="preset.name">
+                <div class="preset-chip" @click="applyPreset(preset)" title="Appliquer ce preset">
+                  <span x-text="preset.name"></span>
+                  <button type="button" class="delete-btn" @click.stop="deletePreset(preset.name)" title="Supprimer">
+                    <i data-lucide="x" style="width: 12px; height: 12px;"></i>
+                  </button>
+                </div>
+              </template>
+              <div x-show="presets.length === 0" class="presets-empty">Aucun preset enregistre.</div>
+            </div>
+            <div class="preset-form-inline">
+              <input type="text" x-model="newPresetName" placeholder="Nom du preset" @keydown.enter="saveCurrentAsPreset()" />
+              <button type="button" class="primary" @click="saveCurrentAsPreset()" title="Sauvegarder">
+                <i data-lucide="save" style="width: 14px; height: 14px;"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        <label>Strategie
+          <select x-model="strategy" @change="onStrategyChange()">
+            <template x-for="s in availableStrategies" :key="s.name">
+              <option :value="s.name" x-text="s.name" :selected="s.name === strategy"></option>
+            </template>
+          </select>
+        </label>
+        <label>Symbole
+          <select x-model="symbol" @change="onSymbolChange()">
+            <template x-for="s in availableSymbols" :key="s">
+              <option :value="s" x-text="s" :selected="s === symbol"></option>
+            </template>
+          </select>
+        </label>
+        <label>Timeframe
+          <select x-model="timeframe" @change="refreshData()">
+            <template x-for="t in availableTimeframes" :key="t.value">
+              <option :value="t.value" x-text="t.label" :selected="t.value === timeframe"></option>
+            </template>
+          </select>
+        </label>
+        <label class="checkbox-label" style="margin-bottom: 0.5rem;">
+          <input type="checkbox" x-model="useFullHistory" @change="onFullHistoryChange()" />
+          <span>Toute l'historique</span>
+        </label>
+        <div class="grid-2">
+          <label>Debut
+            <input type="date" x-model="startDate" :disabled="useFullHistory" />
+          </label>
+          <label>Fin
+            <input type="date" x-model="endDate" :disabled="useFullHistory" />
+          </label>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <h3><i data-lucide="sliders"></i> Parametres Strategie</h3>
+        <div style="margin-bottom: 1rem;">
+          <label>Capital Initial
+            <input type="number" x-model.number="initialCapital" min="1" step="100" />
+          </label>
+        </div>
+        <template x-for="param in strategyParams" :key="param.name">
+          <div style="margin-bottom: 0.5rem;">
+            <label :title="param.description">
+              <span x-text="param.name" style="font-size: 0.85rem; font-weight: 500;"></span>
+              
+              <template x-if="param.kind === 'numeric'">
+                <input type="number" x-model.number="paramValues[param.name]" 
+                       :step="param.value_type === 'int' ? '1' : 'any'" style="margin-top: 0.25rem;" />
+              </template>
+              
+              <template x-if="param.kind === 'bool'">
+                <select x-model="paramValues[param.name]" style="margin-top: 0.25rem;">
+                  <option :value="true">true</option>
+                  <option :value="false">false</option>
+                </select>
+              </template>
+              
+              <template x-if="param.kind === 'choice'">
+                <select x-model="paramValues[param.name]" style="margin-top: 0.25rem;">
+                  <template x-for="choice in param.choices" :key="choice">
+                    <option :value="choice" x-text="choice"></option>
+                  </template>
+                </select>
+              </template>
+
+            </label>
+          </div>
+        </template>
+      </div>
+
+      <div x-show="error" x-cloak class="error-banner" x-text="error"></div>
+
+      <div class="sidebar-actions">
+        <button type="button" class="primary" @click="refreshData()" :disabled="isLoading">
+          <span class="spinner" x-show="isLoading" x-cloak></span>
+          <span x-show="!isLoading"><i data-lucide="refresh-cw"></i></span>
+          <span x-text="isLoading ? 'Chargement...' : 'Charger / Rafraichir'"></span>
+        </button>
+        <button type="button" class="danger" @click="destroyChart(); initChart(); lucide.createIcons();">
+          <i data-lucide="rotate-ccw"></i> Reinitialiser
+        </button>
+      </div>
+    </aside>
+    <div class="resize-handle" @mousedown="startResizeSidebar($event)"></div>
+
+    <!-- Main Chart Area -->
+    <main class="chart-main">
+      <div class="chart-toolbar">
+        <div class="chart-toolbar-left">
+          <button type="button" class="menu-toggle" @click="sidebarOpen = !sidebarOpen" title="Menu">
+            <i data-lucide="menu"></i>
+          </button>
+          <span x-text="symbol + ' · ' + timeframe"></span>
+        </div>
+        <div class="chart-toolbar-right">
+          <select x-model="chartType" @change="onChartTypeChange()" title="Type d'affichage" class="chart-type-select">
+            <option value="candle_solid">Bougies pleines</option>
+            <option value="candle_stroke">Bougies vides</option>
+            <option value="candle_up_stroke">Hausses vides</option>
+            <option value="candle_down_stroke">Baisses vides</option>
+            <option value="ohlc">Barres OHLC</option>
+            <option value="area">Courbe / Area</option>
+          </select>
+          <button type="button" class="theme-toggle" @click="toggleTheme()">
+            <span x-show="theme === 'dark'"><i data-lucide="sun"></i></span>
+            <span x-show="theme !== 'dark'"><i data-lucide="moon"></i></span>
+          </button>
+        </div>
+      </div>
+
+      <div id="klinechart" style="flex: 1; position: relative;"></div>
+    </main>
+  </div>
+
+  <script src="/vendor/klinecharts.min.js?v=2026.05.28"></script>
+  <script src="/js/viewer.js?v=2026.05.28"></script>
+  <script src="/vendor/alpine.min.js?v=2026.05.28" defer></script>
+</body>
+</html>

@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="title"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:b/><w:u/></w:rPr><w:t>Beat the Market: An Effective Intraday Momentum Strategy for the S&amp;P500 ETF (SPY)</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:b/><w:u/></w:rPr><w:t></w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:t>This code allows you to replicate the results presented in the paper "</w:t></w:r><w:hyperlink w:docLocation="https://bit.ly/BeatTheMarketSPY"><w:r><w:rPr/><w:t>Beat the Market: An Effective Intraday Momentum Strategy for the S&amp;P500 ETF (SPY)</w:t></w:r></w:hyperlink><w:r><w:rPr/><w:t>" published by ConcretumGroup founder, Carlo Zarattini.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:t>For detailed explanations, please refer to the full </w:t></w:r><w:hyperlink w:docLocation="https://www.concretumgroup.com/backtesting-riding-intraday-trends-in-us-markets-using-matlab/"><w:r><w:rPr/><w:t>blog post</w:t></w:r></w:hyperlink><w:r><w:rPr/><w:t>.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr/><w:t>You can reach the authors of this code by email at info@concretumgroup.com.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr/><w:t>More information can be found at </w:t></w:r><w:hyperlink w:docLocation="http://www.concretumgroup.com."><w:r><w:t>www.concretumgroup.com.</w:t></w:r></w:hyperlink><w:r><w:rPr/><w:t> </w:t></w:r></w:p><w:p><w:pPr><w:sectPr/></w:pPr></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:b/><w:u/></w:rPr><w:t>STEP 1. DOWNLOAD DATA</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="code"/></w:pPr><w:r><w:t><![CDATA[ticker          = 'SPY'; % select the ticker
+
+from            = '2022-05-09'; % when to start the backtest
+until           = '2024-04-22'; % when to finish the backtest
+
+% Note: be aware that Polygon limits the FREE data to 2 years.
+
+spy_intra_data  = fetchPolygonData(ticker, from, until,'minute');
+spy_daily_data  = fetchPolygonData(ticker, from, until, 'day');
+dividends       = fetchPolygonDividends(ticker); ]]></w:t></w:r></w:p><w:p><w:pPr><w:sectPr/></w:pPr></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:b/><w:u/></w:rPr><w:t>STEP 2. ADD KEY VARIABLES</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="code"/></w:pPr><w:r><w:t><![CDATA[% Convert caldt to integer days to represent unique trading days
+spy_intra_data.day = fix(spy_intra_data.caldt);
+% Calculate and round time of day from caldt to four decimal places
+spy_intra_data.tod = round(mod(spy_intra_data.caldt, 1), 4);
+
+% Extract unique days from the data
+all_days = unique(spy_intra_data.day);
+
+% Initialize new intraday variables to NaN for holding calculated values
+spy_intra_data.move_open = NaN(size(spy_intra_data.caldt)); 
+spy_intra_data.vwap = NaN(size(spy_intra_data.caldt));
+spy_intra_data.spy_dvol = NaN(size(spy_intra_data.caldt));
+
+% Initialize array for storing daily returns of SPY
+spy_return = NaN(length(all_days), 1);
+
+% Loop through each trading day starting from the second day
+for d = 2:length(all_days)
+    % Indices for current day data
+    idx = find(spy_intra_data.day == all_days(d));
+    % Indices for previous day data
+    idx_y = find(spy_intra_data.day == all_days(d-1));
+
+    % Extract OHLC data for the current day
+    ohlc = spy_intra_data.ohlc(idx, :);
+    % Extract volume data for the current day
+    volume = spy_intra_data.volume(idx, :);
+
+    % Compute the VWAP using high, low, close and volume
+    spy_intra_data.vwap(idx) = v_wap(ohlc, volume);
+    
+    % Calculate absolute percentage change from the open price at 9:30 AM
+    open = spy_intra_data.ohlc(idx(1), 1);    
+    spy_intra_data.move_open(idx) = abs(ohlc(:, 4)./open - 1);
+    
+    % Calculate daily return for SPY using closing prices of current and previous days
+    spy_return(d, 1) = spy_intra_data.ohlc(idx(end), 4) / spy_intra_data.ohlc(idx_y(end), 4) - 1;
+    
+    % Calculate rolling 14-day volatility of SPY returns if we have enough data
+    if d > 15
+        spy_intra_data.spy_dvol(idx) = std(spy_return(d-15:d-1));
+    end
+end
+
+% Calculate the minutes from market open at 9:30 AM
+spy_intra_data.min_from_open = round((spy_intra_data.tod - 9.5 / 24) * 60 * 24, 0) + 1;
+
+% Vector of all minutes from market open from 1 to 390
+all_minutes = 1:390;
+
+% Initialize sigma_open with NaNs for calculating rolling mean
+spy_intra_data.sigma_open = NaN(size(spy_intra_data.caldt));
+
+% Calculate rolling mean of movement from open, grouped by each minute
+for m = 1:length(all_minutes)
+    idx_ = find(spy_intra_data.min_from_open == all_minutes(m));
+    spy_intra_data.sigma_open(idx_) = lag_TS(Rolling_Mean(spy_intra_data.move_open(idx_), 14, 'omitnan'), 1);
+end
+
+% Convert dividend dates to integer days for matching
+dividends.day = fix(dividends.caldt);
+
+% Initialize dividend data vector with zeros
+spy_intra_data.dividends = zeros(size(spy_intra_data.caldt));
+
+% Assign dividend values to corresponding trading days
+for i = 1:length(dividends.caldt)
+    idx = find(spy_intra_data.day == dividends.day(i), 1);
+    if ~isempty(idx)
+        spy_intra_data.dividends(idx) = dividends.dividend(i);
+    end
+end]]></w:t></w:r></w:p><w:p><w:pPr><w:sectPr/></w:pPr></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:b/><w:u/></w:rPr><w:t>3. BACKTEST</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="code"/></w:pPr><w:r><w:t><![CDATA[AUM_0              = 100000; % starting AUM
+
+commission         = 0.0035; % commission per share
+min_comm_per_order = 0.35; % minimum commission per order
+
+% VOLATILITY BAND DEFINITION
+band_mult       = 1; % the Volatility Multiplier as described in paper
+
+% REBALANCING FREQUENCY
+trade_freq   = 30;
+
+% SIZING METHOD
+sizing_type    = "vol_target"; % Full Notional, Volatility Target
+target_vol     = 0.02; % when all tranches are activated! This is very unlikely!
+max_leverage   = 4; % used for sizing_type = leverage_target
+
+clear strat trade_log
+
+% Initalize a structure where the strategy daily info are saved
+strat.caldt         = all_days;
+strat.ret           = NaN(length(all_days),1);
+strat.AUM           = AUM_0*ones(length(all_days),1);
+strat.ret_spy       = NaN(length(all_days),1);
+
+% Calculate daily returns for SPY using the adjusted closing prices
+spy_daily_data.ret = [NaN; diff(spy_daily_data.ohlc(:, 4)) ./ spy_daily_data.ohlc(1:end-1, 4)];
+
+
+for d = 2:length(all_days) % start from day 2 as we need data from AUM(d-1)=AUM(1)
+    % indexes for previous day intraday data
+    idx_y      = find(spy_intra_data.day == all_days(d-1));
+    
+    % indexes for today intraday data
+    idx        = find(spy_intra_data.day == all_days(d));
+    
+    % intraday data for today
+    ohlc          = spy_intra_data.ohlc(idx,:);
+    vwap          = spy_intra_data.vwap(idx,:);
+    min_from_open = spy_intra_data.min_from_open(idx,1);
+    spx_vol       = spy_intra_data.spy_dvol(idx(1));
+    open          = ohlc(1,1);
+    dividend      = spy_intra_data.dividends(idx(1));
+
+    % adjust for the dividend (a overnight gap down due to a dividend paid is not a demand/supply imbalance)
+    y_close    = spy_intra_data.ohlc(idx_y(end),4) - dividend; 
+
+    if isnan(spy_intra_data.sigma_open(idx(1))); continue; end; % no data for spy_intra_data.sigma_open on the first 14 days (length of rolling window for this sigma_open formula)
+
+    UB = max(open,y_close)*(1+band_mult*spy_intra_data.sigma_open(idx));
+    LB = min(open,y_close)*(1-band_mult*spy_intra_data.sigma_open(idx));
+   
+    % at the end of each minute check if price > max ( VWAP , UB ) for
+    % long, or price < min ( VWAP , LB ) for short
+    signal = zeros(length(ohlc),1);
+    signal(ohlc(:,4)>UB & ohlc(:,4)>vwap) = 1;
+    signal(ohlc(:,4)<LB & ohlc(:,4)<vwap) = -1;
+
+    % HOW MANY SHARES TO TRADE 
+    if strcmp(sizing_type,"vol_target") % as final version in paper
+        shares = round(strat.AUM(d-1)/open*min(target_vol/spx_vol,max_leverage),0);
+    elseif strcmp(sizing_type,"full_notional") % as initial version in paper
+        shares = round(strat.AUM(d-1)/open,0);
+    end
+
+    % We don't trade every minute, but every "trade_freq" ( in paper is
+    % 30minutes)
+    idx_trade  = find(mod(min_from_open,trade_freq)==0);
+
+    % COMPUTE THE 
+    % 1. Only at hh:00 and hh:30 check the signal and report it in the exposure vector 
+    % 2. Replace the NaN on all other minutes with the most recent exposure
+    % computed at hh:00 and hh:30
+    % 3. Lag by 1 period the exposure as the signal compute at the end of
+    % minute t is used for trading t+1
+    % 4. Replace NaN with 0 
+    change_1m = [NaN; diff(ohlc(:,4))];
+
+
+    exposure                  = NaN(length(signal),1);
+    exposure(idx_trade,1)     = signal(idx_trade,1);
+    exposure = fillmissing(exposure, 'previous');
+    exposure                  = lag_TS(exposure,1);
+    exposure(isnan(exposure)) = 0;
+    
+    trades_count          = sum(abs(diff([exposure; 0])),'omitmissing');       
+
+
+    % PnL calculation
+    gross_pnl          = sum(exposure.*change_1m,'omitmissing')*shares;
+    commission_paid    = trades_count*max(min_comm_per_order,commission*shares);
+    net_pnl            = gross_pnl - commission_paid;
+    
+    % Save the daily return and new AUM
+    strat.ret(d)       = net_pnl/strat.AUM(d-1);
+    strat.AUM(d)       = strat.AUM(d-1)+net_pnl;
+   
+    % Save the passive Buy&Hold daily return for the SPY
+    idx_spx    = find(spy_daily_data.caldt == all_days(d));
+    if ~isempty(idx_spx)
+        strat.ret_spy(d) = spy_daily_data.ret(idx_spx);
+    end
+
+end]]></w:t></w:r><mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Choice Requires="R2018a"><w:customXml w:element="livecontrol"><w:customXmlPr><w:attr w:name="context" w:val="{&quot;data&quot;:{&quot;text&quot;:&quot;sizing_type&quot;,&quot;value&quot;:&quot;\&quot;vol_target\&quot;&quot;,&quot;executionModel&quot;:&quot;Nothing&quot;,&quot;items&quot;:[{&quot;label&quot;:&quot;\&quot;full_notional\&quot;&quot;,&quot;value&quot;:&quot;\&quot;full_notional\&quot;&quot;},{&quot;label&quot;:&quot;\&quot;vol_target\&quot;&quot;,&quot;value&quot;:&quot;\&quot;vol_target\&quot;&quot;}],&quot;itemLabels&quot;:[&quot;full_notional&quot;,&quot;vol_target&quot;],&quot;linkedVariable&quot;:&quot;&quot;,&quot;defaultValue&quot;:&quot;\&quot;vol_target\&quot;&quot;},&quot;type&quot;:&quot;comboBox&quot;}"/><w:attr w:name="text" w:val="&quot;vol_target&quot;"/><w:attr w:name="startOffsetLine" w:val="12"/><w:attr w:name="startColumn" w:val="17"/><w:attr w:name="endOffsetLine" w:val="12"/><w:attr w:name="endColumn" w:val="29"/></w:customXmlPr></w:customXml></mc:Choice><mc:Fallback/></mc:AlternateContent></w:p><w:p><w:pPr><w:sectPr/></w:pPr></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:b/><w:u/></w:rPr><w:t>4. STUDY RESULTS</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="code"/></w:pPr><w:r><w:t><![CDATA[% AUM for a Passive S&P500 exposure
+strat.AUM_SPX = AUM_0 * cumprod(1 + strat.ret_spy, 'omitnan'); % Calculating the adjusted AUM for SPX
+
+fig = figure();
+plot(strat.caldt, strat.AUM, 'LineWidth', 2,'Color','k'), hold on
+plot(strat.caldt, strat.AUM_SPX, 'LineWidth', 1, 'Color','r'), hold off
+grid on; set(gca, 'GridLineStyle', ':');
+datetick('x', 'mmm yy', 'keepticks'); % Keep the ticks and format them
+xtickangle(90); % Rotate x-tick labels
+ytickformat('$%,.0f'); % Format y-tick labels as currency
+ax = gca; ax.YAxis.Exponent = 0; % Avoid scientific notation in y-axis
+set(gca, 'FontSize', 8); % Adjust font size for readability
+legend('Momentum', ticker, 'Location', 'northwest'); % Adjust legend
+title('Intraday Momentum Strategy', 'FontWeight', 'bold', 'FontSize', 12);
+subtitle(['Commission = $' num2str(commission) '/share'], 'FontSize', 9); % Subtitle for additional info
+
+stats.totret = round((prod(1+strat.ret,'omitmissing')-1)*100,0);
+stats.irr    = round((prod(1+strat.ret,'omitmissing')^(252/length(all_days))-1)*100,1);
+stats.vol    = round(std(strat.ret,'omitmissing')*sqrt(252)*100,1);
+stats.sr     = round(mean(strat.ret,'omitmissing')/std(strat.ret,'omitmissing')*sqrt(252),2);
+stats.hr     = round(sum(strat.ret>0)/sum(abs(strat.ret)>0)*100,0);
+stats.mdd    = round(maxdrawdown(strat.AUM)*100,0);
+regr         = fitlm(strat.ret_spy,strat.ret);
+coef         = regr.Coefficients.Estimate;
+stats.alpha  = round(coef(1)*100*252,2);
+stats.beta   = round(coef(2),2);
+
+stats
+]]></w:t></w:r></w:p><w:p><w:pPr><w:sectPr/></w:pPr></w:p><w:p><w:pPr><w:pStyle w:val="text"/><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:b/><w:u/></w:rPr><w:t>0. LOAD ALL UTILTY FUNCTIONS</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="code"/></w:pPr><w:r><w:t><![CDATA[function y = v_wap(ohlc, volume)
+    % Calculate the Volume Weighted Average Price (VWAP) for given price data
+    % Inputs:
+    %   ohlc: An Nx4 matrix where columns represent open, high, low, and close prices
+    %   volume: An Nx1 vector of trading volumes for each corresponding row in ohlc
+    % Output:
+    %   y: An Nx1 vector of VWAP values
+
+    hlc = mean(ohlc(:,2:end), 2); % Calculate the mean of high, low, and close prices
+    vol_x_hlc = volume .* hlc;    % Product of volume and average price
+    y = cumsum(vol_x_hlc) ./ cumsum(volume); % Cumulative sum to calculate VWAP
+end
+
+
+function y = Rolling_Mean(price, window, nanflag)
+    % Compute the rolling mean of a time-series over a specified window
+    % Inputs:
+    %   price: An Nx1 vector of price data
+    %   window: Scalar defining the number of observations used for the moving average
+    %   nanflag: String, either 'omitnan' or 'includenan', specifying how to treat NaNs
+    % Output:
+    %   y: An Nx1 vector of the rolling mean values
+
+    y = movmean(price, [window-1 0], 1, nanflag); % Calculate moving average
+    y(1:window-1) = NaN; % Assign NaN to the first 'window-1' elements
+end
+
+function y = lag_TS(data, n)
+    % Lag a data matrix by 'n' periods
+    % Inputs:
+    %   data: An NxM matrix of data
+    %   n: Scalar defining the number of periods by which to lag the data
+    % Output:
+    %   y: An NxM matrix of lagged data
+
+    [T, N] = size(data); % Get the dimensions of the input data matrix
+    y = NaN(T, N); % Initialize the output matrix with NaNs
+
+    if n > 0
+        y((n+1):T, :) = data(1:(T-n), :); % Lag data forward by 'n' periods
+    end
+end
+
+
+function stock_data = fetchPolygonData(stocksTicker, fromDate, toDate, period)
+    % Fetch stock data from Polygon.io API
+
+    % Validate date range
+    dateFrom = datetime(fromDate, 'InputFormat', 'yyyy-MM-dd');
+    dateTo = datetime(toDate, 'InputFormat', 'yyyy-MM-dd');
+    if dateTo - dateFrom > years(2)
+        error('Date range exceeds the maximum of 2 years allowed for data access.');
+    end
+
+    % Define API key and parameters
+    apiKey = 'API_KEY';
+    multiplier = '1';  % Size of the timespan multiplier (1 minute or 1 day)
+    timespan = period;  % 'minute' or 'day', depending on the period parameter
+    adjusted = 'false';  % Whether or not the results are adjusted for splits (default: false)
+    sort = 'asc';  % Sort order (default: ascending)
+    limit = '50000';  % Maximum number of data points (default: 5000)
+
+    % Construct the initial URL for the Polygon API request
+    baseUrl = 'https://api.polygon.io/v2/aggs/ticker/';
+    url = sprintf('%s%s/range/%s/%s/%s/%s?adjusted=%s&sort=%s&limit=%s&apiKey=%s', ...
+        baseUrl, stocksTicker, multiplier, timespan, fromDate, toDate, adjusted, sort, limit, apiKey);
+
+    % Use webread to fetch data from the API
+    options = weboptions('ContentType', 'json', 'Timeout', 12);
+
+    % Initialize result structure
+    stock_data = struct('volume', [], 'ohlc', [], 'caldt', []);
+
+    % Paginate through data using cursors
+    while true
+        fprintf('Fetching data from: %s\n', url);
+        data = webread(url, options);
+
+        % Process the current page of stock data
+        stockData = data.results;
+        datetimeValues = arrayfun(@(x) datetime(x / 1000, 'ConvertFrom', 'posixtime', 'TimeZone', 'America/New_York'), [stockData.t]);
+
+        if strcmp(period, 'minute')
+            % Market hours filter (applied only if 'minute' resolution)
+            marketStart = timeofday(datetime('09:30', 'Format', 'HH:mm'));
+            marketEnd = timeofday(datetime('15:59', 'Format', 'HH:mm'));
+            marketHoursFilter = timeofday(datetimeValues) >= marketStart & timeofday(datetimeValues) <= marketEnd;
+
+            % Extract and filter data
+            filteredVolumes = [stockData(marketHoursFilter).v]';
+            filteredOHLC = [[stockData(marketHoursFilter).o]' [stockData(marketHoursFilter).h]' [stockData(marketHoursFilter).l]' [stockData(marketHoursFilter).c]'];
+
+            % Append data to result structure
+            stock_data.volume = [stock_data.volume; filteredVolumes];
+            stock_data.ohlc = [stock_data.ohlc; filteredOHLC];
+            stock_data.caldt = [stock_data.caldt; datenum(datetimeValues(marketHoursFilter))'];
+
+        else
+            % For 'day' resolution, no market hours filter is necessary
+            volumes = [stockData.v]';
+            ohlc = [[stockData.o]' [stockData.h]' [stockData.l]' [stockData.c]'];
+
+            % Append data to result structure
+            stock_data.volume = [stock_data.volume; volumes];
+            stock_data.ohlc = [stock_data.ohlc; ohlc];
+            stock_data.caldt = [stock_data.caldt; datenum(datetimeValues)'];
+        end
+
+        % Check if there is a next page
+        if isfield(data, 'next_url') && ~isempty(data.next_url)
+            url = [data.next_url '&apiKey=' apiKey];  % Append API key to next_url
+        else
+            break;  % Exit loop if no more pages
+        end
+    end
+end
+
+
+
+function dividends = fetchPolygonDividends(stocksTicker)
+    % Fetches dividend data from Polygon.io for a specified stock ticker.
+
+    % Define API key and limit inside the function
+    apiKey = 'API_KEY'; 
+    limit = '1000'; % Limit for the number of records
+
+    % Construct the initial URL for the Polygon API request
+    url = sprintf('https://api.polygon.io/v3/reference/dividends?ticker=%s&limit=%s&apiKey=%s', stocksTicker, limit, apiKey);
+
+    % Initialize the output struct 'dividends'
+    dividends = struct('caldt', [], 'dividend', []);
+
+    % Use webread to fetch data from the API with options
+    options = weboptions('ContentType', 'json', 'Timeout', 12);
+
+    % Paginate through data using next_url
+    while true
+        fprintf('Fetching data from: %s\n', url);
+        data = webread(url, options);
+
+        % Check if there are results and append to dividends struct
+        if isfield(data, 'results')
+            results = data.results;
+            for i = 1:numel(results)
+                caldt = datenum(results{i}.ex_dividend_date, 'yyyy-mm-dd');
+                dividend = results{i}.cash_amount;
+                dividends.caldt = [dividends.caldt; caldt];
+                dividends.dividend = [dividends.dividend; dividend];
+            end
+        end
+
+        if isfield(data, 'next_url') && ~isempty(data.next_url)
+            url = [data.next_url '&apiKey=' apiKey];
+        else
+            break; 
+        end
+    end
+end]]></w:t></w:r></w:p></w:body></w:document>

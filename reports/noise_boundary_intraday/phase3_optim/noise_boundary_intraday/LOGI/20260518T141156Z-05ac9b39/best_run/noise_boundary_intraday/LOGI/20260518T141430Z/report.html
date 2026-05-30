@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>noise_boundary_intraday — LOGI</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; color: #202124; }
+    section { margin: 1.5rem 0; }
+    table { border-collapse: collapse; min-width: 640px; }
+    th, td { border: 1px solid #ddd; padding: .45rem .65rem; text-align: right; }
+    th { text-align: left; background: #f6f6f6; }
+    code { background: #f6f6f6; padding: .1rem .25rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(640px, 1fr)); gap: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>noise_boundary_intraday — LOGI</h1>
+  <p>Rapport local. Exports détaillés : <code>trades.csv</code>, <code>equity_curve.csv</code>, <code>state.csv</code>, <code>metrics.json</code>, <code>config.json</code>.</p>
+  <div class="grid">
+    <section><h2>Résumé</h2><table><tr><th>initial_capital</th><td>1,000.0000</td></tr>
+<tr><th>final_equity</th><td>12,468.4016</td></tr>
+<tr><th>open_pnl</th><td>0.0000</td></tr>
+<tr><th>total_pnl</th><td>11,468.4016</td></tr>
+<tr><th>total_pnl_pct</th><td>1,146.8402</td></tr>
+<tr><th>total_net_pnl</th><td>11,468.4016</td></tr>
+<tr><th>return_pct</th><td>1,146.8402</td></tr>
+<tr><th>max_drawdown</th><td>-2,403.3888</td></tr>
+<tr><th>max_drawdown_pct</th><td>-39.5678</td></tr></table></section>
+    <section><h2>Performance</h2><table><tr><th>gross_profit</th><td>27,955.1008</td></tr>
+<tr><th>gross_loss</th><td>-16,486.6992</td></tr>
+<tr><th>profit_factor</th><td>1.6956</td></tr>
+<tr><th>commission_paid</th><td>0.0000</td></tr>
+<tr><th>sharpe_ratio</th><td>3.1332</td></tr>
+<tr><th>sortino_ratio</th><td>2.4250</td></tr></table></section>
+    <section><h2>Trades</h2><table><tr><th>closed_trades</th><td>344</td></tr>
+<tr><th>winning_trades</th><td>120</td></tr>
+<tr><th>losing_trades</th><td>130</td></tr>
+<tr><th>breakeven_trades</th><td>94</td></tr>
+<tr><th>win_rate_pct</th><td>34.8837</td></tr>
+<tr><th>profit_factor</th><td>1.6956</td></tr>
+<tr><th>average_trade</th><td>33.3384</td></tr>
+<tr><th>average_winning_trade</th><td>232.9592</td></tr>
+<tr><th>average_losing_trade</th><td>-126.8208</td></tr>
+<tr><th>average_win_loss_ratio</th><td>1.8369</td></tr>
+<tr><th>average_bars_held</th><td>16.9826</td></tr>
+<tr><th>average_winning_bars_held</th><td>32.4917</td></tr>
+<tr><th>average_losing_bars_held</th><td>14.9154</td></tr>
+<tr><th>best_trade</th><td>1,476.5668</td></tr>
+<tr><th>worst_trade</th><td>-900.8407</td></tr></table></section>
+    <section><h2>Long / Short</h2><table><tr><th>long_closed_trades</th><td>212</td></tr>
+<tr><th>long_net_pnl</th><td>6,221.9648</td></tr>
+<tr><th>long_gross_profit</th><td>14,403.4304</td></tr>
+<tr><th>long_gross_loss</th><td>-8,181.4656</td></tr>
+<tr><th>long_profit_factor</th><td>1.7605</td></tr>
+<tr><th>long_win_rate_pct</th><td>32.5472</td></tr>
+<tr><th>short_closed_trades</th><td>132</td></tr>
+<tr><th>short_net_pnl</th><td>5,246.4368</td></tr>
+<tr><th>short_gross_profit</th><td>13,551.6705</td></tr>
+<tr><th>short_gross_loss</th><td>-8,305.2337</td></tr>
+<tr><th>short_profit_factor</th><td>1.6317</td></tr>
+<tr><th>short_win_rate_pct</th><td>38.6364</td></tr></table></section>
+    <section><h2>Benchmark &amp; exposition</h2><table><tr><th>buy_hold_pnl</th><td>-262.7339</td></tr>
+<tr><th>buy_hold_return_pct</th><td>-26.2734</td></tr>
+<tr><th>return_vs_buy_hold_pct_points</th><td>1,173.1136</td></tr>
+<tr><th>strategy_outperformance_pnl</th><td>11,731.1356</td></tr></table></section>
+    <section><h2>Efficacité du capital</h2><table><tr><th>cagr_pct</th><td>1,182.0090</td></tr>
+<tr><th>required_account_size</th><td>3,403.3888</td></tr>
+<tr><th>return_on_required_account_pct</th><td>336.9701</td></tr>
+<tr><th>net_profit_to_max_drawdown_pct</th><td>477.1763</td></tr>
+<tr><th>max_position_value</th><td>284,397.8054</td></tr>
+<tr><th>average_position_value</th><td>34,781.4756</td></tr>
+<tr><th>capital_efficiency_pct</th><td>4.0325</td></tr>
+<tr><th>exposure_bars</th><td>5842</td></tr>
+<tr><th>exposure_pct</th><td>29.9237</td></tr>
+<tr><th>bars</th><td>19523</td></tr>
+<tr><th>start</th><td>2022-01-03 09:30:00</td></tr>
+<tr><th>end</th><td>2022-12-30 15:55:00</td></tr></table></section>
+    <section><h2>Run-ups &amp; drawdowns des trades</h2><table><tr><th>max_trade_runup</th><td>—</td></tr>
+<tr><th>max_trade_runup_pct</th><td>—</td></tr>
+<tr><th>average_trade_runup</th><td>—</td></tr>
+<tr><th>max_trade_drawdown</th><td>—</td></tr>
+<tr><th>max_trade_drawdown_pct</th><td>—</td></tr>
+<tr><th>average_trade_drawdown</th><td>—</td></tr></table></section>
+    <section><h2>Autres métriques</h2><table><tr><th>symbol</th><td>LOGI</td></tr>
+<tr><th>strategy</th><td>noise_boundary_intraday</td></tr>
+<tr><th>max_drawdown_period_bars</th><td>3872</td></tr>
+<tr><th>max_drawdown_period_days</th><td>71.6502</td></tr></table></section>
+  </div>
+</body>
+</html>

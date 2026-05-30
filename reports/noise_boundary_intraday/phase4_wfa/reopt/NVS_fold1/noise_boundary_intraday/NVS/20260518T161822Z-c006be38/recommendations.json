@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "strategy": "noise_boundary_intraday",
+  "symbol": "NVS",
+  "score_metric": "sharpe_ratio",
+  "score_direction": "max",
+  "selection_settings": {
+    "top_quantile": 0.95,
+    "score_tolerance_pct": 0.1
+  },
+  "best": {
+    "iteration": 20,
+    "score": 0.730355340032666,
+    "parameters": {
+      "volatility_multiplier_enter": 1.7000000000000002,
+      "stoploss_ladder_step0": -0.01,
+      "volatility_multiplier_exit": 1.02,
+      "stoploss_ladder_step1": -0.017,
+      "lookback_days": 26,
+      "target_daily_volatility": 0.009000000000000001,
+      "exit_mode": "vwap",
+      "stoploss_ladder_ratio0": 0.6,
+      "takeprofit_ladder_step0": 0.015
+    },
+    "metrics": {
+      "closed_trades": 31,
+      "total_net_pnl": 256.48248323549495,
+      "max_drawdown": -151.79036457000075,
+      "profit_factor": 2.0738075477746385,
+      "sharpe_ratio": 0.730355340032666,
+      "sortino_ratio": 0.12491251296827396
+    }
+  },
+  "recommended": {
+    "iteration": 15,
+    "score": 0.21450383749826374,
+    "parameters": {
+      "volatility_multiplier_enter": 0.8,
+      "stoploss_ladder_step0": -0.02,
+      "volatility_multiplier_exit": 0.23999999999999996,
+      "stoploss_ladder_step1": -0.025,
+      "lookback_days": 24,
+      "target_daily_volatility": 0.007,
+      "exit_mode": "ladder",
+      "stoploss_ladder_ratio0": 0.2,
+      "takeprofit_ladder_step0": 0.017
+    },
+    "metrics": {
+      "closed_trades": 97,
+      "total_net_pnl": 68.6103023928093,
+      "max_drawdown": -268.47143377169755,
+      "profit_factor": 1.067768789999205,
+      "sharpe_ratio": 0.21450383749826374,
+      "sortino_ratio": 0.07805198750633817
+    }
+  },
+  "parameters": {
+    "lookback_days": {
+      "kind": "numeric",
+      "recommended_value": 30,
+      "sweet_spot_range": [
+        30,
+        30
+      ],
+      "extended_range": [
+        6,
+        30
+      ],
+      "best_value": 26,
+      "evidence_count": 20,
+      "confidence": "medium"
+    },
+    "volatility_multiplier_enter": {
+      "kind": "numeric",
+      "recommended_value": 0.6,
+      "sweet_spot_range": [
+        0.6,
+        3.0
+      ],
+      "extended_range": [
+        0.6,
+        3.0
+      ],
+      "best_value": 1.7000000000000002,
+      "evidence_count": 20,
+      "confidence": "medium"
+    },
+    "volatility_multiplier_exit": {
+      "kind": "numeric",
+      "recommended_value": 0.2,
+      "sweet_spot_range": [
+        0.2,
+        0.2
+      ],
+      "extended_range": [
+        0.2,
+        2.0
+      ],
+      "best_value": 1.02,
+      "evidence_count": 20,
+      "confidence": "high"
+    },
+    "target_daily_volatility": {
+      "kind": "numeric",
+      "recommended_value": 0.006,
+      "sweet_spot_range": [
+        0.006,
+        0.006
+      ],
+      "extended_range": [
+        0.005,
+        0.02
+      ],
+      "best_value": 0.009000000000000001,
+      "evidence_count": 20,
+      "confidence": "medium"
+    },
+    "exit_mode": {
+      "kind": "choice",
+      "recommended_value": "ladder",
+      "best_value": "vwap",
+      "distribution": [
+        {
+          "value": "ladder",
+          "weight_share": 0.543424,
+          "weighted_count": 6.963979
+        },
+        {
+          "value": "vwap",
+          "weight_share": 0.222935,
+          "weighted_count": 2.856916
+        },
+        {
+          "value": "time_only",
+          "weight_share": 0.165044,
+          "weighted_count": 2.115044
+        },
+        {
+          "value": "combined",
+          "weight_share": 0.068597,
+          "weighted_count": 0.879065
+        }
+      ],
+      "evidence_count": 20,
+      "confidence": "medium"
+    },
+    "stoploss_ladder_step0": {
+      "kind": "numeric",
+      "recommended_value": -0.019,
+      "sweet_spot_range": [
+        -0.019,
+        -0.002
+      ],
+      "extended_range": [
+        -0.019,
+        -0.002
+      ],
+      "best_value": -0.01,
+      "evidence_count": 20,
+      "confidence": "medium"
+    },
+    "stoploss_ladder_step1": {
+      "kind": "numeric",
+      "recommended_value": -0.029,
+      "sweet_spot_range": [
+        -0.029,
+        -0.005
+      ],
+      "extended_range": [
+        -0.029,
+        -0.005
+      ],
+      "best_value": -0.017,
+      "evidence_count": 20,
+      "confidence": "medium"
+    },
+    "stoploss_ladder_ratio0": {
+      "kind": "numeric",
+      "recommended_value": 0.2,
+      "sweet_spot_range": [
+        0.2,
+        0.9
+      ],
+      "extended_range": [
+        0.2,
+        0.9
+      ],
+      "best_value": 0.6,
+      "evidence_count": 20,
+      "confidence": "medium"
+    },
+    "takeprofit_ladder_step0": {
+      "kind": "numeric",
+      "recommended_value": 0.006,
+      "sweet_spot_range": [
+        0.006,
+        0.03
+      ],
+      "extended_range": [
+        0.006,
+        0.03
+      ],
+      "best_value": 0.015,
+      "evidence_count": 20,
+      "confidence": "medium"
+    }
+  },
+  "candidate_pool": {
+    "eligible_rows": 20,
+    "selected_rows": 20,
+    "selection_rule": "minimum candidates absolute floor triggered",
+    "effective_score_cutoff": 0.6573198060293994,
+    "quantile_cutoff": 0.6748247674012116,
+    "tolerance_cutoff": 0.6573198060293994
+  },
+  "notes": [
+    "Le best reste le maximum observé; la recommandation privilégie une zone robuste de configurations performantes.",
+    "La ligne recommended correspond à une combinaison réellement testée, proche des sweet spots par paramètre."
+  ],
+  "path": "/home/kidpixel/trading_automation_v2/reports/noise_boundary_intraday/phase4_wfa/reopt/NVS_fold1/noise_boundary_intraday/NVS/20260518T161822Z-c006be38/recommendations.json"
+}

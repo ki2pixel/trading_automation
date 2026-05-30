@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Backtest Optimizer Local</title>
+  <link rel="stylesheet" href="/style.css?v=2026.05.28" />
+  <script src="/vendor/lucide.min.js?v=2026.05.28"></script>
+</head>
+
+<body x-data="optimizerApp()" x-init="init(); lucide.createIcons();">
+  <div class="saas-layout">
+    <!-- Sidebar: Configuration -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="header-content">
+          <h1><i data-lucide="cpu" class="mr-2"></i> Backtest Optimizer</h1>
+          <p>Moteur local & dataset canonique</p>
+        </div>
+        <button type="button" class="theme-toggle" @click="toggleTheme()" title="Basculer le thème">
+          <span x-show="theme === 'dark'"><i data-lucide="sun"></i></span>
+          <span x-show="theme !== 'dark'"><i data-lucide="moon"></i></span>
+        </button>
+      </div>
+
+      <div class="sidebar-content">
+        <div class="section-title" style="margin-bottom: 1rem;">
+          <h2 style="font-size: 1rem; margin: 0;"><i data-lucide="settings"></i> Configuration</h2>
+        </div>
+        
+        <div class="presets-bar">
+          <template x-for="preset in presets" :key="preset.name">
+            <div class="preset-chip" @click="applyPreset(preset)" title="Appliquer ce preset">
+              <span x-text="preset.name"></span>
+              <button type="button" class="delete-btn" @click.stop="deletePreset(preset.name)" title="Supprimer">
+                <i data-lucide="x" style="width: 12px; height: 12px;"></i>
+              </button>
+            </div>
+          </template>
+          <div x-show="presets.length === 0" class="presets-empty">Aucun preset enregistré.</div>
+          <div class="preset-form-inline">
+            <input type="text" x-model="newPresetName" placeholder="Nouveau preset..." @keydown.enter="saveCurrentAsPreset()" />
+            <button type="button" class="primary" @click="saveCurrentAsPreset()" title="Sauvegarder">
+              <i data-lucide="save" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid sidebar-grid">
+          <label>Stratégie
+            <select x-model="form.strategy" @change="onStrategyChange()">
+              <template x-for="strategy in strategies" :key="strategy.name">
+                <option :value="strategy.name" x-text="strategy.name"></option>
+              </template>
+            </select>
+          </label>
+          <label>Symbole
+            <select x-model="form.symbol" @change="scheduleEstimate(0)">
+              <template x-for="symbol in symbols" :key="symbol">
+                <option :value="symbol" x-text="symbol"></option>
+              </template>
+            </select>
+          </label>
+          <label>Dataset canonique
+            <input x-model="form.processedDir" @change="onDatasetChange()" />
+          </label>
+          <div class="field-label timeframe-field">Timeframe
+            <div class="dropdown" @click.outside="timeframeDropdownOpen = false">
+              <button type="button" class="dropdown-toggle" @click="timeframeDropdownOpen = !timeframeDropdownOpen"
+                x-text="timeframeSummary()"></button>
+              <div class="dropdown-menu" x-show="timeframeDropdownOpen" x-cloak>
+                <label class="checkbox-row select-all-row" @click.prevent="toggleAllTimeframes()">
+                  <span x-text="selectedTimeframes().length === timeframeOptions.length ? '☐ Tout désélectionner' : '☑ Tout sélectionner'"></span>
+                </label>
+                <div class="dropdown-divider"></div>
+                <template x-for="option in timeframeOptions" :key="option.value">
+                  <label class="checkbox-row">
+                    <input type="checkbox" :checked="selectedTimeframes().includes(option.value)"
+                      @change="toggleTimeframe(option.value)" />
+                    <span x-text="option.label"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+          </div>
+          <label class="checkbox-label" style="grid-column: 1 / -1;">
+            <input type="checkbox" x-model="form.useFullHistory" @change="onFullHistoryChange()" />
+            <span>Toute l'historique</span>
+          </label>
+          <label>Début fenêtre
+            <input x-model="form.startDate" @change="scheduleEstimate(0)" type="date" :disabled="form.useFullHistory" />
+          </label>
+          <label>Fin fenêtre
+            <input x-model="form.endDate" @change="scheduleEstimate(0)" type="date" :disabled="form.useFullHistory" />
+          </label>
+          <label>Config JSON (optionnel)
+            <input x-model.debounce.300ms="form.configPath" @input="scheduleEstimate(300)" />
+          </label>
+          <label>Capital initial
+            <input x-model.debounce.200ms="form.initialCapital" @input="scheduleEstimate(200)" type="number" step="100" />
+          </label>
+          <label>Métrique de score
+            <select x-model="form.scoreMetric" @change="scheduleEstimate(0)">
+              <template x-for="metric in scoreMetrics()" :key="metric">
+                <option :value="metric" x-text="metric"></option>
+              </template>
+            </select>
+          </label>
+          <label>Sens
+            <select x-model="form.scoreDirection" @change="scheduleEstimate(0)">
+              <option value="max">max</option>
+              <option value="min">min</option>
+            </select>
+          </label>
+          <label style="grid-column: 1 / -1;">Mode d'optimisation
+            <select x-model="form.optimizationMode" @change="onOptimizationModeChange()">
+              <option value="grid">Grid Search (Exhaustif)</option>
+              <option value="bayesian">Bayesian (Optuna TPE)</option>
+            </select>
+          </label>
+          <label title="Stoppe l'itération si le drawdown dépasse ce pourcentage (vide pour désactiver)">Early Stop Drawdown (%)
+            <input x-model.debounce.200ms="form.earlyStopDrawdownPct" @input="scheduleEstimate(200)" type="number" min="0" max="100" />
+          </label>
+          <label x-show="form.optimizationMode === 'grid'">Max itérations
+            <input x-model.debounce.200ms="form.maxIterations" @input="scheduleEstimate(200)" type="number" min="1" />
+          </label>
+          <label x-show="form.optimizationMode === 'bayesian'" title="Intensité de l'exploration Bayesian calculée automatiquement" style="grid-column: 1 / -1;">Intensité Bayesian
+            <select x-model="form.bayesianIntensity" @change="onBayesianIntensityChange()">
+              <option value="fast">Rapide (~0.4% de l'espace)</option>
+              <option value="standard">Standard (~0.9% de l'espace)</option>
+              <option value="deep">Approfondi (~2.6% de l'espace)</option>
+            </select>
+          </label>
+          <label x-show="form.optimizationMode === 'bayesian'" class="muted" style="grid-column: 1 / -1;">
+            <span>Itérations calculées: <strong x-text="form.maxIterations.toLocaleString()"></strong></span>
+          </label>
+          <label x-show="form.optimizationMode === 'bayesian'" class="checkbox-label" style="grid-column: 1 / -1;">
+            <input type="checkbox" x-model="form.enableConvergenceStop" />
+            <span>Arrêt auto si convergence détectée</span>
+          </label>
+          <label x-show="form.optimizationMode === 'bayesian'" class="checkbox-label" title="Utilise VectorBT pour pré-scanner et restreindre les bornes avant Optuna (stratégies compatibles)" style="grid-column: 1 / -1;">
+            <input type="checkbox" x-model="form.useVectorbtPrescan" />
+            <span><i data-lucide="zap" style="width: 14px; height: 14px; display: inline; color: #eab308;"></i> Pre-scan VectorBT (auto-ajustement)</span>
+          </label>
+          <label x-show="form.optimizationMode === 'bayesian'" class="checkbox-label" title="Génère un benchmark aléatoire pour valider l'Edge" style="grid-column: 1 / -1;">
+            <input type="checkbox" x-model="form.runPostValidation" />
+            <span><i data-lucide="shield-check" style="width: 14px; height: 14px; display: inline; color: #10b981;"></i> Validation Post-Opti</span>
+          </label>
+          <label x-show="form.optimizationMode === 'bayesian' && form.enableConvergenceStop" title="Arrêter si pas d'amélioration après N itérations consécutives">Patience (itérations)
+            <input x-model.debounce.200ms="form.convergencePatience" type="number" min="10" max="1000" step="10" />
+          </label>
+          <label x-show="form.optimizationMode === 'bayesian' && form.enableConvergenceStop" title="Pourcentage total d'itérations sans amélioration à partir du budget à partir duquel le circuit breaker se déclenche (0-100)">Circuit Breaker Ratio (%)
+            <input x-model.debounce.200ms="form.circuitBreakerRatio" type="number" min="0" max="100" step="5" />
+          </label>
+          <label>Workers CPU
+            <input x-model.debounce.200ms="form.workers" @input="scheduleEstimate(200)" type="number" min="1" />
+          </label>
+          <label>Min trades clôturés
+            <input x-model.debounce.200ms="form.minClosedTrades" @input="scheduleEstimate(200)" type="number" min="0" />
+          </label>
+          <label title="Drawdown maximal autorisé en % (négatif, ex: -25 pour -25%). Vide pour désactiver.">Max Drawdown (%)
+            <input x-model.debounce.200ms="form.maxDrawdownPct" @input="scheduleEstimate(200)" type="number" step="1" placeholder="ex: -25" />
+          </label>
+          <label title="Exposition minimale en % requise. Vide pour désactiver.">Min exposition (%)
+            <input x-model.debounce.200ms="form.minExposurePct" @input="scheduleEstimate(200)" type="number" min="0" step="0.1" placeholder="ex: 3" />
+          </label>
+          <label title="Profit factor minimum requis. Vide pour désactiver.">Min profit factor
+            <input x-model.debounce.200ms="form.minProfitFactor" @input="scheduleEstimate(200)" type="number" min="0" step="0.01" placeholder="ex: 1.25" />
+          </label>
+          <label>Max rows (optionnel)
+            <input x-model.debounce.200ms="form.maxRows" @input="scheduleEstimate(200)" type="number" min="1" placeholder="toutes" />
+          </label>
+        </div>
+      </div>
+
+      <div class="sidebar-footer run-bar">
+        <div class="badges-group" :class="{ 'highlight-pulse': bayesianChanged }">
+          <span class="badge" title="Produit de toutes les valeurs saisies, avant déduplication.">Brut: <strong x-text="estimateText('total_iterations')">-</strong></span>
+          <span class="badge" title="Combinaisons effectives après déduplication des paramètres inactifs.">Can: <strong x-text="estimateText('canonical_iterations')">-</strong></span>
+          <span class="badge" title="Combinaisons exécutables après règles métier.">Valides: <strong x-text="estimateText('valid_iterations')">-</strong></span>
+          <span class="badge">Tf: <strong x-text="selectedTimeframes().length">1</strong></span>
+        </div>
+        <div class="message warning-box sidebar-msg" x-show="warnings.length" x-text="warnings.join(' · ')"></div>
+        <div class="message error-box sidebar-msg" x-show="errorMessage" x-text="errorMessage"></div>
+        <div class="buttons-group-full">
+          <button type="button" class="btn-calc" :disabled="isEstimating || isOptimizing || jobs.some(j => isActiveJob(j))" @click="estimate()">
+            <span class="spinner" x-show="isEstimating" x-cloak></span>
+            <span x-show="!isEstimating"><i data-lucide="calculator"></i></span>
+            <span x-text="isEstimating ? 'Calcul...' : 'Estimer'"></span>
+          </button>
+          <button type="button" class="primary btn-run" :class="{'running-glow': isOptimizing || jobs.some(j => isActiveJob(j))}" :disabled="!canOptimize() || isEstimating || isOptimizing || jobs.some(j => isActiveJob(j))" @click="optimize()">
+            <span class="spinner" x-show="isOptimizing || jobs.some(j => isActiveJob(j))" x-cloak></span>
+            <span x-show="!(isOptimizing || jobs.some(j => isActiveJob(j)))"><i data-lucide="play"></i></span>
+            <span x-text="(isOptimizing || jobs.some(j => isActiveJob(j))) ? 'En cours...' : 'Optimiser'"></span>
+          </button>
+        </div>
+        <div class="buttons-group-full" style="margin-top: 0.5rem;" x-show="activeJobId || jobs.some(j => isActiveJob(j))" x-cloak>
+          <button type="button" class="danger w-full" :disabled="!activeJobId || !currentJob || !isActiveJob(currentJob)" @click="cancelJob()">
+            <i data-lucide="stop-circle"></i> Stop Actuel
+          </button>
+          <button type="button" class="danger w-full" :disabled="!jobs.some(j => isActiveJob(j))" @click="cancelAllJobs()">
+            <i data-lucide="ban"></i> Stop Tout
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="main-workspace">
+      
+      <!-- Section: Parameters -->
+      <section class="card parameters-card">
+        <div class="section-title">
+          <h2><i data-lucide="sliders-horizontal"></i> Espace de Recherche</h2>
+          <button type="button" class="btn-outline" @click="addParameterRow()">
+            <i data-lucide="plus"></i> Ajouter un paramètre
+          </button>
+        </div>
+
+        <div id="parameters" class="parameters-grid">
+          <template x-for="row in parameterRows" :key="row.id">
+            <div class="parameter-row" :class="rowClasses(row)">
+              <div class="param-header">
+                <i data-lucide="cpu" class="param-icon"></i>
+              </div>
+              <label>Paramètre
+                <select :value="row.name" @change="row.name = $event.target.value; onParameterNameChange(row)" x-init="$nextTick(() => { $el.value = row.name })">
+                  <template x-for="param in parameters" :key="param.name">
+                    <option :value="param.name" :disabled="isOptionDisabled(param.name, row)" x-text="optionLabel(param)"></option>
+                  </template>
+                </select>
+              </label>
+              <label>Type
+                <select x-model="row.kind" @change="scheduleEstimate(0)">
+                  <option value="numeric">Range</option>
+                  <option value="choice">Choix</option>
+                  <option value="bool">Booléen</option>
+                </select>
+              </label>
+              <label class="numeric-field">Start
+                <input x-model.debounce.200ms="row.start" @input="scheduleEstimate(200)" type="number" :step="parameterMetadata(row.name).value_type === 'int' ? '1' : 'any'" />
+              </label>
+              <label class="numeric-field">End
+                <input x-model.debounce.200ms="row.end" @input="scheduleEstimate(200)" type="number" :step="parameterMetadata(row.name).value_type === 'int' ? '1' : 'any'" />
+              </label>
+              <label class="numeric-field">Step
+                <input x-model.debounce.200ms="row.step" @input="scheduleEstimate(200)" type="number" :step="parameterMetadata(row.name).value_type === 'int' ? '1' : 'any'" />
+              </label>
+              <label class="choice-field">Valeurs ( | )
+                <input x-model.debounce.200ms="row.values" @input="scheduleEstimate(200)" placeholder="v1|v2" />
+              </label>
+              <button class="remove" type="button" @click="removeParameterRow(row)" title="Supprimer">
+                <i data-lucide="trash-2"></i>
+              </button>
+              <p class="param-note" aria-live="polite" x-text="rowNote(row)"></p>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <!-- Section: Progression & Console -->
+      <section class="card progress-card">
+        <div class="section-title">
+          <h2><i data-lucide="activity"></i> Activité & Progression</h2>
+          <span class="font-semibold text-primary" x-text="progressText()"></span>
+        </div>
+        <div class="progress-wrap">
+          <div id="progressBar" :style="`width: ${progressPercent()}%`" :class="{ 'animating': isEstimating || isOptimizing }"></div>
+        </div>
+        <div class="console-drawer">
+          <p x-text="bestText()" class="best-highlight"></p>
+          <div class="console-output" id="consoleOutput">
+            <pre x-text="outputText"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Dashboard Grid: Recommandations & Chart side-by-side -->
+      <div class="dashboard-grid">
+        <section class="card reco-card">
+          <div class="section-title">
+            <h2><i data-lucide="lightbulb"></i> Recommandations</h2>
+            <span class="counter-help text-xs" x-text="recommendationsStatus"></span>
+          </div>
+          <template x-if="currentRecommendations">
+            <div class="recommendation-content">
+              <template x-if="currentRecommendations.recommended">
+                <div class="recommendation-box highlight">
+                  <h3><i data-lucide="check-circle" class="mr-1"></i> Sweet spot</h3>
+                  <p x-text="formatRecommendedSummary(currentRecommendations)"></p>
+                </div>
+              </template>
+              <div class="recommendation-box" x-show="currentJob?.best?.vectorbt_validation" style="border-color: #10b981;">
+                <h3><i data-lucide="shield-check" class="mr-1" style="color: #10b981;"></i> Validation Edge</h3>
+                <p x-text="`Probabilité de surperformance : ${currentJob?.best?.vectorbt_validation?.prob_outperform_pct?.toFixed(1) || 0}%`" class="font-bold"></p>
+                <p x-text="`Sharpe aléatoire max: ${currentJob?.best?.vectorbt_validation?.max_sharpe?.toFixed(2) || 0}`" class="text-xs text-muted mt-1"></p>
+              </div>
+              <div class="recommendation-box muted">
+                <h3><i data-lucide="star" class="mr-1"></i> Best absolu</h3>
+                <p x-text="currentRecommendations.best ? formatBestSummary(currentRecommendations.best) : '-' "></p>
+              </div>
+            </div>
+          </template>
+          
+          <div class="table-container mt-4" x-show="currentRecommendations && recommendationParameterRows().length">
+            <table class="recommendations-table">
+              <thead>
+                <tr>
+                  <th>Paramètre</th>
+                  <th>Recommandé</th>
+                  <th>Range</th>
+                  <th>Confiance</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="item in recommendationParameterRows()" :key="item.name">
+                  <tr>
+                    <td><code x-text="item.name"></code></td>
+                    <td class="font-semibold" x-text="formatRecommendationValue(item)"></td>
+                    <td class="text-xs text-muted" x-text="formatRecommendationRange(item)"></td>
+                    <td><span class="confidence-badge" :class="`confidence-${item.confidence || 'low'}`" x-text="formatRecommendationConfidence(item.confidence)"></span></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <p class="counter-help text-xs mt-2" x-show="currentRecommendations?.notes" x-text="(currentRecommendations?.notes || []).join(' · ')"></p>
+          <div class="message error-box" x-show="recommendationsError" x-text="recommendationsError"></div>
+        </section>
+
+        <section class="card chart-card">
+          <div class="section-title">
+            <h2><i data-lucide="trending-up"></i> Best Run Chart</h2>
+            <span class="counter-help text-xs" x-text="equityStatus"></span>
+          </div>
+          <div class="chart-wrap" id="equityChartContainer"></div>
+          <div class="message error-box" x-show="equityError" x-text="equityError"></div>
+        </section>
+      </div>
+
+      <!-- Section: Jobs -->
+      <section class="card jobs-card">
+        <div class="section-title">
+          <h2><i data-lucide="list"></i> Historique des Jobs</h2>
+          <div class="flex items-center gap-2">
+            <button type="button" class="danger" x-show="selectedJobIds.length > 0" @click="deleteSelectedJobs()" x-cloak>
+              <i data-lucide="trash-2"></i> (<span x-text="selectedJobIds.length"></span>)
+            </button>
+            <button type="button" class="btn-outline" @click="generateGlobalAnalysis()" :disabled="isGeneratingAnalysis" title="Générer synthèse globale">
+              <span class="spinner" x-show="isGeneratingAnalysis" x-cloak></span>
+              <span x-show="!isGeneratingAnalysis"><i data-lucide="bar-chart-2"></i> Synthèse Globale</span>
+              <span x-show="isGeneratingAnalysis" x-cloak>Génération...</span>
+            </button>
+            <button type="button" class="btn-outline" @click="refreshJobs()">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+          </div>
+        </div>
+        <div class="message error-box" x-show="globalAnalysisError" x-text="globalAnalysisError" style="margin-bottom: 1rem;"></div>
+        <div class="message success-box" x-show="globalAnalysisLinks" style="margin-bottom: 1rem;">
+          <i data-lucide="check-circle" class="inline-block mr-1"></i> Synthèse générée : 
+          <a :href="globalAnalysisLinks?.html" target="_blank" class="font-bold underline ml-1">Ouvrir HTML</a>
+          <span class="mx-2">·</span>
+          <a :href="globalAnalysisLinks?.parquet" download class="underline">Télécharger Parquet</a>
+        </div>
+        
+        <div class="table-container">
+          <table class="jobs-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" :checked="isAllJobsSelected()" @change="toggleSelectAllJobs()"></th>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Timeframe</th>
+                <th>Config</th>
+                <th>Progrès</th>
+                <th>Best</th>
+                <th>Sorties</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="job in jobs" :key="job.id">
+                <tr class="job-row" :class="jobRowClasses(job)" @click="selectJob(job)">
+                  <td @click.stop><input type="checkbox" :checked="selectedJobIds.includes(job.id)" @change="toggleJobSelection(job.id)" /></td>
+                  <td><code x-text="String(job.id || '').slice(0, 10)"></code></td>
+                  <td><span class="badge" x-text="job.status || '-'"></span></td>
+                  <td x-text="formatJobTimeframe(job)"></td>
+                  <td class="config-cell text-xs" x-text="formatJobConfig(job)"></td>
+                  <td>
+                    <div class="font-mono text-xs" x-text="`${job.progress?.currentIteration || 0}/${job.progress?.totalIterations || 0}`"></div>
+                    <template x-if="job.request?.optimization_mode === 'bayesian' && job.progress?.convergenceStatus?.patience">
+                      <div class="text-muted font-mono" style="font-size: 0.7rem; margin-top: 0.15rem; white-space: nowrap;" x-text="`Pat: ${job.progress.convergenceStatus.iterations_since_improvement || 0}/${job.progress.convergenceStatus.patience}`"></div>
+                    </template>
+                  </td>
+                  <td class="best-cell font-bold text-xs" x-text="job.best ? formatBestSummary(job.best) : '-'"></td>
+                  <td class="text-xs">
+                    <template x-if="job.output_dir">
+                      <div class="flex flex-col gap-1">
+                        <a :href="`/api/jobs/${encodeURIComponent(job.id)}/results.parquet`" class="text-primary hover:underline">parquet</a>
+                        <a :href="`/api/jobs/${encodeURIComponent(job.id)}/recommendations.json`" class="text-primary hover:underline">reco</a>
+                      </div>
+                    </template>
+                  </td>
+                  <td class="actions-cell">
+                    <button type="button" class="danger btn-icon" :disabled="isActiveJob(job)" @click.stop="deleteJob(job)">
+                      <i data-lucide="trash-2"></i>
+                    </button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/vendor/lightweight-charts.standalone.production.js?v=2026.05.28" defer></script>
+  <script src="/js/api.js?v=2026.05.28" defer></script>
+  <script src="/js/presets.js?v=2026.05.28" defer></script>
+  <script src="/js/formatters.js?v=2026.05.28" defer></script>
+  <script src="/js/parameterRows.js?v=2026.05.28" defer></script>
+  <script src="/js/estimates.js?v=2026.05.28" defer></script>
+  <script src="/js/equityChart.js?v=2026.05.28" defer></script>
+  <script src="/js/jobs.js?v=2026.05.28" defer></script>
+  <script src="/js/optimizerApp.js?v=2026.05.28" defer></script>
+  <script src="/vendor/alpine.min.js?v=2026.05.28" defer></script>
+</body>
+
+</html>

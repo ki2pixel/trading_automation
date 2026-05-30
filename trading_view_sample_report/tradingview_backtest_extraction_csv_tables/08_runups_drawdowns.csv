@@ -1,0 +1,12 @@
+﻿Sous-section,Métrique,Valeur,Remarque
+Run-ups,Durée moyenne de la hausse du capital (de clôture à clôture),9 jours,
+Run-ups,Hausse moyenne du capital (de clôture à clôture),"14,99 EUR / 1,50%",
+Run-ups,Hausse maximale du capital (de clôture à clôture),"40,90 EUR / 4,19%",
+Run-ups,Hausse maximale du capital (intrabarre),"69,90 EUR / 6,44%",
+Run-ups,Hausse maximale du capital propre en % du capital initial (intrabarre),"6,99%",
+Drawdowns,Durée moyenne de la baisse du capital (de clôture à clôture),17 jours,
+Drawdowns,Baisse moyenne du capital (de clôture à clôture),"16,16 EUR / 1,62%",
+Drawdowns,Perte maximale en capital (de clôture à clôture),"59,80 EUR / 5,98%",
+Drawdowns,Perte maximale en capital (intrabarre),"60,90 EUR / 6,09%",
+Drawdowns,Perte maximale en % du capital initial (intrabarre),"6,09%",
+Drawdowns,Retour de la réduction maximale de la valeur nette,"0,10 EUR",

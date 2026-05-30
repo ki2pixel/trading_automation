@@ -1,0 +1,303 @@
+// Converted from indicator to strategy.
+// V3.2: capped reinvestment bucket / "livret d'épargne" model.
+// Important: TradingView's native equity curve still accumulates standard strategy P&L.
+// The custom variables `capitalBucket` and `withdrawnProfit` model the user's capped
+// reinvestment logic, while order sizes are driven from that custom bucket.
+//@version=6
+strategy(
+    "HMA Crossover Strategy V3.2 (Capped Bucket)",
+    shorttitle = "HMA Xover V3.2",
+    overlay = true,
+    pyramiding = 0,
+    margin_long = 100,
+    margin_short = 100,
+    process_orders_on_close = false
+)
+
+// === Inputs ===
+fastLen        = input.int(20, "Fast HMA Length", minval = 1)
+slowLen        = input.int(55, "Slow HMA Length", minval = 1)
+src            = input.source(close, "Source")
+confirmOnClose = input.bool(true, "Confirm signals on bar close (reduces repaint)")
+showLabels     = input.bool(true, "Show Buy/Sell labels")
+showBg         = input.bool(false, "Color background by regime")
+showRibbon     = input.bool(true, "Show ribbon/cloud between HMAs")
+ribbonOpacity  = input.int(86, "Ribbon opacity (0–100)", minval = 0, maxval = 100)
+bullRibbonBase = input.color(color.new(color.green, 0), "Bull ribbon color")
+bearRibbonBase = input.color(color.new(color.red, 0), "Bear ribbon color")
+
+groupBucket = "V3 - Capped bucket model"
+maxEntryPrice         = input.float(300.0, "Max entry price per share", minval = 0.0, group = groupBucket)
+maxCapitalBucket      = input.float(300.0, "Max reinvestable capital bucket", minval = 0.0, group = groupBucket)
+initialCapitalBucket  = input.float(300.0, "Initial reinvestable capital bucket", minval = 0.0, group = groupBucket)
+showBucketTable       = input.bool(true, "Show bucket status table", group = groupBucket)
+
+groupDirection = "V3.3 - Trade direction"
+tradeDirectionMode = input.string(
+    "Long & Short",
+    "Trade direction mode",
+    options = ["Long & Short", "Long only", "Short only"],
+    group = groupDirection
+)
+
+groupFees = "V3.2 - Fee / reversal filter"
+feeMode = input.string(
+    "Parametric: hold until net covers fees",
+    "Opposite signal behavior",
+    options = [
+        "Parametric: hold until net covers fees",
+        "Parametric: exit only, no forced reversal",
+        "Disabled: always reverse/close on opposite signal"
+    ],
+    group = groupFees
+)
+estimatedCommissionPerOrderLong  = input.float(0.0, "Estimated LONG commission per order (account currency cash)", minval = 0.0, group = groupFees)
+estimatedCommissionPerOrderShort = input.float(3.0, "Estimated SHORT commission per order (account currency cash)", minval = 0.0, group = groupFees)
+estimatedSlippagePerSideLong     = input.float(0.0, "Estimated LONG slippage per side (account currency cash)", minval = 0.0, group = groupFees)
+estimatedSlippagePerSideShort    = input.float(0.0, "Estimated SHORT slippage per side (account currency cash)", minval = 0.0, group = groupFees)
+minNetProfitAfterCosts      = input.float(0.0, "Minimum realized net profit required for signal exit/reversal", step = 0.1, group = groupFees)
+
+groupRisk = "V3.2 - Explicit net exits"
+useNetBracketExits = input.bool(false, "Enable explicit net TP/SL exits", group = groupRisk)
+takeProfitNetPercent = input.float(10.0, "Take-profit target, net of estimated costs (% of entry value)", minval = 0.0, step = 0.1, group = groupRisk)
+stopLossNetPercent   = input.float(10.0, "Stop-loss threshold, net of estimated costs (% of entry value)", minval = 0.0, step = 0.1, group = groupRisk)
+
+groupSafety = "V3.2 - Safety stop"
+useSafetyStop = input.bool(true, "Enable last-resort safety stop", group = groupSafety)
+safetyStopAppliesTo = input.string("Short only", "Safety stop applies to", options = ["Both", "Long only", "Short only"], group = groupSafety)
+safetyStopMode = input.string("Net loss only", "Safety stop trigger mode", options = ["Net loss only", "Max bars only", "Net loss OR max bars", "Net loss AND max bars"], group = groupSafety)
+safetyMaxNetLossMode = input.string("Cash amount", "Emergency max net loss mode", options = ["Cash amount", "% of entry value"], group = groupSafety)
+safetyMaxNetLossCash = input.float(50.0, "Emergency max net loss (cash)", minval = 0.0, step = 0.1, group = groupSafety)
+safetyMaxNetLossPercent = input.float(0.0, "Emergency max net loss (% of entry value)", minval = 0.0, step = 0.1, group = groupSafety)
+safetyMaxBarsInTrade = input.int(0, "Emergency max bars in trade (0 = disabled)", minval = 0, group = groupSafety)
+
+// === Helpers ===
+bucketClamp(float value, float bucketMax) =>
+    math.max(math.min(value, bucketMax), 0.0)
+
+qtyFromBucket(float bucket, float price) =>
+    price > 0 ? bucket / price : 0.0
+
+// === Bucket state ===
+var float capitalBucket = na
+var float withdrawnProfit = 0.0
+var float processedNetProfit = na
+var int entryBarIndex = na
+
+if barstate.isfirst
+    capitalBucket := bucketClamp(initialCapitalBucket, maxCapitalBucket)
+    processedNetProfit := strategy.netprofit
+
+// Update the capped reinvestment bucket whenever TradingView records new closed-trade P&L.
+if not na(processedNetProfit) and strategy.netprofit != processedNetProfit
+    float deltaClosedNet = strategy.netprofit - processedNetProfit
+    float rawBucket = capitalBucket + deltaClosedNet
+    if rawBucket > maxCapitalBucket
+        withdrawnProfit += rawBucket - maxCapitalBucket
+    capitalBucket := bucketClamp(rawBucket, maxCapitalBucket)
+    processedNetProfit := strategy.netprofit
+
+// === Compute ===
+float hmaFast = ta.hma(src, fastLen)
+float hmaSlow = ta.hma(src, slowLen)
+
+// === Cross detection ===
+bool rawLong = ta.crossover(hmaFast, hmaSlow)
+bool rawShort = ta.crossunder(hmaFast, hmaSlow)
+bool longSignal = rawLong and (not confirmOnClose or barstate.isconfirmed)
+bool shortSignal = rawShort and (not confirmOnClose or barstate.isconfirmed)
+bool allowLong = tradeDirectionMode != "Short only"
+bool allowShort = tradeDirectionMode != "Long only"
+
+// === Current position estimates ===
+bool inLong = strategy.position_size > 0
+bool inShort = strategy.position_size < 0
+bool flat = strategy.position_size == 0
+float absPosSize = math.abs(strategy.position_size)
+float entryPrice = strategy.position_avg_price
+float prevPosSize = nz(strategy.position_size[1], 0)
+bool positionOpenedOrReversed = strategy.position_size != 0 and (prevPosSize == 0 or math.sign(strategy.position_size) != math.sign(prevPosSize))
+
+if positionOpenedOrReversed
+    entryBarIndex := bar_index
+if flat
+    entryBarIndex := na
+
+int barsInTrade = not na(entryBarIndex) ? bar_index - entryBarIndex : 0
+float grossPnlEstimate = inLong ? (close - entryPrice) * absPosSize * syminfo.pointvalue : inShort ? (entryPrice - close) * absPosSize * syminfo.pointvalue : 0.0
+float grossPnlEstimateAccount = strategy.convert_to_account(grossPnlEstimate)
+float estimatedCommissionPerOrderSymbolLong = strategy.convert_to_symbol(estimatedCommissionPerOrderLong)
+float estimatedCommissionPerOrderSymbolShort = strategy.convert_to_symbol(estimatedCommissionPerOrderShort)
+float estimatedSlippagePerSideSymbolLong = strategy.convert_to_symbol(estimatedSlippagePerSideLong)
+float estimatedSlippagePerSideSymbolShort = strategy.convert_to_symbol(estimatedSlippagePerSideShort)
+float currentEstimatedCommissionPerOrderSymbol = inLong ? estimatedCommissionPerOrderSymbolLong : inShort ? estimatedCommissionPerOrderSymbolShort : 0.0
+float currentEstimatedSlippagePerSideSymbol = inLong ? estimatedSlippagePerSideSymbolLong : inShort ? estimatedSlippagePerSideSymbolShort : 0.0
+float currentEstimatedCommissionPerOrderAccount = inLong ? estimatedCommissionPerOrderLong : inShort ? estimatedCommissionPerOrderShort : 0.0
+float currentEstimatedSlippagePerSideAccount = inLong ? estimatedSlippagePerSideLong : inShort ? estimatedSlippagePerSideShort : 0.0
+float estimatedRoundTripCosts = absPosSize > 0 ? currentEstimatedCommissionPerOrderSymbol * 2 + currentEstimatedSlippagePerSideSymbol * 2 : 0.0
+float estimatedRoundTripCostsAccount = absPosSize > 0 ? currentEstimatedCommissionPerOrderAccount * 2 + currentEstimatedSlippagePerSideAccount * 2 : 0.0
+float estimatedNetIfClosedNow = grossPnlEstimate - estimatedRoundTripCosts
+float estimatedNetIfClosedNowAccount = grossPnlEstimateAccount - estimatedRoundTripCostsAccount
+bool reversalNetFilterPassed = estimatedNetIfClosedNowAccount >= minNetProfitAfterCosts
+float estimatedBucketAfterClose = bucketClamp(capitalBucket + estimatedNetIfClosedNowAccount, maxCapitalBucket)
+float quantityPointValue = absPosSize * syminfo.pointvalue
+float entryPositionValue = absPosSize > 0 ? entryPrice * absPosSize * syminfo.pointvalue : 0.0
+float entryPositionValueAccount = absPosSize > 0 ? strategy.convert_to_account(entryPositionValue) : 0.0
+float takeProfitNetThresholdAccount = entryPositionValueAccount * takeProfitNetPercent / 100.0
+float stopLossNetThresholdAccount = entryPositionValueAccount * stopLossNetPercent / 100.0
+float safetyMaxNetLossThresholdAccount = safetyMaxNetLossMode == "Cash amount" ? safetyMaxNetLossCash : entryPositionValueAccount * safetyMaxNetLossPercent / 100.0
+
+bool safetyDirectionAllowed = safetyStopAppliesTo == "Both" or (safetyStopAppliesTo == "Long only" and inLong) or (safetyStopAppliesTo == "Short only" and inShort)
+bool safetyLossTriggered = safetyMaxNetLossThresholdAccount > 0 and estimatedNetIfClosedNowAccount <= -safetyMaxNetLossThresholdAccount
+bool safetyBarsTriggered = safetyMaxBarsInTrade > 0 and barsInTrade >= safetyMaxBarsInTrade
+bool safetyStopTriggered = useSafetyStop and safetyDirectionAllowed and (
+     safetyStopMode == "Net loss only" ? safetyLossTriggered :
+     safetyStopMode == "Max bars only" ? safetyBarsTriggered :
+     safetyStopMode == "Net loss OR max bars" ? (safetyLossTriggered or safetyBarsTriggered) :
+     (safetyLossTriggered and safetyBarsTriggered)
+ )
+
+bool hitNetTakeProfit = useNetBracketExits and absPosSize > 0 and estimatedNetIfClosedNowAccount >= takeProfitNetThresholdAccount
+bool hitNetStopLoss = useNetBracketExits and absPosSize > 0 and estimatedNetIfClosedNowAccount <= -stopLossNetThresholdAccount
+
+float takeProfitNetThresholdSymbol = strategy.convert_to_symbol(takeProfitNetThresholdAccount)
+float stopLossNetThresholdSymbol = strategy.convert_to_symbol(stopLossNetThresholdAccount)
+
+float longTakeProfitPrice = inLong and quantityPointValue > 0 ? entryPrice + (takeProfitNetThresholdSymbol + estimatedRoundTripCosts) / quantityPointValue : na
+float longStopLossPrice = inLong and quantityPointValue > 0 ? entryPrice + (estimatedRoundTripCosts - stopLossNetThresholdSymbol) / quantityPointValue : na
+float shortTakeProfitPrice = inShort and quantityPointValue > 0 ? entryPrice - (takeProfitNetThresholdSymbol + estimatedRoundTripCosts) / quantityPointValue : na
+float shortStopLossPrice = inShort and quantityPointValue > 0 ? entryPrice + (stopLossNetThresholdSymbol - estimatedRoundTripCosts) / quantityPointValue : na
+
+bool entryAllowedByCap = close <= maxEntryPrice and capitalBucket > 0
+float flatEntryQty = qtyFromBucket(capitalBucket, close)
+float reverseEntryQty = qtyFromBucket(estimatedBucketAfterClose, close)
+
+bool holdUntilProfitable = feeMode == "Parametric: hold until net covers fees"
+bool exitOnlyNoReverse = feeMode == "Parametric: exit only, no forced reversal"
+bool disableFeeFilter = feeMode == "Disabled: always reverse/close on opposite signal"
+
+// === Strategy orders ===
+// 1) The last-resort safety stop has highest priority.
+if safetyStopTriggered and inLong
+    strategy.close("Long", comment = "Safety Stop Long")
+else if safetyStopTriggered and inShort
+    strategy.close("Short", comment = "Safety Stop Short")
+// 2) Optional explicit net TP/SL exits come next.
+else if inLong and hitNetTakeProfit
+    strategy.close("Long", comment = "Net TP Long")
+else if inLong and hitNetStopLoss
+    strategy.close("Long", comment = "Net SL Long")
+else if inShort and hitNetTakeProfit
+    strategy.close("Short", comment = "Net TP Short")
+else if inShort and hitNetStopLoss
+    strategy.close("Short", comment = "Net SL Short")
+else
+    // 3) Flat entries use the current capped bucket.
+    if flat and entryAllowedByCap and flatEntryQty > 0
+        if longSignal and allowLong
+            strategy.entry("Long", strategy.long, qty = flatEntryQty, comment = "BUY")
+        else if shortSignal and allowShort
+            strategy.entry("Short", strategy.short, qty = flatEntryQty, comment = "SELL")
+
+    // 4) Opposite signal while long.
+    if inLong and shortSignal
+        if disableFeeFilter
+            if close <= maxEntryPrice and reverseEntryQty > 0
+                if allowShort
+                    strategy.entry("Short", strategy.short, qty = reverseEntryQty, comment = "SELL REV")
+                else
+                    strategy.close("Long", comment = "Exit Long")
+            else
+                strategy.close("Long", comment = "Exit Long")
+        else if exitOnlyNoReverse or not allowShort
+            strategy.close("Long", comment = "Exit Long")
+        else if holdUntilProfitable and reversalNetFilterPassed
+            if close <= maxEntryPrice and reverseEntryQty > 0
+                if allowShort
+                    strategy.entry("Short", strategy.short, qty = reverseEntryQty, comment = "SELL REV")
+                else
+                    strategy.close("Long", comment = "Exit Long")
+            else
+                strategy.close("Long", comment = "Exit Long")
+
+    // 5) Opposite signal while short.
+    if inShort and longSignal
+        if disableFeeFilter
+            if close <= maxEntryPrice and reverseEntryQty > 0
+                if allowLong
+                    strategy.entry("Long", strategy.long, qty = reverseEntryQty, comment = "BUY REV")
+                else
+                    strategy.close("Short", comment = "Exit Short")
+            else
+                strategy.close("Short", comment = "Exit Short")
+        else if exitOnlyNoReverse or not allowLong
+            strategy.close("Short", comment = "Exit Short")
+        else if holdUntilProfitable and reversalNetFilterPassed
+            if close <= maxEntryPrice and reverseEntryQty > 0
+                if allowLong
+                    strategy.entry("Long", strategy.long, qty = reverseEntryQty, comment = "BUY REV")
+                else
+                    strategy.close("Short", comment = "Exit Short")
+            else
+                strategy.close("Short", comment = "Exit Short")
+
+// === Plots ===
+pFast = plot(hmaFast, title = "Fast HMA", linewidth = 2, color = color.new(color.green, 0))
+pSlow = plot(hmaSlow, title = "Slow HMA", linewidth = 2, color = color.new(color.red, 0))
+color ribbonColor = hmaFast >= hmaSlow ? color.new(bullRibbonBase, ribbonOpacity) : color.new(bearRibbonBase, ribbonOpacity)
+fill(pFast, pSlow, title = "HMA Ribbon/Cloud", color = showRibbon ? ribbonColor : na)
+
+plotshape(showLabels and longSignal, title = "Buy", style = shape.triangleup, location = location.belowbar, size = size.tiny, text = "BUY", color = color.new(color.green, 0), textcolor = color.white)
+plotshape(showLabels and shortSignal, title = "Sell", style = shape.triangledown, location = location.abovebar, size = size.tiny, text = "SELL", color = color.new(color.red, 0), textcolor = color.white)
+bgcolor(showBg ? (hmaFast > hmaSlow ? color.new(color.green, 90) : color.new(color.red, 90)) : na)
+
+// Custom data-window metrics for the capped-bucket model.
+plot(capitalBucket, title = "V3 Reinvestable Bucket", display = display.data_window)
+plot(withdrawnProfit, title = "V3 Withdrawn Profit", display = display.data_window)
+plot(grossPnlEstimateAccount, title = "V3.2 Gross PnL Estimate (Account Ccy)", display = display.data_window)
+plot(estimatedCommissionPerOrderSymbolLong, title = "V3.3 Estimated LONG Commission / Order (Symbol Ccy)", display = display.data_window)
+plot(estimatedCommissionPerOrderSymbolShort, title = "V3.3 Estimated SHORT Commission / Order (Symbol Ccy)", display = display.data_window)
+plot(estimatedSlippagePerSideSymbolLong, title = "V3.3 Estimated LONG Slippage / Side (Symbol Ccy)", display = display.data_window)
+plot(estimatedSlippagePerSideSymbolShort, title = "V3.3 Estimated SHORT Slippage / Side (Symbol Ccy)", display = display.data_window)
+plot(estimatedRoundTripCostsAccount, title = "V3.2 Estimated Round-trip Costs (Account Ccy)", display = display.data_window)
+plot(estimatedNetIfClosedNowAccount, title = "V3.2 Estimated Net If Closed Now (Account Ccy)", display = display.data_window)
+plot(entryPositionValueAccount, title = "V3.3 Entry Position Value (Account Ccy)", display = display.data_window)
+plot(safetyMaxNetLossThresholdAccount, title = "V3.3 Safety Max Net Loss Threshold (Account Ccy)", display = display.data_window)
+plot(barsInTrade, title = "V3.2 Bars In Trade", display = display.data_window)
+plot(longTakeProfitPrice, title = "V3.2 Long TP Price", display = display.data_window)
+plot(longStopLossPrice, title = "V3.2 Long SL Price", display = display.data_window)
+plot(shortTakeProfitPrice, title = "V3.2 Short TP Price", display = display.data_window)
+plot(shortStopLossPrice, title = "V3.2 Short SL Price", display = display.data_window)
+
+plot(useNetBracketExits and inLong ? longTakeProfitPrice : na, title = "Net TP Long", color = color.new(color.green, 0), style = plot.style_linebr)
+plot(useNetBracketExits and inLong ? longStopLossPrice : na, title = "Net SL Long", color = color.new(color.red, 0), style = plot.style_linebr)
+plot(useNetBracketExits and inShort ? shortTakeProfitPrice : na, title = "Net TP Short", color = color.new(color.green, 0), style = plot.style_linebr)
+plot(useNetBracketExits and inShort ? shortStopLossPrice : na, title = "Net SL Short", color = color.new(color.red, 0), style = plot.style_linebr)
+
+var table statusTable = table.new(position.top_right, 2, 10, border_width = 1)
+if showBucketTable and barstate.islast
+    table.cell(statusTable, 0, 0, "Bucket", bgcolor = color.new(color.blue, 85))
+    table.cell(statusTable, 1, 0, str.tostring(capitalBucket, format.mintick))
+    table.cell(statusTable, 0, 1, "Withdrawn", bgcolor = color.new(color.green, 85))
+    table.cell(statusTable, 1, 1, str.tostring(withdrawnProfit, format.mintick))
+    table.cell(statusTable, 0, 2, "Max entry px", bgcolor = color.new(color.orange, 85))
+    table.cell(statusTable, 1, 2, str.tostring(maxEntryPrice, format.mintick))
+    table.cell(statusTable, 0, 3, "Est. net close", bgcolor = color.new(color.purple, 85))
+    table.cell(statusTable, 1, 3, str.tostring(estimatedNetIfClosedNowAccount, format.mintick))
+    table.cell(statusTable, 0, 4, "Fee filter", bgcolor = color.new(color.gray, 85))
+    table.cell(statusTable, 1, 4, reversalNetFilterPassed ? "PASS" : "BLOCK")
+    table.cell(statusTable, 0, 5, "Gross / Costs", bgcolor = color.new(color.teal, 85))
+    table.cell(statusTable, 1, 5, str.tostring(grossPnlEstimateAccount, format.mintick) + " / " + str.tostring(estimatedRoundTripCostsAccount, format.mintick))
+    table.cell(statusTable, 0, 6, "Net TP/SL", bgcolor = color.new(color.maroon, 80))
+    table.cell(statusTable, 1, 6, useNetBracketExits ? str.tostring(takeProfitNetPercent, format.mintick) + "% / -" + str.tostring(stopLossNetPercent, format.mintick) + "%" : "Disabled")
+    table.cell(statusTable, 0, 7, "Safety", bgcolor = color.new(color.yellow, 80))
+    table.cell(statusTable, 1, 7, useSafetyStop ? (safetyStopTriggered ? "TRIGGERED" : "ARMED") : "Disabled")
+    table.cell(statusTable, 0, 8, "Bars in trade", bgcolor = color.new(color.silver, 70))
+    table.cell(statusTable, 1, 8, str.tostring(barsInTrade))
+    table.cell(statusTable, 0, 9, "Mode", bgcolor = color.new(color.black, 0), text_color = color.white)
+    table.cell(statusTable, 1, 9, feeMode, text_color = color.white)
+
+// === Strategy alert compatibility ===
+// This script intentionally remains a backtest strategy.
+// For live TradingView alerts on market data, prefer the indicator version
+// with `alertcondition()` and use an external broker-aware execution layer.

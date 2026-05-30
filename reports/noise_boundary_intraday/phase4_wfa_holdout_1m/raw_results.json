@@ -1,0 +1,60 @@
+{
+  "SAP": [
+    {
+      "symbol": "SAP",
+      "fold_idx": 6,
+      "is_start": "2021-04-16",
+      "is_end": "2023-04-16",
+      "oos_start": "2023-04-16",
+      "oos_end": "2024-04-16",
+      "baseline_is_sharpe": 0.181828799828224,
+      "baseline_is_cagr": 3.1954414862165104,
+      "baseline_is_mdd": -11.579903526133503,
+      "baseline_is_trades": 56,
+      "baseline_oos_sharpe": 0.5705763240265821,
+      "baseline_oos_cagr": 38.9394097663283,
+      "baseline_oos_mdd": -15.530536312854776,
+      "baseline_oos_trades": 294,
+      "reopt_params": null,
+      "reopt_is_sharpe": null,
+      "reopt_is_cagr": null,
+      "reopt_is_mdd": null,
+      "reopt_is_trades": null,
+      "reopt_oos_sharpe": null,
+      "reopt_oos_cagr": null,
+      "reopt_oos_mdd": null,
+      "reopt_oos_trades": null,
+      "pbo": null,
+      "dsr": null
+    }
+  ],
+  "LOGI": [
+    {
+      "symbol": "LOGI",
+      "fold_idx": 6,
+      "is_start": "2021-06-17",
+      "is_end": "2023-06-17",
+      "oos_start": "2023-06-17",
+      "oos_end": "2024-06-17",
+      "baseline_is_sharpe": 0.04773789846861542,
+      "baseline_is_cagr": 0.2866609986805768,
+      "baseline_is_mdd": -4.555837233096545,
+      "baseline_is_trades": 10,
+      "baseline_oos_sharpe": 0.2099805041215795,
+      "baseline_oos_cagr": 5.316790309426556,
+      "baseline_oos_mdd": -13.569184791435667,
+      "baseline_oos_trades": 23,
+      "reopt_params": null,
+      "reopt_is_sharpe": null,
+      "reopt_is_cagr": null,
+      "reopt_is_mdd": null,
+      "reopt_is_trades": null,
+      "reopt_oos_sharpe": null,
+      "reopt_oos_cagr": null,
+      "reopt_oos_mdd": null,
+      "reopt_oos_trades": null,
+      "pbo": null,
+      "dsr": null
+    }
+  ]
+}

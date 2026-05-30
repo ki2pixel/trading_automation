@@ -1,0 +1,62 @@
+{
+  "ZEAL.CO": {
+    "exchange": "GETTEX",
+    "open": "08:00",
+    "close": "22:00",
+    "tz_offset": "+01:00"
+  },
+  "GMAB": {
+    "exchange": "NASDAQ",
+    "open": "09:30",
+    "close": "16:00",
+    "tz_offset": "-05:00"
+  },
+  "NVO": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "SHL.DE": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "EVD.DE": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "SAP": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "FPE.DE": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "LOGI": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "NVS": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "AMS.MC": {
+    "exchange": "BOLSA_DE_MADRID",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  }
+}

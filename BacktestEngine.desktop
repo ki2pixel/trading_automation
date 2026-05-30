@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Backtest Engine
+Name[fr]=Moteur de Backtest
+Comment=Lance le serveur et worker Backtest Engine pour l'optimisation de stratégies
+Comment[fr]=Démarre le système complet de backtest et optimisation de trading
+Exec=/home/kidpixel/trading_automation_v2/start_backtest_engine.sh
+Icon=utilities-terminal
+Terminal=true
+Categories=Development;Finance;Science;
+Keywords=trading;backtest;optimization;finance;strategy;
+Keywords[fr]=trading;backtest;optimisation;finance;stratégie;
+StartupNotify=true
+Path=/home/kidpixel/trading_automation_v2

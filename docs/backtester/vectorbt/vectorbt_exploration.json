@@ -1,0 +1,122 @@
+[
+  {
+    "fast_window": 25,
+    "slow_window": 35,
+    "total_return_pct": 18.18,
+    "sharpe": 8.2365,
+    "trades": 84,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 25,
+    "slow_window": 30,
+    "total_return_pct": 15.59,
+    "sharpe": 7.1095,
+    "trades": 126,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 20,
+    "slow_window": 25,
+    "total_return_pct": 14.66,
+    "sharpe": 6.7021,
+    "trades": 142,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 30,
+    "slow_window": 35,
+    "total_return_pct": 14.35,
+    "sharpe": 6.6083,
+    "trades": 113,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 20,
+    "slow_window": 35,
+    "total_return_pct": 12.3,
+    "sharpe": 5.7053,
+    "trades": 79,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 20,
+    "slow_window": 30,
+    "total_return_pct": 10.09,
+    "sharpe": 4.7602,
+    "trades": 98,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 15,
+    "slow_window": 35,
+    "total_return_pct": 8.73,
+    "sharpe": 4.2717,
+    "trades": 83,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 10,
+    "slow_window": 35,
+    "total_return_pct": 8.47,
+    "sharpe": 4.4132,
+    "trades": 87,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 15,
+    "slow_window": 30,
+    "total_return_pct": 7.55,
+    "sharpe": 3.9895,
+    "trades": 94,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 15,
+    "slow_window": 25,
+    "total_return_pct": 7.02,
+    "sharpe": 3.7675,
+    "trades": 115,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 10,
+    "slow_window": 20,
+    "total_return_pct": 6.43,
+    "sharpe": 3.513,
+    "trades": 147,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 10,
+    "slow_window": 25,
+    "total_return_pct": 5.97,
+    "sharpe": 3.2629,
+    "trades": 118,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 10,
+    "slow_window": 30,
+    "total_return_pct": 3.29,
+    "sharpe": 1.8889,
+    "trades": 102,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 10,
+    "slow_window": 15,
+    "total_return_pct": 2.94,
+    "sharpe": 1.766,
+    "trades": 210,
+    "max_drawdown_pct": 0.0
+  },
+  {
+    "fast_window": 15,
+    "slow_window": 20,
+    "total_return_pct": 0.08,
+    "sharpe": 0.2415,
+    "trades": 172,
+    "max_drawdown_pct": 0.0
+  }
+]

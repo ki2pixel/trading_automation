@@ -1,0 +1,690 @@
+// Converted from indicator to strategy.
+// V3.2: capped reinvestment bucket / "livret d'épargne" model.
+// Important: TradingView's native equity curve still accumulates standard strategy P&L.
+// The custom variables `capitalBucket` and `withdrawnProfit` model the user's capped
+// reinvestment logic, while order sizes are driven from that custom bucket.
+//@version=6
+strategy(
+    title = "Adaptive Volatility Trend Strategy V3.2 (Capped Bucket)",
+    shorttitle = "AVT V3.2",
+    overlay = true,
+    pyramiding = 0,
+    margin_long = 100,
+    margin_short = 100,
+    process_orders_on_close = false
+)
+
+// ══════════════════════════════════════════════════════════
+// ADAPTIVE VOLATILITY TREND [WillyAlgoTrader]
+// Strategy adaptation with V3 capped bucket execution model
+// ══════════════════════════════════════════════════════════
+// Author:  Willy | WillyAlgoTrader
+// Version: 1.0.0
+// Date:    2025-02-17
+
+// ══════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════
+GRP_MAIN   = "⚙️ Main Settings"
+GRP_FILTER = "🔍 Filters"
+GRP_VISUAL = "🎨 Visual"
+GRP_DASH   = "📊 Dashboard"
+GRP_ALERT  = "🔔 Alerts"
+GRP_COLORS = "🎨 Colors"
+GRP_ADV    = "🔧 Advanced"
+
+INDICATOR_VERSION = "v1.0.0"
+
+// ══════════════════════════════════════
+// INPUTS — Main Settings
+// ══════════════════════════════════════
+sourceInput = input.source(close, "Source", group = GRP_MAIN,
+    tooltip = "Price source for all calculations.\n• close (default) is most stable\n• hl2 or hlc3 for smoother response")
+
+lengthInput = input.int(21, "Trend Length", minval = 5, maxval = 200, step = 1, group = GRP_MAIN,
+    tooltip = "Lookback period for the adaptive trend filter.\n" +
+              "• Higher = smoother trend, fewer signals\n" +
+              "• Lower = faster response, more noise\n" +
+              "• Recommended: 14-30")
+
+atrLenInput = input.int(14, "ATR Length", minval = 5, maxval = 100, step = 1, group = GRP_MAIN,
+    tooltip = "Period for ATR-based volatility bands.\n" +
+              "• Higher = wider bands, fewer whipsaws\n" +
+              "• Lower = tighter bands, faster reaction\n" +
+              "• Recommended: 10-20")
+
+atrMultInput = input.float(2.0, "Band Multiplier", minval = 0.5, maxval = 5.0, step = 0.1, group = GRP_MAIN,
+    tooltip = "Multiplier for ATR-based channel width.\n" +
+              "• Higher = wider channel, fewer false signals\n" +
+              "• Lower = tighter channel, earlier entries\n" +
+              "• Recommended: 1.5-3.0")
+
+presetInput = input.string("Default", "Preset",
+    options  = ["Conservative", "Default", "Aggressive", "Scalping"],
+    group    = GRP_MAIN,
+    tooltip  = "Quick presets (override Length/ATR/Mult):\n" +
+               "• Conservative: 30 / 20 / 2.5 — fewer signals, higher reliability\n" +
+               "• Default: 20 / 14 / 2.0 — balanced\n" +
+               "• Aggressive: 12 / 10 / 1.5 — more signals, faster\n" +
+               "• Scalping: 8 / 7 / 1.2 — optimized for 1-5min")
+
+// ══════════════════════════════════════
+// INPUTS — Filters
+// ══════════════════════════════════════
+useRsiFilterInput = input.bool(true, "RSI Momentum Filter", group = GRP_FILTER,
+    tooltip = "Require RSI confirmation for signals.\n" +
+              "• Buy only when RSI is not overbought\n" +
+              "• Sell only when RSI is not oversold\n" +
+              "• Reduces false signals in ranging markets")
+
+rsiLenInput = input.int(14, "RSI Length", minval = 5, maxval = 50, step = 1, group = GRP_FILTER,
+    tooltip = "RSI calculation period.\n• Recommended: 14")
+
+rsiObInput = input.int(70, "RSI Overbought", minval = 60, maxval = 90, step = 5, group = GRP_FILTER,
+    tooltip = "RSI level above which bullish signals are filtered out")
+
+rsiOsInput = input.int(30, "RSI Oversold", minval = 10, maxval = 40, step = 5, group = GRP_FILTER,
+    tooltip = "RSI level below which bearish signals are filtered out")
+
+useVolFilterInput = input.bool(true, "Volume Filter", group = GRP_FILTER,
+    tooltip = "Require above-average volume for signal confirmation.\n" +
+              "• Automatically disabled on instruments with no volume (forex)\n" +
+              "• Helps avoid low-conviction breakouts")
+
+volMultInput = input.float(1.2, "Volume Threshold", minval = 0.5, maxval = 3.0, step = 0.1, group = GRP_FILTER,
+    tooltip = "Signal requires volume > SMA(volume) × this multiplier.\n" +
+              "• Higher = stricter volume filter\n" +
+              "• Recommended: 1.0-1.5")
+
+// ══════════════════════════════════════
+// INPUTS — Visual
+// ══════════════════════════════════════
+themeInput = input.string("Auto", "Theme",
+    options = ["Auto", "Dark", "Light"],
+    group   = GRP_VISUAL,
+    tooltip = "Chart color theme.\n" +
+              "• Auto: detects from chart background\n" +
+              "• Dark: optimized for dark backgrounds\n" +
+              "• Light: optimized for light/white backgrounds")
+
+showSignalsInput = input.bool(true, "Show Buy/Sell Signals", group = GRP_VISUAL,
+    tooltip = "Display BUY/SELL labels on chart")
+
+showBandsInput = input.bool(true, "Show Trend Bands", group = GRP_VISUAL,
+    tooltip = "Display the adaptive volatility channel bands")
+
+showFillInput = input.bool(true, "Show Band Fill", group = GRP_VISUAL,
+    tooltip = "Fill area between trend line and bands")
+
+showTrendLineInput = input.bool(true, "Show Trend Line", group = GRP_VISUAL,
+    tooltip = "Display the main adaptive trend line")
+
+showBarColorInput = input.bool(false, "Bar Coloring", group = GRP_VISUAL,
+    tooltip = "Color candles based on trend direction")
+
+showBgInput = input.bool(false, "Background Shading", group = GRP_VISUAL,
+    tooltip = "Light background tint based on trend direction")
+
+showWatermarkInput = input.bool(true, "Show Watermark", group = GRP_VISUAL,
+    tooltip = "Display 'WillyAlgoTrader - by Willy' watermark on chart")
+
+// ══════════════════════════════════════
+// INPUTS — Dashboard
+// ══════════════════════════════════════
+showDashInput = input.bool(true, "Show Dashboard", group = GRP_DASH,
+    tooltip = "Display information panel with trend, signal, and score")
+
+dashPosStr = input.string("Top Right", "Position",
+    options = ["Top Left", "Top Right", "Bottom Left", "Bottom Right"],
+    group   = GRP_DASH,
+    tooltip = "Dashboard position on chart")
+
+// ══════════════════════════════════════
+// INPUTS — Alerts
+// ══════════════════════════════════════
+webhookInput = input.bool(false, "Webhook JSON Format", group = GRP_ALERT,
+    tooltip = "Send alerts in JSON format for webhook integrations.\n" +
+              "• Enable for 3Commas, Alertatron, custom bots\n" +
+              "• Disable for standard TradingView notifications")
+
+// ══════════════════════════════════════
+// INPUTS — Colors
+// ══════════════════════════════════════
+bullColorInput = input.color(#00E676, "Bull", inline = "colors", group = GRP_COLORS,
+    tooltip = "Color for bullish signals and trend")
+bearColorInput = input.color(#FF5252, "Bear", inline = "colors", group = GRP_COLORS,
+    tooltip = "Color for bearish signals and trend")
+neutralColorInput = input.color(#FFEB3B, "Neutral", inline = "colors", group = GRP_COLORS,
+    tooltip = "Color for neutral/ranging conditions")
+
+// ══════════════════════════════════════
+// INPUTS — Advanced
+// ══════════════════════════════════════
+erSmoothInput = input.int(5, "Efficiency Smoothing", minval = 1, maxval = 20, step = 1, group = GRP_ADV,
+    tooltip = "Smoothing for Kaufman Efficiency Ratio.\n" +
+              "• Higher = smoother adaptation\n" +
+              "• Lower = faster adaptation\n" +
+              "• Recommended: 3-8")
+
+minScoreInput = input.int(40, "Min Signal Score", minval = 0, maxval = 80, step = 5, group = GRP_ADV,
+    tooltip = "Minimum composite score (0-100) required for a signal.\n" +
+              "• Higher = fewer but higher quality signals\n" +
+              "• Lower = more signals, including weaker ones\n" +
+              "• Recommended: 30-60")
+
+// ══════════════════════════════════════
+// INPUTS — Shared V3 Strategy Engine
+// ══════════════════════════════════════
+groupBucket = "V3 - Capped bucket model"
+maxEntryPrice         = input.float(300.0, "Max entry price per share", minval = 0.0, group = groupBucket)
+maxCapitalBucket      = input.float(300.0, "Max reinvestable capital bucket", minval = 0.0, group = groupBucket)
+initialCapitalBucket  = input.float(300.0, "Initial reinvestable capital bucket", minval = 0.0, group = groupBucket)
+showBucketTable       = input.bool(true, "Show bucket status table", group = groupBucket)
+
+groupDirection = "V3.3 - Trade direction"
+tradeDirectionMode = input.string(
+    "Long & Short",
+    "Trade direction mode",
+    options = ["Long & Short", "Long only", "Short only"],
+    group = groupDirection
+)
+
+groupFees = "V3.2 - Fee / reversal filter"
+feeMode = input.string(
+    "Parametric: hold until net covers fees",
+    "Opposite signal behavior",
+    options = [
+        "Parametric: hold until net covers fees",
+        "Parametric: exit only, no forced reversal",
+        "Disabled: always reverse/close on opposite signal"
+    ],
+    group = groupFees
+)
+estimatedCommissionPerOrderLong  = input.float(0.0, "Estimated LONG commission per order (account currency cash)", minval = 0.0, group = groupFees)
+estimatedCommissionPerOrderShort = input.float(3.0, "Estimated SHORT commission per order (account currency cash)", minval = 0.0, group = groupFees)
+estimatedSlippagePerSideLong     = input.float(0.0, "Estimated LONG slippage per side (account currency cash)", minval = 0.0, group = groupFees)
+estimatedSlippagePerSideShort    = input.float(0.0, "Estimated SHORT slippage per side (account currency cash)", minval = 0.0, group = groupFees)
+minNetProfitAfterCosts           = input.float(0.0, "Minimum realized net profit required for signal exit/reversal", step = 0.1, group = groupFees)
+
+groupRisk = "V3.2 - Explicit net exits"
+useNetBracketExits = input.bool(false, "Enable explicit net TP/SL exits", group = groupRisk)
+takeProfitNetPercent = input.float(10.0, "Take-profit target, net of estimated costs (% of entry value)", minval = 0.0, step = 0.1, group = groupRisk)
+stopLossNetPercent   = input.float(10.0, "Stop-loss threshold, net of estimated costs (% of entry value)", minval = 0.0, step = 0.1, group = groupRisk)
+
+groupSafety = "V3.2 - Safety stop"
+useSafetyStop = input.bool(true, "Enable last-resort safety stop", group = groupSafety)
+safetyStopAppliesTo = input.string("Short only", "Safety stop applies to", options = ["Both", "Long only", "Short only"], group = groupSafety)
+safetyStopMode = input.string("Net loss only", "Safety stop trigger mode", options = ["Net loss only", "Max bars only", "Net loss OR max bars", "Net loss AND max bars"], group = groupSafety)
+safetyMaxNetLossMode = input.string("Cash amount", "Emergency max net loss mode", options = ["Cash amount", "% of entry value"], group = groupSafety)
+safetyMaxNetLossCash = input.float(50.0, "Emergency max net loss (cash)", minval = 0.0, step = 0.1, group = groupSafety)
+safetyMaxNetLossPercent = input.float(0.0, "Emergency max net loss (% of entry value)", minval = 0.0, step = 0.1, group = groupSafety)
+safetyMaxBarsInTrade = input.int(0, "Emergency max bars in trade (0 = disabled)", minval = 0, group = groupSafety)
+
+// ══════════════════════════════════════
+// PRESET OVERRIDES
+// ══════════════════════════════════════
+effectiveLength = switch presetInput
+    "Conservative" => 30
+    "Aggressive"   => 12
+    "Scalping"     => 8
+    => lengthInput
+
+effectiveAtrLen = switch presetInput
+    "Conservative" => 20
+    "Aggressive"   => 10
+    "Scalping"     => 7
+    => atrLenInput
+
+effectiveMult = switch presetInput
+    "Conservative" => 2.5
+    "Aggressive"   => 1.5
+    "Scalping"     => 1.2
+    => atrMultInput
+
+// ══════════════════════════════════════
+// THEME DETECTION & PALETTE
+// ══════════════════════════════════════
+isDark = switch themeInput
+    "Dark"  => true
+    "Light" => false
+    => color.r(chart.bg_color) < 128
+
+TEXT_COLOR    = isDark ? #E0E0E0               : #1A1A1A
+TEXT_MUTED    = isDark ? color.new(#9E9E9E, 0) : color.new(#757575, 0)
+TEXT_BRIGHT   = isDark ? #FFFFFF                : #000000
+TABLE_BG      = isDark ? color.new(#131722, 5) : color.new(#FFFFFF, 5)
+TABLE_BORDER  = isDark ? color.new(#2A2E39, 0) : color.new(#D0D0D0, 0)
+TABLE_ROW_ALT = isDark ? color.new(#1C2030, 0) : color.new(#F0F4F8, 0)
+HEADER_BG     = color.new(#2962FF, 0)
+HEADER_TEXT   = #FFFFFF
+LABEL_TEXT    = #FFFFFF
+WM_COLOR      = isDark ? color.new(#FFFFFF, 80) : color.new(#000000, 80)
+BULL_BG       = color.new(bullColorInput, 88)
+BEAR_BG       = color.new(bearColorInput, 88)
+
+// ══════════════════════════════════════
+// FUNCTIONS
+// ══════════════════════════════════════
+safeDiv(float num, float den, float fallback = 0.0) =>
+    den != 0 and not na(num) and not na(den) ? num / den : fallback
+
+calcEfficiencyRatio(float src, int len) =>
+    float direction = math.abs(nz(src, 0.0) - nz(src[len], src))
+    float volatility = math.sum(math.abs(nz(src, 0.0) - nz(src[1], src)), len)
+    safeDiv(direction, volatility, 0.0)
+
+calcAdaptiveMA(float src, int len, int smooth) =>
+    float er     = calcEfficiencyRatio(src, len)
+    float erSmth = nz(ta.ema(er, smooth), 0.5)
+    float fastSC = 2.0 / (2.0 + 1.0)
+    float slowSC = 2.0 / (30.0 + 1.0)
+    float sc     = math.pow(erSmth * (fastSC - slowSC) + slowSC, 2)
+    var float adaptMA = na
+    float safeSrc = nz(src, close)
+    adaptMA := na(adaptMA) ? safeSrc : nz(adaptMA[1], safeSrc) + sc * (safeSrc - nz(adaptMA[1], safeSrc))
+    [adaptMA, erSmth]
+
+calcSignalScore(bool isBull, float er, float rsiVal, float volRatio, bool hasVol) =>
+    float trendScore = math.min(er * 60.0, 40.0)
+    float rsiDist    = isBull ? math.max(rsiVal - 50.0, 0.0) : math.max(50.0 - rsiVal, 0.0)
+    float momScore   = math.min(rsiDist * 1.0, 30.0)
+    float volScore   = hasVol ? math.min(math.max(volRatio - 1.0, 0.0) * 30.0, 30.0) : 15.0
+    float total      = trendScore + momScore + volScore
+    math.round(math.min(total, 100.0))
+
+bucketClamp(float value, float bucketMax) =>
+    math.max(math.min(value, bucketMax), 0.0)
+
+qtyFromBucket(float bucket, float price) =>
+    price > 0 ? bucket / price : 0.0
+
+// ══════════════════════════════════════
+// DASHBOARD POSITION
+// ══════════════════════════════════════
+dashPos = switch dashPosStr
+    "Top Left"     => position.top_left
+    "Top Right"    => position.top_right
+    "Bottom Left"  => position.bottom_left
+    "Bottom Right" => position.bottom_right
+    => position.top_right
+
+// ══════════════════════════════════════
+// BUCKET STATE
+// ══════════════════════════════════════
+var float capitalBucket = na
+var float withdrawnProfit = 0.0
+var float processedNetProfit = na
+var int entryBarIndex = na
+
+if barstate.isfirst
+    capitalBucket := bucketClamp(initialCapitalBucket, maxCapitalBucket)
+    processedNetProfit := strategy.netprofit
+
+if not na(processedNetProfit) and strategy.netprofit != processedNetProfit
+    float deltaClosedNet = strategy.netprofit - processedNetProfit
+    float rawBucket = capitalBucket + deltaClosedNet
+    if rawBucket > maxCapitalBucket
+        withdrawnProfit += rawBucket - maxCapitalBucket
+    capitalBucket := bucketClamp(rawBucket, maxCapitalBucket)
+    processedNetProfit := strategy.netprofit
+
+// ══════════════════════════════════════
+// CALCULATIONS (na-protected)
+// ══════════════════════════════════════
+int WARMUP_BARS = math.max(effectiveLength * 2, 50)
+bool isWarmedUp = bar_index >= WARMUP_BARS
+
+[adaptLine, effRatio] = calcAdaptiveMA(sourceInput, effectiveLength, erSmoothInput)
+float safeLine = nz(adaptLine, close)
+
+float atrRaw = nz(ta.atr(effectiveAtrLen), 0.0)
+float erFactor = 1.0 - nz(effRatio, 0.5) * 0.4
+float bandWidth = atrRaw * effectiveMult * erFactor
+
+float upperBand = safeLine + bandWidth
+float lowerBand = safeLine - bandWidth
+
+var int trendDir = 0
+float lineDelta = safeLine - nz(safeLine[1], safeLine)
+float threshold = atrRaw * 0.05
+trendDir := lineDelta > threshold ? 1 : lineDelta < -threshold ? -1 : trendDir
+
+bool isBullTrend = trendDir == 1
+bool isBearTrend = trendDir == -1
+
+float rsiValue = nz(ta.rsi(sourceInput, rsiLenInput), 50.0)
+
+bool hasVolume = nz(volume, 0) > 0
+float volSma = hasVolume ? nz(ta.sma(volume, 20), volume) : 0.0
+float volRatio = hasVolume and volSma > 0 ? volume / volSma : 1.0
+bool volConfirm = not useVolFilterInput or not hasVolume or (volRatio >= volMultInput)
+
+bool rsiBuyOk = not useRsiFilterInput or rsiValue < rsiObInput
+bool rsiSellOk = not useRsiFilterInput or rsiValue > rsiOsInput
+
+// ══════════════════════════════════════
+// SIGNAL LOGIC
+// ══════════════════════════════════════
+bool trendFlipBull = isBullTrend and not isBullTrend[1]
+bool trendFlipBear = isBearTrend and not isBearTrend[1]
+
+bool priceAbove = sourceInput > safeLine
+bool priceBelow = sourceInput < safeLine
+
+bool buyCondition = trendFlipBull and priceAbove and rsiBuyOk and volConfirm
+bool sellCondition = trendFlipBear and priceBelow and rsiSellOk and volConfirm
+
+int buyScore = buyCondition ? calcSignalScore(true, nz(effRatio, 0.0), rsiValue, volRatio, hasVolume) : 0
+int sellScore = sellCondition ? calcSignalScore(false, nz(effRatio, 0.0), rsiValue, volRatio, hasVolume) : 0
+
+bool confirmedBuy = buyCondition and barstate.isconfirmed and isWarmedUp and buyScore >= minScoreInput
+bool confirmedSell = sellCondition and barstate.isconfirmed and isWarmedUp and sellScore >= minScoreInput
+
+bool longSignal = confirmedBuy
+bool shortSignal = confirmedSell
+bool allowLong = tradeDirectionMode != "Short only"
+bool allowShort = tradeDirectionMode != "Long only"
+
+var string lastSignal = "—"
+var color lastSignalClr = color.gray
+var int lastSignalBar = 0
+var int lastScore = 0
+
+if confirmedBuy
+    lastSignal := "BUY"
+    lastSignalClr := bullColorInput
+    lastSignalBar := bar_index
+    lastScore := buyScore
+
+if confirmedSell
+    lastSignal := "SELL"
+    lastSignalClr := bearColorInput
+    lastSignalBar := bar_index
+    lastScore := sellScore
+
+// ══════════════════════════════════════
+// CURRENT POSITION ESTIMATES
+// ══════════════════════════════════════
+bool inLong = strategy.position_size > 0
+bool inShort = strategy.position_size < 0
+bool flat = strategy.position_size == 0
+float absPosSize = math.abs(strategy.position_size)
+float entryPrice = strategy.position_avg_price
+float prevPosSize = nz(strategy.position_size[1], 0)
+bool positionOpenedOrReversed = strategy.position_size != 0 and (prevPosSize == 0 or math.sign(strategy.position_size) != math.sign(prevPosSize))
+
+if positionOpenedOrReversed
+    entryBarIndex := bar_index
+if flat
+    entryBarIndex := na
+
+int barsInTrade = not na(entryBarIndex) ? bar_index - entryBarIndex : 0
+float grossPnlEstimate = inLong ? (close - entryPrice) * absPosSize * syminfo.pointvalue : inShort ? (entryPrice - close) * absPosSize * syminfo.pointvalue : 0.0
+float grossPnlEstimateAccount = strategy.convert_to_account(grossPnlEstimate)
+float estimatedCommissionPerOrderSymbolLong = strategy.convert_to_symbol(estimatedCommissionPerOrderLong)
+float estimatedCommissionPerOrderSymbolShort = strategy.convert_to_symbol(estimatedCommissionPerOrderShort)
+float estimatedSlippagePerSideSymbolLong = strategy.convert_to_symbol(estimatedSlippagePerSideLong)
+float estimatedSlippagePerSideSymbolShort = strategy.convert_to_symbol(estimatedSlippagePerSideShort)
+float currentEstimatedCommissionPerOrderSymbol = inLong ? estimatedCommissionPerOrderSymbolLong : inShort ? estimatedCommissionPerOrderSymbolShort : 0.0
+float currentEstimatedSlippagePerSideSymbol = inLong ? estimatedSlippagePerSideSymbolLong : inShort ? estimatedSlippagePerSideSymbolShort : 0.0
+float currentEstimatedCommissionPerOrderAccount = inLong ? estimatedCommissionPerOrderLong : inShort ? estimatedCommissionPerOrderShort : 0.0
+float currentEstimatedSlippagePerSideAccount = inLong ? estimatedSlippagePerSideLong : inShort ? estimatedSlippagePerSideShort : 0.0
+float estimatedRoundTripCosts = absPosSize > 0 ? currentEstimatedCommissionPerOrderSymbol * 2 + currentEstimatedSlippagePerSideSymbol * 2 : 0.0
+float estimatedRoundTripCostsAccount = absPosSize > 0 ? currentEstimatedCommissionPerOrderAccount * 2 + currentEstimatedSlippagePerSideAccount * 2 : 0.0
+float estimatedNetIfClosedNow = grossPnlEstimate - estimatedRoundTripCosts
+float estimatedNetIfClosedNowAccount = grossPnlEstimateAccount - estimatedRoundTripCostsAccount
+bool reversalNetFilterPassed = estimatedNetIfClosedNowAccount >= minNetProfitAfterCosts
+float estimatedBucketAfterClose = bucketClamp(capitalBucket + estimatedNetIfClosedNowAccount, maxCapitalBucket)
+float quantityPointValue = absPosSize * syminfo.pointvalue
+float entryPositionValue = absPosSize > 0 ? entryPrice * absPosSize * syminfo.pointvalue : 0.0
+float entryPositionValueAccount = absPosSize > 0 ? strategy.convert_to_account(entryPositionValue) : 0.0
+float takeProfitNetThresholdAccount = entryPositionValueAccount * takeProfitNetPercent / 100.0
+float stopLossNetThresholdAccount = entryPositionValueAccount * stopLossNetPercent / 100.0
+float safetyMaxNetLossThresholdAccount = safetyMaxNetLossMode == "Cash amount" ? safetyMaxNetLossCash : entryPositionValueAccount * safetyMaxNetLossPercent / 100.0
+
+bool safetyDirectionAllowed = safetyStopAppliesTo == "Both" or (safetyStopAppliesTo == "Long only" and inLong) or (safetyStopAppliesTo == "Short only" and inShort)
+bool safetyLossTriggered = safetyMaxNetLossThresholdAccount > 0 and estimatedNetIfClosedNowAccount <= -safetyMaxNetLossThresholdAccount
+bool safetyBarsTriggered = safetyMaxBarsInTrade > 0 and barsInTrade >= safetyMaxBarsInTrade
+bool safetyStopTriggered = useSafetyStop and safetyDirectionAllowed and (
+     safetyStopMode == "Net loss only" ? safetyLossTriggered :
+     safetyStopMode == "Max bars only" ? safetyBarsTriggered :
+     safetyStopMode == "Net loss OR max bars" ? (safetyLossTriggered or safetyBarsTriggered) :
+     (safetyLossTriggered and safetyBarsTriggered)
+ )
+
+bool hitNetTakeProfit = useNetBracketExits and absPosSize > 0 and estimatedNetIfClosedNowAccount >= takeProfitNetThresholdAccount
+bool hitNetStopLoss = useNetBracketExits and absPosSize > 0 and estimatedNetIfClosedNowAccount <= -stopLossNetThresholdAccount
+
+float takeProfitNetThresholdSymbol = strategy.convert_to_symbol(takeProfitNetThresholdAccount)
+float stopLossNetThresholdSymbol = strategy.convert_to_symbol(stopLossNetThresholdAccount)
+
+float longTakeProfitPrice = inLong and quantityPointValue > 0 ? entryPrice + (takeProfitNetThresholdSymbol + estimatedRoundTripCosts) / quantityPointValue : na
+float longStopLossPrice = inLong and quantityPointValue > 0 ? entryPrice + (estimatedRoundTripCosts - stopLossNetThresholdSymbol) / quantityPointValue : na
+float shortTakeProfitPrice = inShort and quantityPointValue > 0 ? entryPrice - (takeProfitNetThresholdSymbol + estimatedRoundTripCosts) / quantityPointValue : na
+float shortStopLossPrice = inShort and quantityPointValue > 0 ? entryPrice + (stopLossNetThresholdSymbol - estimatedRoundTripCosts) / quantityPointValue : na
+
+bool entryAllowedByCap = close <= maxEntryPrice and capitalBucket > 0
+float flatEntryQty = qtyFromBucket(capitalBucket, close)
+float reverseEntryQty = qtyFromBucket(estimatedBucketAfterClose, close)
+
+bool holdUntilProfitable = feeMode == "Parametric: hold until net covers fees"
+bool exitOnlyNoReverse = feeMode == "Parametric: exit only, no forced reversal"
+bool disableFeeFilter = feeMode == "Disabled: always reverse/close on opposite signal"
+
+// ══════════════════════════════════════
+// STRATEGY ORDERS
+// ══════════════════════════════════════
+if safetyStopTriggered and inLong
+    strategy.close("Long", comment = "Safety Stop Long")
+else if safetyStopTriggered and inShort
+    strategy.close("Short", comment = "Safety Stop Short")
+else if inLong and hitNetTakeProfit
+    strategy.close("Long", comment = "Net TP Long")
+else if inLong and hitNetStopLoss
+    strategy.close("Long", comment = "Net SL Long")
+else if inShort and hitNetTakeProfit
+    strategy.close("Short", comment = "Net TP Short")
+else if inShort and hitNetStopLoss
+    strategy.close("Short", comment = "Net SL Short")
+else
+    if flat and entryAllowedByCap and flatEntryQty > 0
+        if longSignal and allowLong
+            strategy.entry("Long", strategy.long, qty = flatEntryQty, comment = "BUY")
+        else if shortSignal and allowShort
+            strategy.entry("Short", strategy.short, qty = flatEntryQty, comment = "SELL")
+
+    if inLong and shortSignal
+        if disableFeeFilter
+            if close <= maxEntryPrice and reverseEntryQty > 0
+                if allowShort
+                    strategy.entry("Short", strategy.short, qty = reverseEntryQty, comment = "SELL REV")
+                else
+                    strategy.close("Long", comment = "Exit Long")
+            else
+                strategy.close("Long", comment = "Exit Long")
+        else if exitOnlyNoReverse or not allowShort
+            strategy.close("Long", comment = "Exit Long")
+        else if holdUntilProfitable and reversalNetFilterPassed
+            if close <= maxEntryPrice and reverseEntryQty > 0
+                if allowShort
+                    strategy.entry("Short", strategy.short, qty = reverseEntryQty, comment = "SELL REV")
+                else
+                    strategy.close("Long", comment = "Exit Long")
+            else
+                strategy.close("Long", comment = "Exit Long")
+
+    if inShort and longSignal
+        if disableFeeFilter
+            if close <= maxEntryPrice and reverseEntryQty > 0
+                if allowLong
+                    strategy.entry("Long", strategy.long, qty = reverseEntryQty, comment = "BUY REV")
+                else
+                    strategy.close("Short", comment = "Exit Short")
+            else
+                strategy.close("Short", comment = "Exit Short")
+        else if exitOnlyNoReverse or not allowLong
+            strategy.close("Short", comment = "Exit Short")
+        else if holdUntilProfitable and reversalNetFilterPassed
+            if close <= maxEntryPrice and reverseEntryQty > 0
+                if allowLong
+                    strategy.entry("Long", strategy.long, qty = reverseEntryQty, comment = "BUY REV")
+                else
+                    strategy.close("Short", comment = "Exit Short")
+            else
+                strategy.close("Short", comment = "Exit Short")
+
+// ══════════════════════════════════════
+// PLOTS & VISUALS
+// ══════════════════════════════════════
+trendColor = isBullTrend ? bullColorInput : isBearTrend ? bearColorInput : neutralColorInput
+plot(showTrendLineInput ? safeLine : na, "Adaptive Trend", color = trendColor, linewidth = 3)
+
+pUpper = plot(showBandsInput ? upperBand : na, "Upper Band", color = color.new(bullColorInput, 70), linewidth = 1)
+pLower = plot(showBandsInput ? lowerBand : na, "Lower Band", color = color.new(bearColorInput, 70), linewidth = 1)
+pTrend = plot(showBandsInput and showFillInput ? safeLine : na, "Trend (fill anchor)", color = na, display = display.none)
+
+fill(pUpper, pTrend, color = showFillInput ? color.new(bullColorInput, 90) : na, title = "Upper Fill")
+fill(pLower, pTrend, color = showFillInput ? color.new(bearColorInput, 90) : na, title = "Lower Fill")
+
+bgcolor(showBgInput and isBullTrend ? BULL_BG : showBgInput and isBearTrend ? BEAR_BG : na, title = "Trend Background")
+
+trendBarColor = isBullTrend and priceAbove ? (sourceInput > sourceInput[1] ? bullColorInput : color.new(bullColorInput, 40)) :
+     isBearTrend and priceBelow ? (sourceInput < sourceInput[1] ? bearColorInput : color.new(bearColorInput, 40)) :
+     na
+barcolor(showBarColorInput ? trendBarColor : na)
+
+plotshape(showSignalsInput and confirmedBuy ? low : na, "Buy Signal",
+    style = shape.labelup,
+    location = location.belowbar,
+    color = bullColorInput,
+    textcolor = LABEL_TEXT,
+    text = "▲",
+    size = size.small)
+
+plotshape(showSignalsInput and confirmedSell ? high : na, "Sell Signal",
+    style = shape.labeldown,
+    location = location.abovebar,
+    color = bearColorInput,
+    textcolor = LABEL_TEXT,
+    text = "▼",
+    size = size.small)
+
+// ══════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════
+if showDashInput and barstate.islast
+    var dashTable = table.new(dashPos, 2, 8, TABLE_BG, TABLE_BORDER, 1, TABLE_BORDER, 1)
+
+    table.cell(dashTable, 0, 0, "AVT", text_color = HEADER_TEXT,
+        bgcolor = HEADER_BG, text_size = size.small, text_halign = text.align_center)
+    table.merge_cells(dashTable, 0, 0, 1, 0)
+
+    string trendStr = isBullTrend ? "Bullish" : isBearTrend ? "Bearish" : "Neutral"
+    color trendClr = isBullTrend ? bullColorInput : isBearTrend ? bearColorInput : neutralColorInput
+    table.cell(dashTable, 0, 1, "Trend", text_color = TEXT_MUTED, text_size = size.small, bgcolor = TABLE_BG)
+    table.cell(dashTable, 1, 1, trendStr, text_color = trendClr, text_size = size.small, bgcolor = TABLE_BG)
+
+    table.cell(dashTable, 0, 2, "Signal", text_color = TEXT_MUTED, text_size = size.small, bgcolor = TABLE_ROW_ALT)
+    table.cell(dashTable, 1, 2, lastSignal, text_color = lastSignalClr, text_size = size.small, bgcolor = TABLE_ROW_ALT)
+
+    string scoreStr = lastScore > 0 ? str.tostring(lastScore) + " / 100" : "—"
+    color scoreClr = lastScore >= 70 ? bullColorInput : lastScore >= 40 ? neutralColorInput : TEXT_MUTED
+    table.cell(dashTable, 0, 3, "Score", text_color = TEXT_MUTED, text_size = size.small, bgcolor = TABLE_BG)
+    table.cell(dashTable, 1, 3, scoreStr, text_color = scoreClr, text_size = size.small, bgcolor = TABLE_BG)
+
+    string erStr = na(effRatio) ? "—" : str.tostring(effRatio * 100, "#.0") + "%"
+    table.cell(dashTable, 0, 4, "Efficiency", text_color = TEXT_MUTED, text_size = size.small, bgcolor = TABLE_ROW_ALT)
+    table.cell(dashTable, 1, 4, erStr, text_color = TEXT_COLOR, text_size = size.small, bgcolor = TABLE_ROW_ALT)
+
+    string rsiStr = na(rsiValue) ? "—" : str.tostring(rsiValue, "#.0")
+    color rsiClr = rsiValue > rsiObInput ? bearColorInput : rsiValue < rsiOsInput ? bullColorInput : TEXT_COLOR
+    table.cell(dashTable, 0, 5, "RSI", text_color = TEXT_MUTED, text_size = size.small, bgcolor = TABLE_BG)
+    table.cell(dashTable, 1, 5, rsiStr, text_color = rsiClr, text_size = size.small, bgcolor = TABLE_BG)
+
+    table.cell(dashTable, 0, 6, "TF", text_color = TEXT_MUTED, text_size = size.small, bgcolor = TABLE_ROW_ALT)
+    table.cell(dashTable, 1, 6, timeframe.period, text_color = TEXT_COLOR, text_size = size.small, bgcolor = TABLE_ROW_ALT)
+
+    table.cell(dashTable, 0, 7, "Version", text_color = TEXT_MUTED, text_size = size.small, bgcolor = TABLE_BG)
+    table.cell(dashTable, 1, 7, INDICATOR_VERSION, text_color = TEXT_MUTED, text_size = size.small, bgcolor = TABLE_BG)
+
+// ══════════════════════════════════════
+// WATERMARK — WillyAlgoTrader
+// ══════════════════════════════════════
+if barstate.islast and showWatermarkInput
+    var wmTable = table.new(
+        position = position.bottom_center,
+        columns = 1,
+        rows = 1,
+        bgcolor = color.new(color.black, 100),
+        border_color = color.new(color.black, 100),
+        border_width = 0,
+        frame_color = color.new(color.black, 100),
+        frame_width = 0)
+    table.cell(wmTable, 0, 0, "WillyAlgoTrader",
+        text_color = WM_COLOR,
+        text_size = size.normal,
+        text_halign = text.align_center,
+        bgcolor = color.new(color.black, 100))
+
+// ══════════════════════════════════════
+// DATA WINDOW METRICS
+// ══════════════════════════════════════
+plot(capitalBucket, title = "V3 Reinvestable Bucket", display = display.data_window)
+plot(withdrawnProfit, title = "V3 Withdrawn Profit", display = display.data_window)
+plot(grossPnlEstimateAccount, title = "V3.2 Gross PnL Estimate (Account Ccy)", display = display.data_window)
+plot(estimatedCommissionPerOrderSymbolLong, title = "V3.3 Estimated LONG Commission / Order (Symbol Ccy)", display = display.data_window)
+plot(estimatedCommissionPerOrderSymbolShort, title = "V3.3 Estimated SHORT Commission / Order (Symbol Ccy)", display = display.data_window)
+plot(estimatedSlippagePerSideSymbolLong, title = "V3.3 Estimated LONG Slippage / Side (Symbol Ccy)", display = display.data_window)
+plot(estimatedSlippagePerSideSymbolShort, title = "V3.3 Estimated SHORT Slippage / Side (Symbol Ccy)", display = display.data_window)
+plot(estimatedRoundTripCostsAccount, title = "V3.2 Estimated Round-trip Costs (Account Ccy)", display = display.data_window)
+plot(estimatedNetIfClosedNowAccount, title = "V3.2 Estimated Net If Closed Now (Account Ccy)", display = display.data_window)
+plot(entryPositionValueAccount, title = "V3.3 Entry Position Value (Account Ccy)", display = display.data_window)
+plot(safetyMaxNetLossThresholdAccount, title = "V3.3 Safety Max Net Loss Threshold (Account Ccy)", display = display.data_window)
+plot(barsInTrade, title = "V3.2 Bars In Trade", display = display.data_window)
+plot(longTakeProfitPrice, title = "V3.2 Long TP Price", display = display.data_window)
+plot(longStopLossPrice, title = "V3.2 Long SL Price", display = display.data_window)
+plot(shortTakeProfitPrice, title = "V3.2 Short TP Price", display = display.data_window)
+plot(shortStopLossPrice, title = "V3.2 Short SL Price", display = display.data_window)
+plot(effRatio, title = "AVT Efficiency Ratio", display = display.data_window)
+plot(float(lastScore), title = "AVT Last Signal Score", display = display.data_window)
+
+plot(useNetBracketExits and inLong ? longTakeProfitPrice : na, title = "Net TP Long", color = color.new(color.green, 0), style = plot.style_linebr)
+plot(useNetBracketExits and inLong ? longStopLossPrice : na, title = "Net SL Long", color = color.new(color.red, 0), style = plot.style_linebr)
+plot(useNetBracketExits and inShort ? shortTakeProfitPrice : na, title = "Net TP Short", color = color.new(color.green, 0), style = plot.style_linebr)
+plot(useNetBracketExits and inShort ? shortStopLossPrice : na, title = "Net SL Short", color = color.new(color.red, 0), style = plot.style_linebr)
+
+var table statusTable = table.new(position.top_right, 2, 10, border_width = 1)
+if showBucketTable and barstate.islast
+    table.cell(statusTable, 0, 0, "Bucket", bgcolor = color.new(color.blue, 85))
+    table.cell(statusTable, 1, 0, str.tostring(capitalBucket, format.mintick))
+    table.cell(statusTable, 0, 1, "Withdrawn", bgcolor = color.new(color.green, 85))
+    table.cell(statusTable, 1, 1, str.tostring(withdrawnProfit, format.mintick))
+    table.cell(statusTable, 0, 2, "Max entry px", bgcolor = color.new(color.orange, 85))
+    table.cell(statusTable, 1, 2, str.tostring(maxEntryPrice, format.mintick))
+    table.cell(statusTable, 0, 3, "Est. net close", bgcolor = color.new(color.purple, 85))
+    table.cell(statusTable, 1, 3, str.tostring(estimatedNetIfClosedNowAccount, format.mintick))
+    table.cell(statusTable, 0, 4, "Fee filter", bgcolor = color.new(color.gray, 85))
+    table.cell(statusTable, 1, 4, reversalNetFilterPassed ? "PASS" : "BLOCK")
+    table.cell(statusTable, 0, 5, "Gross / Costs", bgcolor = color.new(color.teal, 85))
+    table.cell(statusTable, 1, 5, str.tostring(grossPnlEstimateAccount, format.mintick) + " / " + str.tostring(estimatedRoundTripCostsAccount, format.mintick))
+    table.cell(statusTable, 0, 6, "Net TP/SL", bgcolor = color.new(color.maroon, 80))
+    table.cell(statusTable, 1, 6, useNetBracketExits ? str.tostring(takeProfitNetPercent, format.mintick) + "% / -" + str.tostring(stopLossNetPercent, format.mintick) + "%" : "Disabled")
+    table.cell(statusTable, 0, 7, "Safety", bgcolor = color.new(color.yellow, 80))
+    table.cell(statusTable, 1, 7, useSafetyStop ? (safetyStopTriggered ? "TRIGGERED" : "ARMED") : "Disabled")
+    table.cell(statusTable, 0, 8, "Bars in trade", bgcolor = color.new(color.silver, 70))
+    table.cell(statusTable, 1, 8, str.tostring(barsInTrade))
+    table.cell(statusTable, 0, 9, "Mode", bgcolor = color.new(color.black, 0), text_color = color.white)
+    table.cell(statusTable, 1, 9, feeMode, text_color = color.white)
+
+// ══════════════════════════════════════
+// ALERTS
+// ══════════════════════════════════════
+string buyMsg = webhookInput ? '{"action":"buy","ticker":"' + syminfo.tickerid + '","price":' + str.tostring(close) + ',"tf":"' + timeframe.period + '","score":' + str.tostring(buyScore) + '}' : "🟢 BUY | " + syminfo.tickerid + " | TF: " + timeframe.period + " | Price: " + str.tostring(close, format.mintick) + " | Score: " + str.tostring(buyScore) + " | Time: " + str.format_time(time, "yyyy-MM-dd HH:mm", syminfo.timezone)
+
+string sellMsg = webhookInput ? '{"action":"sell","ticker":"' + syminfo.tickerid + '","price":' + str.tostring(close) + ',"tf":"' + timeframe.period + '","score":' + str.tostring(sellScore) + '}' : "🔴 SELL | " + syminfo.tickerid + " | TF: " + timeframe.period + " | Price: " + str.tostring(close, format.mintick) + " | Score: " + str.tostring(sellScore) + " | Time: " + str.format_time(time, "yyyy-MM-dd HH:mm", syminfo.timezone)
+
+if confirmedBuy
+    alert(buyMsg, alert.freq_once_per_bar_close)
+
+if confirmedSell
+    alert(sellMsg, alert.freq_once_per_bar_close)

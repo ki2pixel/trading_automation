@@ -1,0 +1,77 @@
+# IDE / Editor configurations
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Python cache / builds
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+lockcov/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.nox/
+.tox/
+
+# Local configuration / secrets
+.env
+.env.local
+.env.*.local
+*.log
+*.sqlite
+*.db
+
+# Data & processed exports (large financial datasets)
+financial_datasets/
+SheetsFinance_Export/
+storage/
+strategy_reports_optipie/
+ressources/vectorbt-1.0.0/
+ressources/KLineChart-*/
+
+# Large ZIP archives or dumps
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

@@ -1,0 +1,95 @@
+{
+  "strategy": "noise_boundary_intraday",
+  "symbol": "LOGI",
+  "timeframe_minutes": 5,
+  "start_date": null,
+  "end_date": null,
+  "score_metric": "sharpe_ratio",
+  "score_direction": "max",
+  "n_trials": 20,
+  "optimization_mode": "bayesian",
+  "parameters": [
+    {
+      "name": "lookback_days",
+      "kind": "numeric",
+      "values": [
+        5,
+        6,
+        30
+      ]
+    },
+    {
+      "name": "volatility_multiplier_enter",
+      "kind": "numeric",
+      "values": [
+        0.5,
+        0.6,
+        3.0
+      ]
+    },
+    {
+      "name": "volatility_multiplier_exit",
+      "kind": "numeric",
+      "values": [
+        0.1,
+        0.2,
+        2.0
+      ]
+    },
+    {
+      "name": "target_daily_volatility",
+      "kind": "numeric",
+      "values": [
+        0.005,
+        0.006,
+        0.02
+      ]
+    },
+    {
+      "name": "exit_mode",
+      "kind": "choice",
+      "values": [
+        "time_only",
+        "vwap",
+        "ladder",
+        "combined"
+      ]
+    },
+    {
+      "name": "stoploss_ladder_step0",
+      "kind": "numeric",
+      "values": [
+        -0.02,
+        -0.019,
+        -0.002
+      ]
+    },
+    {
+      "name": "stoploss_ladder_step1",
+      "kind": "numeric",
+      "values": [
+        -0.03,
+        -0.029,
+        -0.005
+      ]
+    },
+    {
+      "name": "stoploss_ladder_ratio0",
+      "kind": "numeric",
+      "values": [
+        0.1,
+        0.2,
+        0.9
+      ]
+    },
+    {
+      "name": "takeprofit_ladder_step0",
+      "kind": "numeric",
+      "values": [
+        0.005,
+        0.006,
+        0.03
+      ]
+    }
+  ]
+}

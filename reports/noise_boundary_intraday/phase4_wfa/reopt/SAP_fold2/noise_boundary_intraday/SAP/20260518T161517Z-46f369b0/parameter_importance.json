@@ -1,0 +1,11 @@
+{
+  "lookback_days": 0.7377981649555746,
+  "stoploss_ladder_step0": 0.055511513312001,
+  "takeprofit_ladder_step0": 0.04479514677275433,
+  "stoploss_ladder_ratio0": 0.04312816539824517,
+  "stoploss_ladder_step1_offset": 0.03592229762961008,
+  "target_daily_volatility": 0.031005775823958772,
+  "volatility_multiplier_exit_diff": 0.028357170149785654,
+  "volatility_multiplier_enter": 0.013955516159321403,
+  "exit_mode": 0.00952624979874914
+}

@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Stop Backtest Engine
+Name[fr]=Arrêter Backtest Engine
+Comment=Arrête tous les processus Backtest Engine (serveur et worker)
+Comment[fr]=Arrête le système complet de backtest et optimisation de trading
+Exec=/home/kidpixel/trading_automation_v2/start_backtest_engine.sh stop
+Icon=process-stop
+Terminal=true
+Categories=Development;Finance;Science;
+Keywords=trading;backtest;stop;shutdown;finance;
+Keywords[fr]=trading;backtest;arrêter;fermer;finance;
+StartupNotify=true
+Path=/home/kidpixel/trading_automation_v2

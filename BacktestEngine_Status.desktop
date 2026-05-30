@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Backtest Engine Status
+Name[fr]=État Backtest Engine
+Comment=Vérifie l'état des processus Backtest Engine (serveur et worker)
+Comment[fr]=Affiche l'état du système complet de backtest et optimisation de trading
+Exec=/home/kidpixel/trading_automation_v2/start_backtest_engine.sh status
+Icon=system-monitor
+Terminal=true
+Categories=Development;Finance;System;
+Keywords=trading;backtest;status;monitor;finance;
+Keywords[fr]=trading;backtest;état;surveiller;finance;
+StartupNotify=true
+Path=/home/kidpixel/trading_automation_v2

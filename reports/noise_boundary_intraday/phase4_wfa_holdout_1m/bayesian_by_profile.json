@@ -1,0 +1,94 @@
+{
+  "low_vol": {
+    "profile_name": "low_vol",
+    "description": "Faible vol (< 2.0%)",
+    "best_value": 0.21782856888581784,
+    "best_params": {
+      "lookback_days": 17,
+      "volatility_multiplier_enter": 0.6,
+      "volatility_multiplier_exit": 0.16,
+      "target_daily_volatility": 0.014,
+      "stoploss_ladder_step0": -0.019,
+      "stoploss_ladder_step1": -0.027999999999999997,
+      "stoploss_ladder_ratio0": 0.5,
+      "takeprofit_ladder_step0": 0.028000000000000004,
+      "exit_mode": "combined"
+    },
+    "ticker_metrics": {
+      "NVS": {
+        "sharpe": -0.13651967242245777,
+        "cagr": -99.00582625617042,
+        "mdd": -99.9974199264007,
+        "trades": 425,
+        "win_rate": 46.11764705882353
+      },
+      "SAP": {
+        "sharpe": 0.07957996665043306,
+        "cagr": -99.65552601838607,
+        "mdd": -99.99985430336842,
+        "trades": 439,
+        "win_rate": 46.924829157175395
+      },
+      "LOGI": {
+        "sharpe": 0.44551489073584744,
+        "cagr": -24.906916285419456,
+        "mdd": -98.13805510051436,
+        "trades": 202,
+        "win_rate": 50.99009900990099
+      },
+      "AMS.MC": {
+        "sharpe": 0.12380329241799327,
+        "cagr": null,
+        "mdd": -100.38866319103619,
+        "trades": 318,
+        "win_rate": 23.58490566037736
+      },
+      "SHL.DE": {
+        "sharpe": 0.2697650148760164,
+        "cagr": -94.7611135123488,
+        "mdd": -99.94946738072026,
+        "trades": 447,
+        "win_rate": 51.67785234899329
+      },
+      "NVO": {
+        "sharpe": 0.5248279210570747,
+        "cagr": -28.710695816535292,
+        "mdd": -99.61709378801203,
+        "trades": 410,
+        "win_rate": 51.21951219512195
+      }
+    }
+  },
+  "high_vol": {
+    "profile_name": "high_vol",
+    "description": "\u00c9lev\u00e9e vol (\u2265 2.0%)",
+    "best_value": 3.4029513890142966,
+    "best_params": {
+      "lookback_days": 28,
+      "volatility_multiplier_enter": 0.2,
+      "volatility_multiplier_exit": 0.08,
+      "target_daily_volatility": 0.016,
+      "stoploss_ladder_step0": -0.013000000000000001,
+      "stoploss_ladder_step1": -0.023,
+      "stoploss_ladder_ratio0": 0.9,
+      "takeprofit_ladder_step0": 0.01,
+      "exit_mode": "combined"
+    },
+    "ticker_metrics": {
+      "GMAB": {
+        "sharpe": 3.438153825921294,
+        "cagr": 8424.46772419803,
+        "mdd": -82.48775540399255,
+        "trades": 5308,
+        "win_rate": 15.391861341371516
+      },
+      "ZEAL.CO": {
+        "sharpe": 3.3677489521072994,
+        "cagr": 2750.7637135921896,
+        "mdd": -76.59265171959912,
+        "trades": 3643,
+        "win_rate": 11.638759264342575
+      }
+    }
+  }
+}

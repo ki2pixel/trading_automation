@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Optimizer report — noise_boundary_intraday — LOGI</title>
+  <style>
+    :root { --border:#d9dee8; --muted:#667085; --bg:#f7f9fc; --accent:#2563eb; --best:#ecfdf3; --recommended:#eff6ff; }
+    body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#111827; background:white; }
+    header { padding:2rem 2.5rem 1rem; border-bottom:1px solid var(--border); background:linear-gradient(180deg,#fff,var(--bg)); }
+    h1 { margin:0 0 .4rem; font-size:1.7rem; }
+    .subtitle { margin:0; color:var(--muted); }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; margin:1.25rem 0; }
+    .card { border:1px solid var(--border); border-radius:12px; padding:.75rem .9rem; background:white; }
+    .card span { display:block; color:var(--muted); font-size:.8rem; margin-bottom:.25rem; }
+    .card strong { font-size:.95rem; }
+    .highlights { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:.75rem; margin-top:.75rem; }
+    .highlights div { border:1px solid var(--border); border-radius:12px; padding:.85rem 1rem; background:white; }
+    .highlights h2 { margin:0 0 .4rem; font-size:1rem; }
+    .highlights p { margin:0; color:#1f2937; }
+    main { padding:1rem 2.5rem 2.5rem; }
+    .toolbar { position:sticky; top:0; z-index:2; display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; padding:.75rem 0; background:white; }
+    input[type="search"] { min-width:280px; padding:.55rem .7rem; border:1px solid var(--border); border-radius:8px; font:inherit; }
+    select { padding:.55rem .7rem; border:1px solid var(--border); border-radius:8px; font:inherit; background:white; }
+    button { padding:.55rem .75rem; border:1px solid var(--border); border-radius:8px; background:white; color:#111827; font:inherit; font-weight:600; cursor:pointer; }
+    button:disabled { color:#9ca3af; cursor:not-allowed; }
+    a.button { color:white; background:var(--accent); text-decoration:none; padding:.55rem .75rem; border-radius:8px; font-weight:600; }
+    .count { color:var(--muted); margin-left:auto; }
+    .pagination { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; color:var(--muted); }
+    .pagination strong { color:#111827; }
+    .table-wrap { overflow:auto; border:1px solid var(--border); border-radius:12px; }
+    table { border-collapse:separate; border-spacing:0; width:100%; font-size:.88rem; }
+    th,td { white-space:nowrap; border-bottom:1px solid var(--border); border-right:1px solid var(--border); padding:.48rem .6rem; text-align:right; }
+    th:first-child,td:first-child { text-align:left; position:sticky; left:0; background:inherit; z-index:1; }
+    th { background:#eef2f7; cursor:pointer; user-select:none; }
+    th:first-child { z-index:2; background:#eef2f7; }
+    tbody tr:nth-child(even) { background:#fbfcff; }
+    tbody tr:hover { background:#fff7ed; }
+    tr.best-row { background:var(--best) !important; }
+    tr.recommended-row { background:var(--recommended) !important; }
+    tr.best-row.recommended-row { background:linear-gradient(90deg,var(--best),var(--recommended)) !important; }
+    .legend { color:var(--muted); font-size:.86rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Optimizer report — noise_boundary_intraday — LOGI</h1>
+    <p class="subtitle">Rapport optimizer local inspiré de la structure OptiPie/TradingView Optimizer. Le Parquet brut complet reste disponible via <code>results.parquet</code>.</p>
+    
+    <div class="cards"><div class="card"><span>Stratégie</span><strong>noise_boundary_intraday</strong></div>
+<div class="card"><span>Symbole</span><strong>LOGI</strong></div>
+<div class="card"><span>Timeframe</span><strong>5 min</strong></div>
+<div class="card"><span>Fenêtre</span><strong>début → fin</strong></div>
+<div class="card"><span>Score</span><strong>sharpe_ratio (max)</strong></div>
+<div class="card"><span>Itérations</span><strong>20</strong></div></div>
+    <section class="highlights">
+      <div><h2>Best observé</h2><p>volatility_multiplier_enter: <strong>1.7</strong>, stoploss_ladder_step0: <strong>-0.015</strong>, volatility_multiplier_exit: <strong>1.53</strong>, stoploss_ladder_step1: <strong>-0.022</strong>, lookback_days: <strong>11</strong>, target_daily_volatility: <strong>0.02</strong>, exit_mode: <strong>vwap</strong>, stoploss_ladder_ratio0: <strong>0.7</strong>, takeprofit_ladder_step0: <strong>0.005</strong></p></div>
+      <div><h2>Recommandation robuste</h2><p>volatility_multiplier_enter: <strong>1.5</strong>, stoploss_ladder_step0: <strong>-0.011</strong>, volatility_multiplier_exit: <strong>1.35</strong>, stoploss_ladder_step1: <strong>-0.017</strong>, lookback_days: <strong>5</strong>, target_daily_volatility: <strong>0.02</strong>, exit_mode: <strong>combined</strong>, stoploss_ladder_ratio0: <strong>0.8</strong>, takeprofit_ladder_step0: <strong>0.005</strong></p></div>
+    </section>
+    
+  </header>
+  <main>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Rechercher dans le rapport…" />
+      <div class="pagination" aria-label="Pagination du rapport">
+        <span id="range-status">Showing 0 to 0 of 0 rows</span>
+        <label>
+          <select id="page-size" aria-label="Rows per page">
+            <option value="10" selected>10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+          rows per page
+        </label>
+        <button id="prev-page" type="button">Précédent</button>
+        <strong id="page-status">Page 1 / 1</strong>
+        <button id="next-page" type="button">Suivant</button>
+      </div>
+      <a class="button" href="optimizer_report.parquet">Télécharger le Parquet rapport</a>
+      <a class="button" href="results.parquet">Parquet brut</a>
+      <a class="button" href="recommendations.json">Recommandations JSON</a>
+      <span class="count"><span id="visible-count">20</span> / 20 lignes</span>
+    </div>
+    <p class="legend">Clique sur un en-tête pour trier. Les lignes vertes indiquent le meilleur score observé; les lignes bleues indiquent la recommandation robuste quand disponible.</p>
+    <div class="table-wrap">
+      <table id="report-table">
+        <thead><tr><th tabindex="0">PARAMETERS</th><th tabindex="0">STATUS</th><th tabindex="0">SCORE</th><th tabindex="0">NETPROFITAMOUNT</th><th tabindex="0">NETPROFITPERCENT</th><th tabindex="0">MAXDRAWDOWNAMOUNT</th><th tabindex="0">MAXDRAWDOWNPERCENT</th><th tabindex="0">CLOSEDTRADES</th><th tabindex="0">PERCENTPROFITABLE</th><th tabindex="0">PROFITFACTOR</th><th tabindex="0">AVERAGETRADEAMOUNT</th><th tabindex="0">AVERAGETRADEPERCENT</th><th tabindex="0">AVGERAGEBARSINTRADES</th><th tabindex="0">SHARPERATIO</th><th tabindex="0">SORTINORATIO</th><th tabindex="0">EXPOSUREPERCENT</th><th tabindex="0">RETURNVSBUYHOLDPCTPOINTS</th><th tabindex="0">LOOKBACK DAYS</th><th tabindex="0">VOLATILITY MULTIPLIER ENTER</th><th tabindex="0">VOLATILITY MULTIPLIER EXIT</th><th tabindex="0">TARGET DAILY VOLATILITY</th><th tabindex="0">EXIT MODE</th><th tabindex="0">STOPLOSS LADDER STEP0</th><th tabindex="0">STOPLOSS LADDER STEP1</th><th tabindex="0">STOPLOSS LADDER RATIO0</th><th tabindex="0">TAKEPROFIT LADDER STEP0</th><th tabindex="0">ITERATION</th><th tabindex="0">SKIPREASON</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+  <script>
+    const columns = ["PARAMETERS", "STATUS", "SCORE", "NETPROFITAMOUNT", "NETPROFITPERCENT", "MAXDRAWDOWNAMOUNT", "MAXDRAWDOWNPERCENT", "CLOSEDTRADES", "PERCENTPROFITABLE", "PROFITFACTOR", "AVERAGETRADEAMOUNT", "AVERAGETRADEPERCENT", "AVGERAGEBARSINTRADES", "SHARPERATIO", "SORTINORATIO", "EXPOSUREPERCENT", "RETURNVSBUYHOLDPCTPOINTS", "LOOKBACK DAYS", "VOLATILITY MULTIPLIER ENTER", "VOLATILITY MULTIPLIER EXIT", "TARGET DAILY VOLATILITY", "EXIT MODE", "STOPLOSS LADDER STEP0", "STOPLOSS LADDER STEP1", "STOPLOSS LADDER RATIO0", "TAKEPROFIT LADDER STEP0", "ITERATION", "SKIPREASON"];
+    const allRows = [{"PARAMETERS": "20, 2, 1.2, 0.01, time_only, -0.008, -0.028, 0.5, 0.012", "STATUS": "COMPLETED", "SCORE": "-0.3337", "NETPROFITAMOUNT": "-139.54", "NETPROFITPERCENT": "-13.95%", "MAXDRAWDOWNAMOUNT": "215.28", "MAXDRAWDOWNPERCENT": "20.64%", "CLOSEDTRADES": "23", "PERCENTPROFITABLE": "34.78%", "PROFITFACTOR": "0.519", "AVERAGETRADEAMOUNT": "-6.07", "AVERAGETRADEPERCENT": "-0.61%", "AVGERAGEBARSINTRADES": "43.61", "SHARPERATIO": "-0.334", "SORTINORATIO": "-0.054", "EXPOSUREPERCENT": "1.76%", "RETURNVSBUYHOLDPCTPOINTS": "-181.49", "ITERATION": "1", "SKIPREASON": "", "LOOKBACK DAYS": "20", "VOLATILITY MULTIPLIER ENTER": "2", "VOLATILITY MULTIPLIER EXIT": "1.2", "TARGET DAILY VOLATILITY": "0.01", "EXIT MODE": "time_only", "STOPLOSS LADDER STEP0": "-0.008", "STOPLOSS LADDER STEP1": "-0.028", "STOPLOSS LADDER RATIO0": "0.5", "TAKEPROFIT LADDER STEP0": "0.012"}, {"PARAMETERS": "6, 2.4, 1.92, 0.018, combined, -0.009, -0.013, 0.8, 0.01", "STATUS": "COMPLETED", "SCORE": "0.3424", "NETPROFITAMOUNT": "+170.25", "NETPROFITPERCENT": "+17.03%", "MAXDRAWDOWNAMOUNT": "329.04", "MAXDRAWDOWNPERCENT": "26.32%", "CLOSEDTRADES": "12", "PERCENTPROFITABLE": "41.67%", "PROFITFACTOR": "1.416", "AVERAGETRADEAMOUNT": "+14.19", "AVERAGETRADEPERCENT": "+1.42%", "AVGERAGEBARSINTRADES": "28.42", "SHARPERATIO": "0.342", "SORTINORATIO": "0.038", "EXPOSUREPERCENT": "46.46%", "RETURNVSBUYHOLDPCTPOINTS": "-150.51", "ITERATION": "2", "SKIPREASON": "", "LOOKBACK DAYS": "6", "VOLATILITY MULTIPLIER ENTER": "2.4", "VOLATILITY MULTIPLIER EXIT": "1.92", "TARGET DAILY VOLATILITY": "0.018", "EXIT MODE": "combined", "STOPLOSS LADDER STEP0": "-0.009", "STOPLOSS LADDER STEP1": "-0.013", "STOPLOSS LADDER RATIO0": "0.8", "TAKEPROFIT LADDER STEP0": "0.01"}, {"PARAMETERS": "16, 0.9, 0.63, 0.009, time_only, -0.017, -0.028, 0.5, 0.025", "STATUS": "COMPLETED", "SCORE": "-0.4371", "NETPROFITAMOUNT": "-446.40", "NETPROFITPERCENT": "-44.64%", "MAXDRAWDOWNAMOUNT": "635.36", "MAXDRAWDOWNPERCENT": "53.93%", "CLOSEDTRADES": "183", "PERCENTPROFITABLE": "45.90%", "PROFITFACTOR": "0.807", "AVERAGETRADEAMOUNT": "-2.44", "AVERAGETRADEPERCENT": "-0.24%", "AVGERAGEBARSINTRADES": "46.33", "SHARPERATIO": "-0.437", "SORTINORATIO": "-0.229", "EXPOSUREPERCENT": "14.87%", "RETURNVSBUYHOLDPCTPOINTS": "-212.17", "ITERATION": "3", "SKIPREASON": "", "LOOKBACK DAYS": "16", "VOLATILITY MULTIPLIER ENTER": "0.9", "VOLATILITY MULTIPLIER EXIT": "0.63", "TARGET DAILY VOLATILITY": "0.009", "EXIT MODE": "time_only", "STOPLOSS LADDER STEP0": "-0.017", "STOPLOSS LADDER STEP1": "-0.028", "STOPLOSS LADDER RATIO0": "0.5", "TAKEPROFIT LADDER STEP0": "0.025"}, {"PARAMETERS": "20, 1, 0.4, 0.007, ladder, -0.011, -0.012, 0.3, 0.007", "STATUS": "COMPLETED", "SCORE": "-0.1248", "NETPROFITAMOUNT": "-27.98", "NETPROFITPERCENT": "-2.80%", "MAXDRAWDOWNAMOUNT": "123.27", "MAXDRAWDOWNPERCENT": "11.25%", "CLOSEDTRADES": "11", "PERCENTPROFITABLE": "36.36%", "PROFITFACTOR": "0.824", "AVERAGETRADEAMOUNT": "-2.54", "AVERAGETRADEPERCENT": "-0.25%", "AVGERAGEBARSINTRADES": "39.18", "SHARPERATIO": "-0.125", "SORTINORATIO": "-0.019", "EXPOSUREPERCENT": "90.57%", "RETURNVSBUYHOLDPCTPOINTS": "-170.33", "ITERATION": "4", "SKIPREASON": "", "LOOKBACK DAYS": "20", "VOLATILITY MULTIPLIER ENTER": "1", "VOLATILITY MULTIPLIER EXIT": "0.4", "TARGET DAILY VOLATILITY": "0.007", "EXIT MODE": "ladder", "STOPLOSS LADDER STEP0": "-0.011", "STOPLOSS LADDER STEP1": "-0.012", "STOPLOSS LADDER RATIO0": "0.3", "TAKEPROFIT LADDER STEP0": "0.007"}, {"PARAMETERS": "5, 2.2, 1.76, 0.019, vwap, -0.012, -0.022, 0.5, 0.009", "STATUS": "COMPLETED", "SCORE": "0.2992", "NETPROFITAMOUNT": "+102.93", "NETPROFITPERCENT": "+10.29%", "MAXDRAWDOWNAMOUNT": "1,086.19", "MAXDRAWDOWNPERCENT": "54.98%", "CLOSEDTRADES": "88", "PERCENTPROFITABLE": "23.86%", "PROFITFACTOR": "1.056", "AVERAGETRADEAMOUNT": "+1.17", "AVERAGETRADEPERCENT": "+0.12%", "AVGERAGEBARSINTRADES": "16.35", "SHARPERATIO": "0.299", "SORTINORATIO": "0.065", "EXPOSUREPERCENT": "2.52%", "RETURNVSBUYHOLDPCTPOINTS": "-157.24", "ITERATION": "5", "SKIPREASON": "", "LOOKBACK DAYS": "5", "VOLATILITY MULTIPLIER ENTER": "2.2", "VOLATILITY MULTIPLIER EXIT": "1.76", "TARGET DAILY VOLATILITY": "0.019", "EXIT MODE": "vwap", "STOPLOSS LADDER STEP0": "-0.012", "STOPLOSS LADDER STEP1": "-0.022", "STOPLOSS LADDER RATIO0": "0.5", "TAKEPROFIT LADDER STEP0": "0.009"}, {"PARAMETERS": "20, 3, 0.3, 0.019, combined, -0.006, -0.024, 0.4, 0.012", "STATUS": "COMPLETED", "SCORE": "-0.3025", "NETPROFITAMOUNT": "-60.59", "NETPROFITPERCENT": "-6.06%", "MAXDRAWDOWNAMOUNT": "137.81", "MAXDRAWDOWNPERCENT": "12.79%", "CLOSEDTRADES": "3", "PERCENTPROFITABLE": "0.00%", "PROFITFACTOR": "0.000", "AVERAGETRADEAMOUNT": "-20.20", "AVERAGETRADEPERCENT": "-2.02%", "AVGERAGEBARSINTRADES": "15.67", "SHARPERATIO": "-0.302", "SORTINORATIO": "-0.021", "EXPOSUREPERCENT": "61.87%", "RETURNVSBUYHOLDPCTPOINTS": "-173.59", "ITERATION": "6", "SKIPREASON": "", "LOOKBACK DAYS": "20", "VOLATILITY MULTIPLIER ENTER": "3", "VOLATILITY MULTIPLIER EXIT": "0.3", "TARGET DAILY VOLATILITY": "0.019", "EXIT MODE": "combined", "STOPLOSS LADDER STEP0": "-0.006", "STOPLOSS LADDER STEP1": "-0.024", "STOPLOSS LADDER RATIO0": "0.4", "TAKEPROFIT LADDER STEP0": "0.012"}, {"PARAMETERS": "8, 2.6, 1.82, 0.017, vwap, -0.014, -0.025, 0.1, 0.026", "STATUS": "COMPLETED", "SCORE": "-0.1297", "NETPROFITAMOUNT": "-134.26", "NETPROFITPERCENT": "-13.43%", "MAXDRAWDOWNAMOUNT": "471.07", "MAXDRAWDOWNPERCENT": "35.51%", "CLOSEDTRADES": "18", "PERCENTPROFITABLE": "33.33%", "PROFITFACTOR": "0.756", "AVERAGETRADEAMOUNT": "-7.46", "AVERAGETRADEPERCENT": "-0.75%", "AVGERAGEBARSINTRADES": "28.56", "SHARPERATIO": "-0.130", "SORTINORATIO": "-0.017", "EXPOSUREPERCENT": "0.90%", "RETURNVSBUYHOLDPCTPOINTS": "-180.96", "ITERATION": "7", "SKIPREASON": "", "LOOKBACK DAYS": "8", "VOLATILITY MULTIPLIER ENTER": "2.6", "VOLATILITY MULTIPLIER EXIT": "1.82", "TARGET DAILY VOLATILITY": "0.017", "EXIT MODE": "vwap", "STOPLOSS LADDER STEP0": "-0.014", "STOPLOSS LADDER STEP1": "-0.025", "STOPLOSS LADDER RATIO0": "0.1", "TAKEPROFIT LADDER STEP0": "0.026"}, {"PARAMETERS": "14, 2.3, 0.69, 0.006, time_only, -0.007, -0.009, 0.3, 0.013", "STATUS": "COMPLETED", "SCORE": "-0.1997", "NETPROFITAMOUNT": "-53.01", "NETPROFITPERCENT": "-5.30%", "MAXDRAWDOWNAMOUNT": "146.66", "MAXDRAWDOWNPERCENT": "13.86%", "CLOSEDTRADES": "16", "PERCENTPROFITABLE": "37.50%", "PROFITFACTOR": "0.604", "AVERAGETRADEAMOUNT": "-3.31", "AVERAGETRADEPERCENT": "-0.33%", "AVGERAGEBARSINTRADES": "47.81", "SHARPERATIO": "-0.200", "SORTINORATIO": "-0.030", "EXPOSUREPERCENT": "1.34%", "RETURNVSBUYHOLDPCTPOINTS": "-172.83", "ITERATION": "8", "SKIPREASON": "", "LOOKBACK DAYS": "14", "VOLATILITY MULTIPLIER ENTER": "2.3", "VOLATILITY MULTIPLIER EXIT": "0.69", "TARGET DAILY VOLATILITY": "0.006", "EXIT MODE": "time_only", "STOPLOSS LADDER STEP0": "-0.007", "STOPLOSS LADDER STEP1": "-0.009", "STOPLOSS LADDER RATIO0": "0.3", "TAKEPROFIT LADDER STEP0": "0.013"}, {"PARAMETERS": "8, 2.3, 0.46, 0.016, ladder, -0.008, -0.018, 0.5, 0.016", "STATUS": "COMPLETED", "SCORE": "-0.2453", "NETPROFITAMOUNT": "-318.70", "NETPROFITPERCENT": "-31.87%", "MAXDRAWDOWNAMOUNT": "608.33", "MAXDRAWDOWNPERCENT": "48.53%", "CLOSEDTRADES": "28", "PERCENTPROFITABLE": "25.00%", "PROFITFACTOR": "0.685", "AVERAGETRADEAMOUNT": "-11.38", "AVERAGETRADEPERCENT": "-1.14%", "AVGERAGEBARSINTRADES": "38.11", "SHARPERATIO": "-0.245", "SORTINORATIO": "-0.041", "EXPOSUREPERCENT": "1.85%", "RETURNVSBUYHOLDPCTPOINTS": "-199.40", "ITERATION": "9", "SKIPREASON": "", "LOOKBACK DAYS": "8", "VOLATILITY MULTIPLIER ENTER": "2.3", "VOLATILITY MULTIPLIER EXIT": "0.46", "TARGET DAILY VOLATILITY": "0.016", "EXIT MODE": "ladder", "STOPLOSS LADDER STEP0": "-0.008", "STOPLOSS LADDER STEP1": "-0.018", "STOPLOSS LADDER RATIO0": "0.5", "TAKEPROFIT LADDER STEP0": "0.016"}, {"PARAMETERS": "13, 0.5, 0.45, 0.013, time_only, -0.018, -0.03, 0.3, 0.007", "STATUS": "COMPLETED", "SCORE": "-0.7263", "NETPROFITAMOUNT": "-949.72", "NETPROFITPERCENT": "-94.97%", "MAXDRAWDOWNAMOUNT": "1,069.23", "MAXDRAWDOWNPERCENT": "95.81%", "CLOSEDTRADES": "483", "PERCENTPROFITABLE": "45.76%", "PROFITFACTOR": "0.747", "AVERAGETRADEAMOUNT": "-1.97", "AVERAGETRADEPERCENT": "-0.20%", "AVGERAGEBARSINTRADES": "50.25", "SHARPERATIO": "-0.726", "SORTINORATIO": "-0.612", "EXPOSUREPERCENT": "42.57%", "RETURNVSBUYHOLDPCTPOINTS": "-262.50", "ITERATION": "10", "SKIPREASON": "", "LOOKBACK DAYS": "13", "VOLATILITY MULTIPLIER ENTER": "0.5", "VOLATILITY MULTIPLIER EXIT": "0.45", "TARGET DAILY VOLATILITY": "0.013", "EXIT MODE": "time_only", "STOPLOSS LADDER STEP0": "-0.018", "STOPLOSS LADDER STEP1": "-0.03", "STOPLOSS LADDER RATIO0": "0.3", "TAKEPROFIT LADDER STEP0": "0.007"}, {"PARAMETERS": "28, 1.7, 0.85, 0.014, combined, -0.004, -0.009, 0.9, 0.021", "STATUS": "COMPLETED", "SCORE": "0.2103", "NETPROFITAMOUNT": "+38.04", "NETPROFITPERCENT": "+3.80%", "MAXDRAWDOWNAMOUNT": "117.07", "MAXDRAWDOWNPERCENT": "11.06%", "CLOSEDTRADES": "4", "PERCENTPROFITABLE": "75.00%", "PROFITFACTOR": "11.822", "AVERAGETRADEAMOUNT": "+9.51", "AVERAGETRADEPERCENT": "+0.95%", "AVGERAGEBARSINTRADES": "18.50", "SHARPERATIO": "0.210", "SORTINORATIO": "0.011", "EXPOSUREPERCENT": "89.57%", "RETURNVSBUYHOLDPCTPOINTS": "-163.73", "ITERATION": "11", "SKIPREASON": "", "LOOKBACK DAYS": "28", "VOLATILITY MULTIPLIER ENTER": "1.7", "VOLATILITY MULTIPLIER EXIT": "0.85", "TARGET DAILY VOLATILITY": "0.014", "EXIT MODE": "combined", "STOPLOSS LADDER STEP0": "-0.004", "STOPLOSS LADDER STEP1": "-0.009", "STOPLOSS LADDER RATIO0": "0.9", "TAKEPROFIT LADDER STEP0": "0.021"}, {"PARAMETERS": "5, 1.6, 1.44, 0.02, vwap, -0.012, -0.018, 0.8, 0.005", "STATUS": "COMPLETED", "SCORE": "0.3987", "NETPROFITAMOUNT": "-142.77", "NETPROFITPERCENT": "-14.28%", "MAXDRAWDOWNAMOUNT": "1,608.94", "MAXDRAWDOWNPERCENT": "68.45%", "CLOSEDTRADES": "191", "PERCENTPROFITABLE": "31.41%", "PROFITFACTOR": "0.969", "AVERAGETRADEAMOUNT": "-0.75", "AVERAGETRADEPERCENT": "-0.07%", "AVGERAGEBARSINTRADES": "17.77", "SHARPERATIO": "0.399", "SORTINORATIO": "0.123", "EXPOSUREPERCENT": "5.95%", "RETURNVSBUYHOLDPCTPOINTS": "-181.81", "ITERATION": "12", "SKIPREASON": "", "LOOKBACK DAYS": "5", "VOLATILITY MULTIPLIER ENTER": "1.6", "VOLATILITY MULTIPLIER EXIT": "1.44", "TARGET DAILY VOLATILITY": "0.02", "EXIT MODE": "vwap", "STOPLOSS LADDER STEP0": "-0.012", "STOPLOSS LADDER STEP1": "-0.018", "STOPLOSS LADDER RATIO0": "0.8", "TAKEPROFIT LADDER STEP0": "0.005"}, {"PARAMETERS": "5, 1.5, 1.35, 0.02, combined, -0.011, -0.017, 0.8, 0.005", "STATUS": "COMPLETED", "SCORE": "0.5804", "NETPROFITAMOUNT": "+558.57", "NETPROFITPERCENT": "+55.86%", "MAXDRAWDOWNAMOUNT": "1,405.19", "MAXDRAWDOWNPERCENT": "55.30%", "CLOSEDTRADES": "214", "PERCENTPROFITABLE": "35.05%", "PROFITFACTOR": "1.107", "AVERAGETRADEAMOUNT": "+2.61", "AVERAGETRADEPERCENT": "+0.26%", "AVGERAGEBARSINTRADES": "17.57", "SHARPERATIO": "0.580", "SORTINORATIO": "0.196", "EXPOSUREPERCENT": "6.60%", "RETURNVSBUYHOLDPCTPOINTS": "-111.67", "ITERATION": "13", "SKIPREASON": "", "LOOKBACK DAYS": "5", "VOLATILITY MULTIPLIER ENTER": "1.5", "VOLATILITY MULTIPLIER EXIT": "1.35", "TARGET DAILY VOLATILITY": "0.02", "EXIT MODE": "combined", "STOPLOSS LADDER STEP0": "-0.011", "STOPLOSS LADDER STEP1": "-0.017", "STOPLOSS LADDER RATIO0": "0.8", "TAKEPROFIT LADDER STEP0": "0.005"}, {"PARAMETERS": "11, 1.7, 1.53, 0.02, vwap, -0.015, -0.022, 0.7, 0.005", "STATUS": "COMPLETED", "SCORE": "0.8892", "NETPROFITAMOUNT": "+1,062.94", "NETPROFITPERCENT": "+106.29%", "MAXDRAWDOWNAMOUNT": "616.05", "MAXDRAWDOWNPERCENT": "28.00%", "CLOSEDTRADES": "68", "PERCENTPROFITABLE": "35.29%", "PROFITFACTOR": "1.914", "AVERAGETRADEAMOUNT": "+15.63", "AVERAGETRADEPERCENT": "+1.56%", "AVGERAGEBARSINTRADES": "20.60", "SHARPERATIO": "0.889", "SORTINORATIO": "0.205", "EXPOSUREPERCENT": "2.46%", "RETURNVSBUYHOLDPCTPOINTS": "-61.24", "ITERATION": "14", "SKIPREASON": "", "LOOKBACK DAYS": "11", "VOLATILITY MULTIPLIER ENTER": "1.7", "VOLATILITY MULTIPLIER EXIT": "1.53", "TARGET DAILY VOLATILITY": "0.02", "EXIT MODE": "vwap", "STOPLOSS LADDER STEP0": "-0.015", "STOPLOSS LADDER STEP1": "-0.022", "STOPLOSS LADDER RATIO0": "0.7", "TAKEPROFIT LADDER STEP0": "0.005"}, {"PARAMETERS": "11, 1.3, 1.17, 0.015, combined, -0.015, -0.023, 0.7, 0.017", "STATUS": "COMPLETED", "SCORE": "0.4409", "NETPROFITAMOUNT": "+323.15", "NETPROFITPERCENT": "+32.31%", "MAXDRAWDOWNAMOUNT": "889.10", "MAXDRAWDOWNPERCENT": "55.90%", "CLOSEDTRADES": "147", "PERCENTPROFITABLE": "38.10%", "PROFITFACTOR": "1.152", "AVERAGETRADEAMOUNT": "+2.20", "AVERAGETRADEPERCENT": "+0.22%", "AVGERAGEBARSINTRADES": "19.48", "SHARPERATIO": "0.441", "SORTINORATIO": "0.137", "EXPOSUREPERCENT": "5.02%", "RETURNVSBUYHOLDPCTPOINTS": "-135.22", "ITERATION": "15", "SKIPREASON": "", "LOOKBACK DAYS": "11", "VOLATILITY MULTIPLIER ENTER": "1.3", "VOLATILITY MULTIPLIER EXIT": "1.17", "TARGET DAILY VOLATILITY": "0.015", "EXIT MODE": "combined", "STOPLOSS LADDER STEP0": "-0.015", "STOPLOSS LADDER STEP1": "-0.023", "STOPLOSS LADDER RATIO0": "0.7", "TAKEPROFIT LADDER STEP0": "0.017"}, {"PARAMETERS": "10, 1.3, 0.78, 0.02, vwap, -0.019, -0.03, 0.7, 0.03", "STATUS": "COMPLETED", "SCORE": "0.2215", "NETPROFITAMOUNT": "-81.77", "NETPROFITPERCENT": "-8.18%", "MAXDRAWDOWNAMOUNT": "1,317.23", "MAXDRAWDOWNPERCENT": "71.12%", "CLOSEDTRADES": "160", "PERCENTPROFITABLE": "35.00%", "PROFITFACTOR": "0.974", "AVERAGETRADEAMOUNT": "-0.51", "AVERAGETRADEPERCENT": "-0.05%", "AVGERAGEBARSINTRADES": "19.18", "SHARPERATIO": "0.221", "SORTINORATIO": "0.071", "EXPOSUREPERCENT": "5.38%", "RETURNVSBUYHOLDPCTPOINTS": "-175.71", "ITERATION": "16", "SKIPREASON": "", "LOOKBACK DAYS": "10", "VOLATILITY MULTIPLIER ENTER": "1.3", "VOLATILITY MULTIPLIER EXIT": "0.78", "TARGET DAILY VOLATILITY": "0.02", "EXIT MODE": "vwap", "STOPLOSS LADDER STEP0": "-0.019", "STOPLOSS LADDER STEP1": "-0.03", "STOPLOSS LADDER RATIO0": "0.7", "TAKEPROFIT LADDER STEP0": "0.03"}, {"PARAMETERS": "26, 1.4, 1.12, 0.012, combined, -0.015, -0.022, 0.7, 0.005", "STATUS": "COMPLETED", "SCORE": "-0.1619", "NETPROFITAMOUNT": "-180.47", "NETPROFITPERCENT": "-18.05%", "MAXDRAWDOWNAMOUNT": "409.06", "MAXDRAWDOWNPERCENT": "36.01%", "CLOSEDTRADES": "107", "PERCENTPROFITABLE": "37.38%", "PROFITFACTOR": "0.840", "AVERAGETRADEAMOUNT": "-1.69", "AVERAGETRADEPERCENT": "-0.17%", "AVGERAGEBARSINTRADES": "19.04", "SHARPERATIO": "-0.162", "SORTINORATIO": "-0.043", "EXPOSUREPERCENT": "3.57%", "RETURNVSBUYHOLDPCTPOINTS": "-185.58", "ITERATION": "17", "SKIPREASON": "", "LOOKBACK DAYS": "26", "VOLATILITY MULTIPLIER ENTER": "1.4", "VOLATILITY MULTIPLIER EXIT": "1.12", "TARGET DAILY VOLATILITY": "0.012", "EXIT MODE": "combined", "STOPLOSS LADDER STEP0": "-0.015", "STOPLOSS LADDER STEP1": "-0.022", "STOPLOSS LADDER RATIO0": "0.7", "TAKEPROFIT LADDER STEP0": "0.005"}, {"PARAMETERS": "10, 1.9, 1.33, 0.017, vwap, -0.02, -0.023, 0.9, 0.02", "STATUS": "COMPLETED", "SCORE": "0.2735", "NETPROFITAMOUNT": "+114.55", "NETPROFITPERCENT": "+11.45%", "MAXDRAWDOWNAMOUNT": "493.93", "MAXDRAWDOWNPERCENT": "34.70%", "CLOSEDTRADES": "58", "PERCENTPROFITABLE": "32.76%", "PROFITFACTOR": "1.152", "AVERAGETRADEAMOUNT": "+1.97", "AVERAGETRADEPERCENT": "+0.20%", "AVGERAGEBARSINTRADES": "19.66", "SHARPERATIO": "0.274", "SORTINORATIO": "0.052", "EXPOSUREPERCENT": "2.00%", "RETURNVSBUYHOLDPCTPOINTS": "-156.08", "ITERATION": "18", "SKIPREASON": "", "LOOKBACK DAYS": "10", "VOLATILITY MULTIPLIER ENTER": "1.9", "VOLATILITY MULTIPLIER EXIT": "1.33", "TARGET DAILY VOLATILITY": "0.017", "EXIT MODE": "vwap", "STOPLOSS LADDER STEP0": "-0.02", "STOPLOSS LADDER STEP1": "-0.023", "STOPLOSS LADDER RATIO0": "0.9", "TAKEPROFIT LADDER STEP0": "0.02"}, {"PARAMETERS": "16, 1, 0.5, 0.011, ladder, -0.002, -0.01, 0.6, 0.015", "STATUS": "COMPLETED", "SCORE": "-0.4720", "NETPROFITAMOUNT": "-36.67", "NETPROFITPERCENT": "-3.67%", "MAXDRAWDOWNAMOUNT": "57.55", "MAXDRAWDOWNPERCENT": "5.72%", "CLOSEDTRADES": "2", "PERCENTPROFITABLE": "0.00%", "PROFITFACTOR": "0.000", "AVERAGETRADEAMOUNT": "-18.34", "AVERAGETRADEPERCENT": "-1.83%", "AVGERAGEBARSINTRADES": "22.50", "SHARPERATIO": "-0.472", "SORTINORATIO": "-0.061", "EXPOSUREPERCENT": "95.59%", "RETURNVSBUYHOLDPCTPOINTS": "-171.20", "ITERATION": "19", "SKIPREASON": "", "LOOKBACK DAYS": "16", "VOLATILITY MULTIPLIER ENTER": "1", "VOLATILITY MULTIPLIER EXIT": "0.5", "TARGET DAILY VOLATILITY": "0.011", "EXIT MODE": "ladder", "STOPLOSS LADDER STEP0": "-0.002", "STOPLOSS LADDER STEP1": "-0.01", "STOPLOSS LADDER RATIO0": "0.6", "TAKEPROFIT LADDER STEP0": "0.015"}, {"PARAMETERS": "12, 0.6, 0.54, 0.016, combined, -0.01, -0.024, 0.8, 0.009", "STATUS": "COMPLETED", "SCORE": "0.1208", "NETPROFITAMOUNT": "-151.27", "NETPROFITPERCENT": "-15.13%", "MAXDRAWDOWNAMOUNT": "1,217.45", "MAXDRAWDOWNPERCENT": "60.01%", "CLOSEDTRADES": "182", "PERCENTPROFITABLE": "31.87%", "PROFITFACTOR": "0.958", "AVERAGETRADEAMOUNT": "-0.83", "AVERAGETRADEPERCENT": "-0.08%", "AVGERAGEBARSINTRADES": "21.03", "SHARPERATIO": "0.121", "SORTINORATIO": "0.042", "EXPOSUREPERCENT": "69.73%", "RETURNVSBUYHOLDPCTPOINTS": "-182.66", "ITERATION": "20", "SKIPREASON": "", "LOOKBACK DAYS": "12", "VOLATILITY MULTIPLIER ENTER": "0.6", "VOLATILITY MULTIPLIER EXIT": "0.54", "TARGET DAILY VOLATILITY": "0.016", "EXIT MODE": "combined", "STOPLOSS LADDER STEP0": "-0.01", "STOPLOSS LADDER STEP1": "-0.024", "STOPLOSS LADDER RATIO0": "0.8", "TAKEPROFIT LADDER STEP0": "0.009"}];
+    const bestIteration = "14";
+    const recommendedIteration = "13";
+    const table = document.getElementById('report-table');
+    const tbody = table.tBodies[0];
+    const search = document.getElementById('search');
+    const visibleCount = document.getElementById('visible-count');
+    const pageSizeSelect = document.getElementById('page-size');
+    const rangeStatus = document.getElementById('range-status');
+    const pageStatus = document.getElementById('page-status');
+    const prevPage = document.getElementById('prev-page');
+    const nextPage = document.getElementById('next-page');
+    let filteredRows = allRows.slice();
+    let currentPage = 1;
+    let sortState = { index: null, direction: 'asc' };
+    function numericValue(text) {
+      const cleaned = String(text).replace(/[%+,]/g, '').replace(/[^0-9.\-]/g, '');
+      if (!cleaned || cleaned === '-' || cleaned === '.') return NaN;
+      return Number(cleaned);
+    }
+    function compareRows(left, right, index, direction) {
+      const column = columns[index];
+      const leftText = left[column] ?? '';
+      const rightText = right[column] ?? '';
+      const leftNum = numericValue(leftText);
+      const rightNum = numericValue(rightText);
+      let result;
+      if (!Number.isNaN(leftNum) && !Number.isNaN(rightNum)) {
+        result = leftNum - rightNum;
+      } else {
+        result = String(leftText).localeCompare(String(rightText), undefined, { numeric: true, sensitivity: 'base' });
+      }
+      return direction === 'asc' ? result : -result;
+    }
+    function applySort() {
+      if (sortState.index === null) return;
+      filteredRows.sort((a, b) => compareRows(a, b, sortState.index, sortState.direction));
+    }
+    function renderPage() {
+      const pageSize = Number(pageSizeSelect.value);
+      const totalRows = filteredRows.length;
+      const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+      currentPage = Math.min(Math.max(1, currentPage), totalPages);
+      const startIndex = totalRows === 0 ? 0 : (currentPage - 1) * pageSize;
+      const endIndex = Math.min(startIndex + pageSize, totalRows);
+      const fragment = document.createDocumentFragment();
+      for (const rowData of filteredRows.slice(startIndex, endIndex)) {
+        const tr = document.createElement('tr');
+        const iteration = rowData.ITERATION ? String(rowData.ITERATION) : '';
+        if (iteration && iteration === bestIteration) tr.classList.add('best-row');
+        if (iteration && iteration === recommendedIteration) tr.classList.add('recommended-row');
+        for (const column of columns) {
+          const td = document.createElement('td');
+          td.textContent = rowData[column] ?? '';
+          tr.appendChild(td);
+        }
+        fragment.appendChild(tr);
+      }
+      tbody.replaceChildren(fragment);
+      const displayStart = totalRows === 0 ? 0 : startIndex + 1;
+      rangeStatus.textContent = `Showing ${displayStart.toLocaleString()} to ${endIndex.toLocaleString()} of ${totalRows.toLocaleString()} rows`;
+      pageStatus.textContent = `Page ${currentPage.toLocaleString()} / ${totalPages.toLocaleString()}`;
+      visibleCount.textContent = totalRows.toLocaleString();
+      prevPage.disabled = currentPage <= 1;
+      nextPage.disabled = currentPage >= totalPages;
+    }
+    function updateFilter() {
+      const q = search.value.trim().toLowerCase();
+      filteredRows = !q ? allRows.slice() : allRows.filter(row => columns.some(column => String(row[column] ?? '').toLowerCase().includes(q)));
+      applySort();
+      currentPage = 1;
+      renderPage();
+    }
+    search.addEventListener('input', updateFilter);
+    pageSizeSelect.addEventListener('change', () => { currentPage = 1; renderPage(); });
+    prevPage.addEventListener('click', () => { currentPage -= 1; renderPage(); });
+    nextPage.addEventListener('click', () => { currentPage += 1; renderPage(); });
+    table.querySelectorAll('th').forEach((th, index) => {
+      th.addEventListener('click', () => {
+        const direction = sortState.index === index && sortState.direction === 'asc' ? 'desc' : 'asc';
+        table.querySelectorAll('th').forEach(item => delete item.dataset.direction);
+        th.dataset.direction = direction;
+        sortState = { index, direction };
+        applySort();
+        currentPage = 1;
+        renderPage();
+      });
+      th.addEventListener('keydown', event => { if (event.key === 'Enter') th.click(); });
+    });
+    renderPage();
+  </script>
+</body>
+</html>

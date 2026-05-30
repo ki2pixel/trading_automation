@@ -1,0 +1,67 @@
+﻿section,sous_section,metrique,total,long,short,valeur,remarque
+Résumé,,,,,,"+6,30 EUR",Total P&L — Inclut le P&L ouvert visible en haut du rapport
+Résumé,,,,,,"+0,63%",Total P&L (%)
+Résumé,,,,,,"60,90 EUR",Réduction max des fonds propres
+Résumé,,,,,,"5,80%",Réduction max des fonds propres (%)
+Résumé,,,,,,201,Total des transactions
+Résumé,,,,,,"43,28% (87/201)",Trades rentables
+Résumé,,,,,,"1,027",Facteur de profit
+Performance,Retours,Capital initial,"1 000,00 EUR",,,,
+Performance,Retours,P&L ouvert,"+0,40 EUR / +0,04%",,,,
+Performance,Retours,P&L Net,"+5,90 EUR / +0,59%","+5,90 EUR / +0,59%","0 EUR / 0,00%",,
+Performance,Retours,Profit brut,"227,10 EUR / 22,71%","227,10 EUR / 22,71%","0 EUR / 0,00%",,
+Performance,Retours,Perte brute,"221,20 EUR / 22,12%","221,20 EUR / 22,12%","0 EUR / 0,00%",,
+Performance,Retours,Facteur de profit,"1,027","1,027",—,,
+Performance,Retours,Commission payée,0 EUR,0 EUR,0 EUR,,
+Performance,Retours,Gain attendu,"0,03 EUR","0,03 EUR",0 EUR,,"Libellé TradingView probablement ""Gain attendu"""
+Performance,Comparaison des points de référence,Rendement du Buy & Hold,,,,"-35,20 EUR / -3,52%","Valeur cohérente avec la surperformance stratégique +41,10 EUR"
+Performance,Comparaison des points de référence,Gain en % sur Buy & Hold,,,,"-3,68%",Lisibilité moyenne sur la capture
+Performance,Comparaison des points de référence,Surperformance stratégique,,,,"+41,10 EUR",
+Performance,Performance ajustée au risque,Ratio de Sharpe,,,,"-0,04",Dernier chiffre peu lisible sur la capture
+Performance,Performance ajustée au risque,Ratio de Sortino,,,,"-0,067",
+Analyse des transactions,Détails,Total des transactions,201,201,0,,
+Analyse des transactions,Détails,Total des transactions ouvertes,1,1,0,,
+Analyse des transactions,Détails,Transactions gagnantes,87,87,0,,
+Analyse des transactions,Détails,Transactions perdantes,101,101,0,,
+Analyse des transactions,Détails,Rentables en pourcentage,"43,28%","43,28%",—,,
+Analyse des transactions,Détails,P&L moyen,"0,03 EUR / 0,01%","0,03 EUR / 0,01%",—,,
+Analyse des transactions,Détails,Transaction gagnante moyenne,"2,61 EUR / 1,01%","2,61 EUR / 1,01%",—,,
+Analyse des transactions,Détails,Transaction perdante moyenne,"2,19 EUR / 0,94%","2,19 EUR / 0,94%",—,,
+Analyse des transactions,Détails,Ratio gain moyen / perte moyenne,"1,197","1,197",—,,
+Analyse des transactions,Détails,Transaction la plus gagnante,"15,30 EUR","15,30 EUR",—,,
+Analyse des transactions,Détails,Pourcentage de la transaction la plus gagnante,"5,34%","5,34%",—,,
+Analyse des transactions,Détails,Plus grand gagnant en % du bénéfice brut,"6,74%","6,74%","0,00%",,
+Analyse des transactions,Détails,Transaction la plus perdante,"24,00 EUR","24,00 EUR",—,,
+Analyse des transactions,Détails,Pourcentage de la transaction la plus perdante,"8,16%","8,16%",—,,
+Analyse des transactions,Détails,Plus gros perdant en % de la perte brute,"10,85%","10,85%","0,00%",,
+Analyse des transactions,Détails,Nombre moyen # de barres dans les transactions,13,13,0,,
+Analyse des transactions,Détails,Nombre moyen # de barres dans les transactions gagnantes,18,18,0,,
+Analyse des transactions,Détails,Nombre moyen # de barres dans les transactions perdantes,10,10,0,,
+Efficacité du capital,Utilisation du capital,Rendement annualisé (CAGR),"0,97%","0,97%","0,00%",,
+Efficacité du capital,Utilisation du capital,Retour sur capital initial,"0,59%","0,59%","0,00%",,
+Efficacité du capital,Utilisation du capital,Taille du compte requise,"367,90 EUR",,,,
+Efficacité du capital,Utilisation du capital,Rendement requis sur le montant du compte,"1,63%","1,63%","0,00%",,
+Efficacité du capital,Utilisation du capital,Bénéfice net en % de la perte la plus importante,"24,58%","24,58%","0,00%",,
+Efficacité du capital,Utilisation de la marge,Marge moyenne utilisée,,,,"127,19 EUR",
+Efficacité du capital,Utilisation de la marge,Marge maximale utilisée,,,,"502,60 EUR",
+Efficacité du capital,Utilisation de la marge,Efficience de la marge,,,,"20,19 EUR",
+Efficacité du capital,Utilisation de la marge,Appels de marge,,,,0,
+Run-ups et drawdowns,Run-ups,Durée moyenne de la hausse du capital (de clôture à clôture),,,,9 jours,
+Run-ups et drawdowns,Run-ups,Hausse moyenne du capital (de clôture à clôture),,,,"14,99 EUR / 1,50%",
+Run-ups et drawdowns,Run-ups,Hausse maximale du capital (de clôture à clôture),,,,"40,90 EUR / 4,19%",
+Run-ups et drawdowns,Run-ups,Hausse maximale du capital (intrabarre),,,,"69,90 EUR / 6,44%",
+Run-ups et drawdowns,Run-ups,Hausse maximale du capital propre en % du capital initial (intrabarre),,,,"6,99%",
+Run-ups et drawdowns,Drawdowns,Durée moyenne de la baisse du capital (de clôture à clôture),,,,17 jours,
+Run-ups et drawdowns,Drawdowns,Baisse moyenne du capital (de clôture à clôture),,,,"16,16 EUR / 1,62%",
+Run-ups et drawdowns,Drawdowns,Perte maximale en capital (de clôture à clôture),,,,"59,80 EUR / 5,98%",
+Run-ups et drawdowns,Drawdowns,Perte maximale en capital (intrabarre),,,,"60,90 EUR / 6,09%",
+Run-ups et drawdowns,Drawdowns,Perte maximale en % du capital initial (intrabarre),,,,"6,09%",
+Run-ups et drawdowns,Drawdowns,Retour de la réduction maximale de la valeur nette,,,,"0,10 EUR",
+Graphiques,Analyse comparative,P&L pour Buy & Hold,,,,"25,20% / -0,01% / -2,21%",Valeurs lues dans les étiquettes du graphique
+Graphiques,Analyse comparative,P&L pour la stratégie,,,,"4,66% / 0,59% / -1,07%",Valeurs lues dans les étiquettes du graphique
+Graphiques,Ratio gains/pertes,Rentables,,,,"87 trades / 43,28%",Donut chart
+Graphiques,Ratio gains/pertes,Perte,,,,"101 trades / 50,25%",Donut chart
+Graphiques,Ratio gains/pertes,Seuil de rentabilité,,,,"13 trades / 6,47%",Donut chart
+Graphiques,Distribution P&L,Perte moyenne,,,,"-0,84%",Histogramme : valeur visible dans la légende
+Graphiques,Distribution P&L,Bénéfice moyen,,,,"1,01%",Histogramme : valeur visible dans la légende
+Graphiques,Tableau des capitaux propres,Série temporelle,,,,Non extraite,La capture ne fournit pas les valeurs point par point

@@ -1,0 +1,10 @@
+pandas>=2.3,<3
+numpy>=2.2,<3
+pyarrow>=24.0,<25
+fastparquet>=2026.3,<2027.0
+fastapi>=0.129,<1
+uvicorn[standard]>=0.40,<1
+optuna>=4.0,<5
+vectorbt>=1.0,<2
+plotly>=6.0,<7
+pytest>=9.0,<10

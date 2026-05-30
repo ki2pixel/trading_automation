@@ -1,0 +1,56 @@
+{
+  "backtest": {
+    "base_currency": "EUR",
+    "asset_currency": null,
+    "account_currency": null,
+    "initial_capital": 1000,
+    "default_order_size": {
+      "value": 100,
+      "type": "percent_of_equity"
+    },
+    "pyramiding": 0,
+    "commission": {
+      "value": 0,
+      "type": "percent"
+    },
+    "verify_price_for_limit_orders": 0,
+    "slippage": 0,
+    "margin_long": 100,
+    "margin_short": 100
+  },
+  "parameters": {
+    "periods": 10,
+    "multiplier": 5.0,
+    "mav": "EMA",
+    "length": 10,
+    "change_atr": true,
+    "source_col": "hl2",
+    "max_entry_price": 300.0,
+    "max_capital_bucket": 300.0,
+    "initial_capital_bucket": 300.0,
+    "trade_direction_mode": "Long only",
+    "fee_mode": "Parametric: hold until net covers fees",
+    "estimated_commission_per_order_long": 0.0,
+    "estimated_commission_per_order_short": 0.0,
+    "estimated_slippage_per_side_long": 0.0,
+    "estimated_slippage_per_side_short": 0.0,
+    "min_net_profit_after_costs": 0.0,
+    "use_net_bracket_exits": false,
+    "take_profit_net_percent": 10.0,
+    "stop_loss_net_percent": 10.0,
+    "use_safety_stop": true,
+    "safety_stop_applies_to": "Long only",
+    "safety_stop_mode": "Net loss OR max bars",
+    "safety_max_net_loss_mode": "% of entry value",
+    "safety_max_net_loss_cash": 0.0,
+    "safety_max_net_loss_percent": 5.0,
+    "safety_max_bars_in_trade": 0,
+    "point_value": 1.0,
+    "execute_on_next_bar": true,
+    "next_bar_execution_price_col": "open",
+    "apply_estimated_costs_to_realized_pnl": true,
+    "allow_fractional_quantity": true,
+    "quantity_precision": 6,
+    "early_stop_drawdown_pct": 0.0
+  }
+}

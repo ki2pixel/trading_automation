@@ -1,0 +1,133 @@
+{
+  "very_low": {
+    "profile_name": "very_low",
+    "description": "Tr\u00e8s faible vol (< 1.0%)",
+    "best_value": 1.0159751469299856,
+    "best_params": {
+      "lookback_days": 22,
+      "volatility_multiplier_enter": 0.26,
+      "volatility_multiplier_exit": 0.05,
+      "target_daily_volatility": 0.018,
+      "stoploss_ladder_step0": -0.011,
+      "stoploss_ladder_step1": -0.027,
+      "stoploss_ladder_ratio0": 0.5,
+      "takeprofit_ladder_step0": 0.013000000000000001,
+      "exit_mode": "combined",
+      "max_leverage": 3.0,
+      "trade_direction_mode": "Long only",
+      "early_stop_drawdown_pct": 30.0,
+      "estimated_commission_per_order_long": 0.0,
+      "estimated_commission_per_order_short": 0.0,
+      "estimated_slippage_per_side_long": 0.0,
+      "estimated_slippage_per_side_short": 0.0
+    },
+    "ticker_metrics": {
+      "NVS": {
+        "sharpe": 0.5866263338123946,
+        "cagr": 24.52982800705339,
+        "mdd": -14.620604005186413,
+        "trades": 1861,
+        "win_rate": 8.59752821063944
+      },
+      "LOGI": {
+        "sharpe": 1.4453239600475767,
+        "cagr": 41.11803527978035,
+        "mdd": -5.920100167033019,
+        "trades": 898,
+        "win_rate": 18.93095768374165
+      }
+    }
+  },
+  "low": {
+    "profile_name": "low",
+    "description": "Faible vol (1.0% - 1.5%)",
+    "best_value": 0.7178980939014159,
+    "best_params": {
+      "lookback_days": 18,
+      "volatility_multiplier_enter": 0.49,
+      "volatility_multiplier_exit": 0.14,
+      "target_daily_volatility": 0.012,
+      "stoploss_ladder_step0": -0.01,
+      "stoploss_ladder_step1": -0.028999999999999998,
+      "stoploss_ladder_ratio0": 0.5,
+      "takeprofit_ladder_step0": 0.012,
+      "exit_mode": "combined",
+      "max_leverage": 3.0,
+      "trade_direction_mode": "Long only",
+      "early_stop_drawdown_pct": 30.0,
+      "estimated_commission_per_order_long": 0.0,
+      "estimated_commission_per_order_short": 0.0,
+      "estimated_slippage_per_side_long": 0.0,
+      "estimated_slippage_per_side_short": 0.0
+    },
+    "ticker_metrics": {
+      "SAP": {
+        "sharpe": 0.42264068387758646,
+        "cagr": 12.468564020959661,
+        "mdd": -12.824571511088633,
+        "trades": 287,
+        "win_rate": 48.78048780487805
+      },
+      "AMS.MC": {
+        "sharpe": 0.5355278703988409,
+        "cagr": 16.652247329580305,
+        "mdd": -13.247397846551562,
+        "trades": 279,
+        "win_rate": 44.086021505376344
+      },
+      "SHL.DE": {
+        "sharpe": 0.9761333164897391,
+        "cagr": 30.287010415717397,
+        "mdd": -5.228835212142361,
+        "trades": 279,
+        "win_rate": 51.971326164874554
+      },
+      "NVO": {
+        "sharpe": 0.9372905048394974,
+        "cagr": 3.9289974689024065,
+        "mdd": -1.1702202537044089,
+        "trades": 279,
+        "win_rate": 52.68817204301075
+      }
+    }
+  },
+  "standard": {
+    "profile_name": "standard",
+    "description": "Baseline vol (> 1.5%)",
+    "best_value": 1.8766194313360556,
+    "best_params": {
+      "lookback_days": 22,
+      "volatility_multiplier_enter": 0.71,
+      "volatility_multiplier_exit": 0.05,
+      "target_daily_volatility": 0.018,
+      "stoploss_ladder_step0": -0.011,
+      "stoploss_ladder_step1": -0.027,
+      "stoploss_ladder_ratio0": 0.5,
+      "takeprofit_ladder_step0": 0.013000000000000001,
+      "exit_mode": "combined",
+      "max_leverage": 3.0,
+      "trade_direction_mode": "Long only",
+      "early_stop_drawdown_pct": 30.0,
+      "estimated_commission_per_order_long": 0.0,
+      "estimated_commission_per_order_short": 0.0,
+      "estimated_slippage_per_side_long": 0.0,
+      "estimated_slippage_per_side_short": 0.0
+    },
+    "ticker_metrics": {
+      "GMAB": {
+        "sharpe": 1.6367680688515571,
+        "cagr": 11.008287569724828,
+        "mdd": -6.8006164353527785,
+        "trades": 202,
+        "win_rate": 39.603960396039604
+      },
+      "ZEAL.CO": {
+        "sharpe": 2.1164707938205543,
+        "cagr": 3.525591836042463,
+        "mdd": -0.7741158972445052,
+        "trades": 276,
+        "win_rate": 26.44927536231884
+      }
+    }
+  }
+}

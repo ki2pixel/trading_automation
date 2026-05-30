@@ -1,0 +1,9 @@
+﻿Graphique,Série / élément,Max,Actuel,Min,Autre,Remarque
+Analyse comparative,P&L pour Buy & Hold,"25,20%","-0,01%","-2,21%",,Valeurs lues dans les étiquettes du graphique
+Analyse comparative,P&L pour la stratégie,"4,66%","0,59%","-1,07%",,Valeurs lues dans les étiquettes du graphique
+Ratio gains/pertes,Rentables,,,,"87 trades / 43,28%",Donut chart
+Ratio gains/pertes,Perte,,,,"101 trades / 50,25%",Donut chart
+Ratio gains/pertes,Seuil de rentabilité,,,,"13 trades / 6,47%",Donut chart
+Distribution P&L,Perte moyenne,,,,"-0,84%",Histogramme : valeur visible dans la légende
+Distribution P&L,Bénéfice moyen,,,,"1,01%",Histogramme : valeur visible dans la légende
+Tableau des capitaux propres,Série temporelle,,,,Non extraite,La capture ne fournit pas les valeurs point par point
