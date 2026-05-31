@@ -9,6 +9,10 @@
 - [x] [2026-05-30 22:19:00] - Exécution du workflow `/docs-updater` : Rédaction de la documentation technique conforme au `SKILL.md` pour `bayesian_optimizer.py`, `metrics.py` (Fast Score), et `noise_boundary_intraday.py` (VectorBT pre-scan).
 - [x] [2026-05-30 22:40:00] - Adaptation et intégration au contexte du projet des 4 skills MCP importés : `fast-filesystem-ops`, `json-mcp-expert`, `sequentialthinking-logic`, et `shrimp-task-manager`.
 - [x] [2026-05-31 01:11:00] - Audit global `.agents/` : correction chirurgicale des incohérences de référencement d'outils MCP (`json-query`, `fast-filesystem`, `filesystem-agent`, `shrimp-task-manager`) et des chemins de contexte erronés.
+- [x] [2026-05-31 01:21:00] - Initialisation du dépôt Git local, configuration du `.gitignore` pour protéger les gros datasets/bases de données, et push initial de la branche `main` vers le dépôt distant GitHub.
+- [x] [2026-05-31 01:28:00] - Audit et suppression sécurisée du code source inactif `ressources/vectorbt-1.0.0/` pour alléger le dépôt.
+- [x] [2026-05-31 01:33:00] - Audit et suppression sécurisée de l'archive d'inspiration inactive `ressources/KLineChart-10.0.0-beta1/` (6.2 Mo libérés) et mise à jour de `.gitignore`.
+- [x] [2026-05-31 01:43:00] - Conception et implémentation de l'arsenal de 7 spécialisations métiers (SKILL.md) dans `.agents/skills/` pour encadrer le développement du moteur de trading (Supabase remplacé par local-parquet-storage).
 
 ## Tâches en Cours
 - [ ] Configuration de l'environnement de développement et de la base de données.

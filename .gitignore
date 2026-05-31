@@ -58,8 +58,6 @@ financial_datasets/
 SheetsFinance_Export/
 storage/
 strategy_reports_optipie/
-ressources/vectorbt-1.0.0/
-ressources/KLineChart-*/
 
 # Large ZIP archives or dumps
 *.zip

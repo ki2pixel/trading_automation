@@ -7,7 +7,7 @@
 
 ## Patterns Technologiques
 - **Langage Principal** : Python.
-- **Base de Données** : Interactions via requêtes optimisées (Supabase).
+- **Stockage de Données** : Fichiers Parquet locaux optimisés pour Pandas.
 - **Tests** : Tests unitaires (pytest) obligatoires pour chaque fonctionnalité.
 
 *(Ce fichier s'enrichira au fil de l'évolution de l'architecture du projet).*

@@ -5,5 +5,5 @@ Ce projet est un système d'automatisation de trading (Trading Automation v2). S
 
 ## Architecture Générale
 - **Moteur de Backtest & Scripts** : Python (typage statique, performance via Numpy/Pandas).
-- **Base de données** : Supabase / PostgreSQL.
+- **Stockage de données** : Local via fichiers Parquet (pyarrow/fastparquet).
 - **Standards** : Définis dans `.agents/rules/codingstandards.md`.
