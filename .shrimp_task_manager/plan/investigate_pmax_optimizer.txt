@@ -1,0 +1,17 @@
+# Brief: Investigation et Optimisation du Bottleneck de PMax Explorer
+
+## Contexte
+L'optimiseur local (UI) avec la stratégie `pmax_explorer.py` rencontre un comportement anormal : le préscan renvoie un statut "skipped" vide, et le processus freeze pendant environ 5 minutes, suggérant une fuite de mémoire ou un goulot d'étranglement lors du pré-calcul des combinaisons de paramètres ou de l'exécution du backtest VectorBT.
+
+## Objectifs
+1. Identifier la cause du freeze et de la fuite de mémoire (ou pic de RAM) dans l'optimisation bayésienne et le pre-scan de la stratégie PMaxExplorer.
+2. S'inspirer des correctifs anti-fuite de mémoire appliqués à la stratégie `hma_crossover.py` (nettoyage explicite, limitation des combinaisons VectorBT, garbage collection, optimisation des structures de données Pandas/Numpy).
+3. Corriger le code de `pmax_explorer.py` pour résoudre le freeze tout en conservant les calculs mathématiques exacts de l'indicateur PMax.
+4. S'assurer que le rapport de préscan VectorBT ne retourne plus un statut "skipped" dû à une erreur out-of-memory ou un timeout, et contient les paramètres filtrés pertinents.
+5. Effectuer des tests locaux et valider l'absence de régression.
+
+## Contraintes
+- Vectorisation des calculs là où c'est possible.
+- Pas de régression dans le calcul de PMax.
+- Conservation de l'API de configuration des paramètres.
+- Application rigoureuse des coding standards (.agents/rules/codingstandards.md).

@@ -348,6 +348,8 @@ def vectorbt_prescan(
             # Pre-calculer toutes les MAs pour eviter les recalculs
             all_ma = vbt.MA.run(data["close"], window=fast_windows)
             ma_np = all_ma.ma.to_numpy(dtype=float)
+            if ma_np.ndim == 1:
+                ma_np = ma_np.reshape(-1, 1)
             
             # Creer une table de correspondance window -> index
             window_to_idx = {w: idx for idx, w in enumerate(fast_windows)}

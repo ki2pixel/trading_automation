@@ -1096,16 +1096,26 @@ def run_bayesian_optimization(
         avt_shm_metadata = None
         commas_bot_shm_metadata = None
         noise_boundary_shm_metadata = None
+
+        def _get_fixed_val(name, default):
+            if fixed_overrides and hasattr(fixed_overrides, name):
+                val = getattr(fixed_overrides, name)
+                if val is not None:
+                    return val
+            return default
+
         if strategy == "hma_crossover":
             fast_specs = next((s for s in parameter_specs if s.name == "fast_len"), None)
             slow_specs = next((s for s in parameter_specs if s.name == "slow_len"), None)
-            if fast_specs and slow_specs and fast_specs.values and slow_specs.values:
+            fast_vals = list(fast_specs.values) if (fast_specs and fast_specs.values) else [_get_fixed_val("fast_len", 20)]
+            slow_vals = list(slow_specs.values) if (slow_specs and slow_specs.values) else [_get_fixed_val("slow_len", 50)]
+            if fast_vals and slow_vals:
                 from .strategies.hma_crossover import _load_strategy_module
                 strategy_mod = _load_strategy_module()
                 hma_func = strategy_mod.hma
                 import numpy as np
                 import gc as _gc
-                unique_lengths = sorted(list(set(fast_specs.values) | set(slow_specs.values)))
+                unique_lengths = sorted(list(set(fast_vals) | set(slow_vals)))
                 length_to_idx = {int(length): i for i, length in enumerate(unique_lengths)}
 
                 # Memory safety: check if grid is too large to preallocate in RAM
@@ -1159,10 +1169,10 @@ def run_bayesian_optimization(
             mav_specs = next((s for s in parameter_specs if s.name == "mav"), None)
             change_atr_specs = next((s for s in parameter_specs if s.name == "change_atr"), None)
 
-            periods_vals = list(periods_specs.values) if (periods_specs and periods_specs.values) else [10]
-            length_vals = list(length_specs.values) if (length_specs and length_specs.values) else [10]
-            mav_vals = list(mav_specs.values) if (mav_specs and mav_specs.values) else ["EMA"]
-            change_atr_vals = list(change_atr_specs.values) if (change_atr_specs and change_atr_specs.values) else [True]
+            periods_vals = list(periods_specs.values) if (periods_specs and periods_specs.values) else [_get_fixed_val("periods", 10)]
+            length_vals = list(length_specs.values) if (length_specs and length_specs.values) else [_get_fixed_val("length", 10)]
+            mav_vals = list(mav_specs.values) if (mav_specs and mav_specs.values) else [_get_fixed_val("mav", "EMA")]
+            change_atr_vals = list(change_atr_specs.values) if (change_atr_specs and change_atr_specs.values) else [_get_fixed_val("change_atr", True)]
 
             from .strategies.pmax_explorer import _load_strategy_module
             strategy_mod = _load_strategy_module()
@@ -1324,9 +1334,9 @@ def run_bayesian_optimization(
             atr_length_specs = next((s for s in parameter_specs if s.name == "atrLength"), None)
             lookback_specs = next((s for s in parameter_specs if s.name == "lookback"), None)
 
-            length_vals = list(length_specs.values) if (length_specs and length_specs.values) else [50]
-            atr_length_vals = list(atr_length_specs.values) if (atr_length_specs and atr_length_specs.values) else [14]
-            lookback_vals = list(lookback_specs.values) if (lookback_specs and lookback_specs.values) else [5]
+            length_vals = list(length_specs.values) if (length_specs and length_specs.values) else [_get_fixed_val("length", 50)]
+            atr_length_vals = list(atr_length_specs.values) if (atr_length_specs and atr_length_specs.values) else [_get_fixed_val("atrLength", 14)]
+            lookback_vals = list(lookback_specs.values) if (lookback_specs and lookback_specs.values) else [_get_fixed_val("lookback", 5)]
 
             # Memory safety: check if grid is too large to preallocate in RAM
             estimated_bytes = (2 * len(length_vals) + 2 * len(lookback_vals) + len(atr_length_vals)) * len(data) * 8
@@ -1463,11 +1473,11 @@ def run_bayesian_optimization(
             atr_len_specs = next((s for s in parameter_specs if s.name == "atr_len"), None)
             rsi_len_specs = next((s for s in parameter_specs if s.name == "rsi_len"), None)
 
-            source_vals = list(source_specs.values) if (source_specs and source_specs.values) else ["close"]
-            length_vals = list(length_specs.values) if (length_specs and length_specs.values) else [21]
-            smoothing_vals = list(smoothing_specs.values) if (smoothing_specs and smoothing_specs.values) else [5]
-            atr_len_vals = list(atr_len_specs.values) if (atr_len_specs and atr_len_specs.values) else [14]
-            rsi_len_vals = list(rsi_len_specs.values) if (rsi_len_specs and rsi_len_specs.values) else [14]
+            source_vals = list(source_specs.values) if (source_specs and source_specs.values) else [_get_fixed_val("source", "close")]
+            length_vals = list(length_specs.values) if (length_specs and length_specs.values) else [_get_fixed_val("length", 21)]
+            smoothing_vals = list(smoothing_specs.values) if (smoothing_specs and smoothing_specs.values) else [_get_fixed_val("efficiency_smoothing", 5)]
+            atr_len_vals = list(atr_len_specs.values) if (atr_len_specs and atr_len_specs.values) else [_get_fixed_val("atr_len", 14)]
+            rsi_len_vals = list(rsi_len_specs.values) if (rsi_len_specs and rsi_len_specs.values) else [_get_fixed_val("rsi_len", 14)]
 
             from .strategies.adaptive_volatility_trend import _load_strategy_module
             strategy_mod = _load_strategy_module()
@@ -1576,12 +1586,12 @@ def run_bayesian_optimization(
             atr_len_specs = next((s for s in parameter_specs if s.name == "atr_len"), None)
             swing_lookback_specs = next((s for s in parameter_specs if s.name == "swing_lookback"), None)
 
-            ma_type1_vals = list(ma_type1_specs.values) if (ma_type1_specs and ma_type1_specs.values) else ["EMA"]
-            ma_type2_vals = list(ma_type2_specs.values) if (ma_type2_specs and ma_type2_specs.values) else ["EMA"]
-            ma_length1_vals = list(ma_length1_specs.values) if (ma_length1_specs and ma_length1_specs.values) else [21]
-            ma_length2_vals = list(ma_length2_specs.values) if (ma_length2_specs and ma_length2_specs.values) else [50]
-            atr_len_vals = list(atr_len_specs.values) if (atr_len_specs and atr_len_specs.values) else [14]
-            swing_lookback_vals = list(swing_lookback_specs.values) if (swing_lookback_specs and swing_lookback_specs.values) else [5]
+            ma_type1_vals = list(ma_type1_specs.values) if (ma_type1_specs and ma_type1_specs.values) else [_get_fixed_val("ma_type1", "EMA")]
+            ma_type2_vals = list(ma_type2_specs.values) if (ma_type2_specs and ma_type2_specs.values) else [_get_fixed_val("ma_type2", "EMA")]
+            ma_length1_vals = list(ma_length1_specs.values) if (ma_length1_specs and ma_length1_specs.values) else [_get_fixed_val("ma_length1", 21)]
+            ma_length2_vals = list(ma_length2_specs.values) if (ma_length2_specs and ma_length2_specs.values) else [_get_fixed_val("ma_length2", 50)]
+            atr_len_vals = list(atr_len_specs.values) if (atr_len_specs and atr_len_specs.values) else [_get_fixed_val("atr_len", 14)]
+            swing_lookback_vals = list(swing_lookback_specs.values) if (swing_lookback_specs and swing_lookback_specs.values) else [_get_fixed_val("swing_lookback", 5)]
 
             from .strategies.commas_bot import _load_strategy_module
             strategy_mod = _load_strategy_module()
@@ -1678,7 +1688,7 @@ def run_bayesian_optimization(
 
         elif strategy == "noise_boundary_intraday":
             lookback_specs = next((s for s in parameter_specs if s.name == "lookback_days"), None)
-            lookback_vals = list(lookback_specs.values) if (lookback_specs and lookback_specs.values) else [20]
+            lookback_vals = list(lookback_specs.values) if (lookback_specs and lookback_specs.values) else [_get_fixed_val("lookback_days", 20)]
 
             import backtest_engine.strategies.noise_boundary_intraday as nb_mod
             import numpy as np

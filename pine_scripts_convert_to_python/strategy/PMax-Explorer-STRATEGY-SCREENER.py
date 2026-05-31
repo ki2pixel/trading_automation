@@ -170,10 +170,20 @@ def _round_trip_costs_for_side(side: int, qty: float, config: PMaxExplorerConfig
     return commission_per_order * 2.0 + slippage_per_side * 2.0
 
 # --- Pine Script Indicators Math ---
+from numba import njit
 
+@njit(cache=True)
 def pine_sma(src: np.ndarray, length: int) -> np.ndarray:
-    return pd.Series(src).rolling(length).mean().to_numpy()
+    n = len(src)
+    res = np.full(n, np.nan)
+    for i in range(length - 1, n):
+        s = 0.0
+        for j in range(length):
+            s += src[i - j]
+        res[i] = s / length
+    return res
 
+@njit(cache=True)
 def pine_ema(src: np.ndarray, length: int) -> np.ndarray:
     alpha = 2.0 / (length + 1)
     res = np.zeros_like(src)
@@ -185,37 +195,52 @@ def pine_ema(src: np.ndarray, length: int) -> np.ndarray:
             res[i] = alpha * src[i] + (1 - alpha) * res[i-1]
     return res
 
+@njit(cache=True)
 def pine_wma(src: np.ndarray, length: int) -> np.ndarray:
-    weights = np.arange(1, length + 1, dtype=float)
+    n = len(src)
+    res = np.full(n, np.nan)
+    weights = np.arange(1, length + 1, dtype=np.float64)
     weight_sum = weights.sum()
-    s = pd.Series(src)
-    return s.rolling(length, min_periods=length).apply(
-        lambda values: float(np.dot(values, weights) / weight_sum),
-        raw=True,
-    ).to_numpy()
+    for i in range(length - 1, n):
+        s = 0.0
+        for j in range(length):
+            s += src[i - length + 1 + j] * weights[j]
+        res[i] = s / weight_sum
+    return res
 
+@njit(cache=True)
 def pine_tma(src: np.ndarray, length: int) -> np.ndarray:
-    # sma(sma(src, ceil(length / 2)), floor(length / 2) + 1)
-    half_ceil = int(math.ceil(length / 2.0))
-    half_floor_plus = int(math.floor(length / 2.0)) + 1
+    half_ceil = int(np.ceil(length / 2.0))
+    half_floor_plus = int(np.floor(length / 2.0)) + 1
     sma1 = pine_sma(src, half_ceil)
     return pine_sma(sma1, half_floor_plus)
 
+@njit(cache=True)
 def pine_var(src: np.ndarray, length: int) -> np.ndarray:
     valpha = 2.0 / (length + 1)
     n = len(src)
-    var_arr = np.zeros(n, dtype=float)
+    var_arr = np.zeros(n, dtype=np.float64)
     
-    # Calculate vud1 and vdd1
-    vud1 = np.zeros(n, dtype=float)
-    vdd1 = np.zeros(n, dtype=float)
+    vud1 = np.zeros(n, dtype=np.float64)
+    vdd1 = np.zeros(n, dtype=np.float64)
     for i in range(1, n):
-        vud1[i] = src[i] - src[i-1] if src[i] > src[i-1] else 0.0
-        vdd1[i] = src[i-1] - src[i] if src[i] < src[i-1] else 0.0
-        
-    vud_sum = pd.Series(vud1).rolling(9, min_periods=9).sum().to_numpy()
-    vdd_sum = pd.Series(vdd1).rolling(9, min_periods=9).sum().to_numpy()
+        if src[i] > src[i-1]:
+            vud1[i] = src[i] - src[i-1]
+        elif src[i] < src[i-1]:
+            vdd1[i] = src[i-1] - src[i]
+            
+    vud_sum = np.full(n, np.nan)
+    vdd_sum = np.full(n, np.nan)
     
+    for i in range(8, n):
+        su = 0.0
+        sd = 0.0
+        for j in range(9):
+            su += vud1[i - j]
+            sd += vdd1[i - j]
+        vud_sum[i] = su
+        vdd_sum[i] = sd
+        
     for i in range(n):
         if np.isnan(vud_sum[i]) or np.isnan(vdd_sum[i]):
             vcmo = 0.0
@@ -231,10 +256,11 @@ def pine_var(src: np.ndarray, length: int) -> np.ndarray:
         
     return var_arr
 
+@njit(cache=True)
 def pine_wwma(src: np.ndarray, length: int) -> np.ndarray:
     wwalpha = 1.0 / length
     n = len(src)
-    wwma_arr = np.zeros(n, dtype=float)
+    wwma_arr = np.zeros(n, dtype=np.float64)
     for i in range(n):
         prev = wwma_arr[i-1] if i > 0 else src[0]
         if np.isnan(prev):
@@ -242,11 +268,12 @@ def pine_wwma(src: np.ndarray, length: int) -> np.ndarray:
         wwma_arr[i] = wwalpha * src[i] + (1 - wwalpha) * prev
     return wwma_arr
 
+@njit(cache=True)
 def pine_zlema(src: np.ndarray, length: int) -> np.ndarray:
     half_len = length / 2.0
     zxLag = int(half_len) if half_len == round(half_len) else int((length - 1) / 2.0)
     n = len(src)
-    zxEMAData = np.zeros(n, dtype=float)
+    zxEMAData = np.zeros(n, dtype=np.float64)
     for i in range(n):
         lag_idx = i - zxLag
         if lag_idx >= 0:
@@ -256,32 +283,51 @@ def pine_zlema(src: np.ndarray, length: int) -> np.ndarray:
             
     return pine_ema(zxEMAData, length)
 
+@njit(cache=True)
 def pine_linreg(src: np.ndarray, length: int, offset: int = 0) -> np.ndarray:
     n = len(src)
     res = np.full(n, np.nan)
     x = np.arange(length)
-    x_mean = x.mean()
-    x_var = ((x - x_mean) ** 2).sum()
+    x_mean = 0.0
+    for j in range(length):
+        x_mean += x[j]
+    x_mean /= length
+    
+    x_var = 0.0
+    for j in range(length):
+        x_var += (x[j] - x_mean) ** 2
+        
     if x_var == 0:
         return res
         
     for i in range(length - 1 + offset, n):
-        y = src[i - offset - length + 1 : i - offset + 1]
-        y_mean = y.mean()
-        b1 = ((x - x_mean) * (y - y_mean)).sum() / x_var
+        y_sum = 0.0
+        for j in range(length):
+            y_sum += src[i - offset - length + 1 + j]
+        y_mean = y_sum / length
+        
+        cov = 0.0
+        for j in range(length):
+            cov += (x[j] - x_mean) * (src[i - offset - length + 1 + j] - y_mean)
+            
+        b1 = cov / x_var
         b0 = y_mean - b1 * x_mean
         res[i] = b0 + b1 * (length - 1)
     return res
 
+@njit(cache=True)
 def pine_tsf(src: np.ndarray, length: int) -> np.ndarray:
     lrc = pine_linreg(src, length, 0)
     lrc1 = pine_linreg(src, length, 1)
-    lrs = lrc - lrc1
-    return lrc + lrs
+    res = np.zeros_like(src)
+    for i in range(len(src)):
+        res[i] = lrc[i] + (lrc[i] - lrc1[i])
+    return res
 
+@njit(cache=True)
 def compute_atr(high: np.ndarray, low: np.ndarray, close: np.ndarray, length: int, change_atr: bool) -> np.ndarray:
     n = len(close)
-    tr = np.zeros(n, dtype=float)
+    tr = np.zeros(n, dtype=np.float64)
     tr[0] = high[0] - low[0]
     for i in range(1, n):
         h_l = high[i] - low[i]
@@ -290,19 +336,19 @@ def compute_atr(high: np.ndarray, low: np.ndarray, close: np.ndarray, length: in
         tr[i] = max(h_l, h_pc, l_pc)
         
     if change_atr:
-        # Pine's atr() function is rma(tr, length)
-        # rma is an ema with alpha = 1 / length
         alpha = 1.0 / length
-        rma = np.zeros(n, dtype=float)
-        # In Pine, RMA initializes with SMA of the first `length` periods
-        initial_sma = np.mean(tr[:length]) if length <= n else np.mean(tr)
-        rma[length - 1] = initial_sma
-        for i in range(length, n):
-            rma[i] = alpha * tr[i] + (1 - alpha) * rma[i-1]
-        rma[:length-1] = np.nan
+        rma = np.full(n, np.nan)
+        s = 0.0
+        for i in range(min(length, n)):
+            s += tr[i]
+        initial_sma = s / min(length, n)
+        
+        if length <= n:
+            rma[length - 1] = initial_sma
+            for i in range(length, n):
+                rma[i] = alpha * tr[i] + (1.0 - alpha) * rma[i-1]
         return rma
     else:
-        # atr2 = sma(tr, length)
         return pine_sma(tr, length)
 
 def compute_pmax(mavg: np.ndarray, atr: np.ndarray, multiplier: float) -> Tuple[np.ndarray, np.ndarray]:

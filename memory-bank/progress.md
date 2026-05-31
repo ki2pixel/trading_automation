@@ -12,10 +12,14 @@
 - [x] [2026-05-31 01:21:00] - Initialisation du dépôt Git local, configuration du `.gitignore` pour protéger les gros datasets/bases de données, et push initial de la branche `main` vers le dépôt distant GitHub.
 - [x] [2026-05-31 01:28:00] - Audit et suppression sécurisée du code source inactif `ressources/vectorbt-1.0.0/` pour alléger le dépôt.
 - [x] [2026-05-31 01:33:00] - Audit et suppression sécurisée de l'archive d'inspiration inactive `ressources/KLineChart-10.0.0-beta1/` (6.2 Mo libérés) et mise à jour de `.gitignore`.
+- [x] [2026-05-31 02:30:00] - Audit complet et création des rapports d'optimisation (Passe 1) pour la stratégie HMA Crossover (Signal Brut).
 - [x] [2026-05-31 01:43:00] - Conception et implémentation de l'arsenal de 7 spécialisations métiers (SKILL.md) dans `.agents/skills/` pour encadrer le développement du moteur de trading (Supabase remplacé par local-parquet-storage).
+- [x] [2026-05-31 03:05:00] - Correction de la fuite de mémoire et du freeze lors du pré-scan VectorBT de la stratégie `pmax_explorer.py` via le passage par arrays Numpy aux workers.
+- [x] [2026-05-31 13:00:00] - Correction du bug "too many indices for array" bloquant la réduction du parameter_specs dans le pré-scan VectorBT de `pmax_explorer.py`.
+- [x] [2026-05-31 13:00:00] - Accélération massive des grilles d'initialisation MAV pour l'optimisation via la compilation Numba (`@njit`), éliminant le "temps mort" de 150 secondes à 3 secondes.
 
 ## Tâches en Cours
-- [ ] Configuration de l'environnement de développement et de la base de données.
+- Aucune tâche en cours.
 
 ## Tâches Futures
 - [ ] Conception du moteur de backtest.

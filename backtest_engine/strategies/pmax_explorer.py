@@ -347,21 +347,25 @@ except ImportError:
 
 # Globals for multiprocessing workers to reference mapped memory directly
 _worker_close = None
-_worker_ma_df = None
-_worker_atr_df = None
+_worker_ma_np = None
+_worker_atr_np = None
+_worker_length_to_idx = None
+_worker_periods_to_idx = None
 _worker_multiplier_vals = None
 _worker_timeframe_minutes = None
 
-def _init_prescan_worker(close, ma_df, atr_df, multiplier_vals, timeframe_mins):
-    global _worker_close, _worker_ma_df, _worker_atr_df, _worker_multiplier_vals, _worker_timeframe_minutes
+def _init_prescan_worker(close, ma_np, atr_np, length_to_idx, periods_to_idx, multiplier_vals, timeframe_mins):
+    global _worker_close, _worker_ma_np, _worker_atr_np, _worker_length_to_idx, _worker_periods_to_idx, _worker_multiplier_vals, _worker_timeframe_minutes
     _worker_close = close
-    _worker_ma_df = ma_df
-    _worker_atr_df = atr_df
+    _worker_ma_np = ma_np
+    _worker_atr_np = atr_np
+    _worker_length_to_idx = length_to_idx
+    _worker_periods_to_idx = periods_to_idx
     _worker_multiplier_vals = multiplier_vals
     _worker_timeframe_minutes = timeframe_mins
 
 def _process_prescan_batch(batch_combos):
-    global _worker_close, _worker_ma_df, _worker_atr_df, _worker_multiplier_vals, _worker_timeframe_minutes
+    global _worker_close, _worker_ma_np, _worker_atr_np, _worker_length_to_idx, _worker_periods_to_idx, _worker_multiplier_vals, _worker_timeframe_minutes
     import pandas as pd
     import numpy as np
     import vectorbt as vbt
@@ -378,12 +382,12 @@ def _process_prescan_batch(batch_combos):
         batch_exits = {}
 
         for periods, length in batch_combos:
-            mavg = _worker_ma_df[length].to_numpy(dtype=float)
+            mavg = _worker_ma_np[:, _worker_length_to_idx[length]]
             mavg_shifted = np.empty_like(mavg)
             mavg_shifted[0] = mavg[0]
             mavg_shifted[1:] = mavg[:-1]
 
-            atr = _worker_atr_df[periods].to_numpy(dtype=float)
+            atr = _worker_atr_np[:, _worker_periods_to_idx[periods]]
             pmax_multi = _compute_pmax_multi(mavg, atr, mults_arr)
 
             entries_multi = (mavg[:, None] > pmax_multi) & (mavg_shifted[:, None] <= pmax_multi)
@@ -438,10 +442,11 @@ def vectorbt_prescan(
     multiplier_specs = next((s for s in parameter_specs if s.name == "multiplier"), None)
     length_specs = next((s for s in parameter_specs if s.name == "length"), None)
 
-    if not all([periods_specs, multiplier_specs, length_specs]):
-        _write_prescan_report(output_dir, "skipped", None, {})
-        return parameter_specs
-    if not all([s.values for s in [periods_specs, multiplier_specs, length_specs]]):
+    periods_vals = list(periods_specs.values) if (periods_specs and periods_specs.values) else [10]
+    multiplier_vals = list(multiplier_specs.values) if (multiplier_specs and multiplier_specs.values) else [3.0]
+    length_vals = list(length_specs.values) if (length_specs and length_specs.values) else [10]
+
+    if len(periods_vals) * len(multiplier_vals) * len(length_vals) <= 1:
         _write_prescan_report(output_dir, "skipped", None, {})
         return parameter_specs
 
@@ -472,9 +477,9 @@ def vectorbt_prescan(
             logger.info(f"Slicing data from {len(data)} to 150000 bars for fast pre-scan processing.")
             data = data.iloc[-150000:]
 
-        periods_vals = sorted({int(v) for v in periods_specs.values})
-        multiplier_vals = sorted({float(v) for v in multiplier_specs.values})
-        length_vals = sorted({int(v) for v in length_specs.values})
+        periods_vals = sorted({int(v) for v in periods_vals})
+        multiplier_vals = sorted({float(v) for v in multiplier_vals})
+        length_vals = sorted({int(v) for v in length_vals})
 
         downsampled = downsample_parameter_grid(
             {"periods": periods_vals, "multiplier": multiplier_vals, "length": length_vals},
@@ -492,8 +497,17 @@ def vectorbt_prescan(
 
         # Pre-calculer toutes les EMA (mav fixe = EMA) avec VectorBT
         all_ma = vbt.MA.run(source, window=length_vals)
+        ma_np = all_ma.ma.to_numpy(dtype=float)
+        if ma_np.ndim == 1:
+            ma_np = ma_np.reshape(-1, 1)
+        length_to_idx = {l: idx for idx, l in enumerate(length_vals)}
+        
         # Pre-calculer toutes les ATR avec VectorBT
         all_atr = vbt.ATR.run(high, low, close, window=periods_vals)
+        atr_np = all_atr.atr.to_numpy(dtype=float)
+        if atr_np.ndim == 1:
+            atr_np = atr_np.reshape(-1, 1)
+        periods_to_idx = {p: idx for idx, p in enumerate(periods_vals)}
 
         module = _load_strategy_module()
 
@@ -531,7 +545,7 @@ def vectorbt_prescan(
                     max_workers=workers,
                     mp_context=ctx,
                     initializer=_init_prescan_worker,
-                    initargs=(close, all_ma.ma, all_atr.atr, multiplier_vals, prescan_timeframe)
+                    initargs=(close, ma_np, atr_np, length_to_idx, periods_to_idx, multiplier_vals, prescan_timeframe)
                 ) as executor:
                     completed = 0
                     futures = {executor.submit(_process_prescan_batch, b): b for b in batches}
@@ -592,12 +606,12 @@ def vectorbt_prescan(
                         batch_exits = {}
 
                         for periods, length in batch_combos:
-                            mavg = all_ma.ma[length].to_numpy(dtype=float)
+                            mavg = ma_np[:, length_to_idx[length]]
                             mavg_shifted = np.empty_like(mavg)
                             mavg_shifted[0] = mavg[0]
                             mavg_shifted[1:] = mavg[:-1]
 
-                            atr = all_atr.atr[periods].to_numpy(dtype=float)
+                            atr = atr_np[:, periods_to_idx[periods]]
                             pmax_multi = _compute_pmax_multi(mavg, atr, mults_arr)
 
                             entries_multi = (mavg[:, None] > pmax_multi) & (mavg_shifted[:, None] <= pmax_multi)
@@ -659,12 +673,12 @@ def vectorbt_prescan(
         margin_mult = max(0.1, (max_mult - min_mult) * 0.1)
         margin_len = max(1, int((max_len - min_len) * 0.1))
 
-        min_periods = max(int(periods_specs.values[0]), min_periods - margin_periods)
-        max_periods = min(int(periods_specs.values[-1]), max_periods + margin_periods)
-        min_mult = max(float(multiplier_specs.values[0]), min_mult - margin_mult)
-        max_mult = min(float(multiplier_specs.values[-1]), max_mult + margin_mult)
-        min_len = max(int(length_specs.values[0]), min_len - margin_len)
-        max_len = min(int(length_specs.values[-1]), max_len + margin_len)
+        min_periods = max(int(periods_vals[0]), min_periods - margin_periods)
+        max_periods = min(int(periods_vals[-1]), max_periods + margin_periods)
+        min_mult = max(float(multiplier_vals[0]), min_mult - margin_mult)
+        max_mult = min(float(multiplier_vals[-1]), max_mult + margin_mult)
+        min_len = max(int(length_vals[0]), min_len - margin_len)
+        max_len = min(int(length_vals[-1]), max_len + margin_len)
 
         # Reconstruire ParameterGridSpec avec les nouvelles bornes
         new_specs = []
@@ -693,19 +707,19 @@ def vectorbt_prescan(
             top_n,
             {
                 "periods": {
-                    "original_bounds": [int(periods_specs.values[0]), int(periods_specs.values[-1])],
-                    "new_bounds": [int(periods_filtered[0]), int(periods_filtered[-1])],
-                    "filtered_values": list(periods_filtered),
+                    "original_bounds": [int(periods_vals[0]), int(periods_vals[-1])],
+                    "new_bounds": [int((periods_filtered or periods_vals)[0]), int((periods_filtered or periods_vals)[-1])],
+                    "filtered_values": list(periods_filtered or periods_vals),
                 },
                 "multiplier": {
-                    "original_bounds": [float(multiplier_specs.values[0]), float(multiplier_specs.values[-1])],
-                    "new_bounds": [float(mult_filtered[0]), float(mult_filtered[-1])],
-                    "filtered_values": list(mult_filtered),
+                    "original_bounds": [float(multiplier_vals[0]), float(multiplier_vals[-1])],
+                    "new_bounds": [float((mult_filtered or multiplier_vals)[0]), float((mult_filtered or multiplier_vals)[-1])],
+                    "filtered_values": list(mult_filtered or multiplier_vals),
                 },
                 "length": {
-                    "original_bounds": [int(length_specs.values[0]), int(length_specs.values[-1])],
-                    "new_bounds": [int(len_filtered[0]), int(len_filtered[-1])],
-                    "filtered_values": list(len_filtered),
+                    "original_bounds": [int(length_vals[0]), int(length_vals[-1])],
+                    "new_bounds": [int((len_filtered or length_vals)[0]), int((len_filtered or length_vals)[-1])],
+                    "filtered_values": list(len_filtered or length_vals),
                 },
             },
         )
@@ -721,7 +735,8 @@ def vectorbt_prescan(
         logger.warning("VectorBT n'est pas installe, impossible de lancer le pre-scan.")
     except Exception as e:
         _write_prescan_report(output_dir, "error", None, {})
-        logger.warning(f"Erreur Pre-Scan VectorBT: {e}. Optuna utilisera les bornes globales.")
+        import traceback; logger.warning(f"Erreur Pre-Scan VectorBT: {e}\n{traceback.format_exc()}"); import traceback; logger.warning(f"Erreur Pre-Scan VectorBT: {e}\n{traceback.format_exc()}"); logger.warning(f"Erreur Pre-Scan VectorBT: {e}. Optuna utilisera les bornes globales.")
+        return parameter_specs
 
     _write_prescan_report(output_dir, "skipped", None, {})
     return parameter_specs
