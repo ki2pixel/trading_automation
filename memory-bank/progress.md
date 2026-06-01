@@ -23,6 +23,8 @@
 - [x] [2026-06-01 10:07:00] - Correction d'un bug de retour d'état vide (`compute_full_metrics=False`) dans `api_viewer_chart_data` qui faisait échouer `test_fastapi_viewer_chart_data`.
 - [x] [2026-06-01 12:10:00] - Nettoyage sécurisé du dossier scratch (suppression de 25 artefacts de debug et scripts de test obsolètes suite aux correctifs récents).
 - [x] [2026-06-01 12:18:00] - Mise à jour exhaustive des documents de conception (productContext.md, systemPatterns.md) selon l'audit gap analysis, reflétant l'architecture réelle (multiprocessing, Parquet, Optuna, API Trading 212).
+- [x] [2026-06-01 13:37:00] - Audit des rapports d'optimisation (Passe 1) pour PMax Explorer. Rédaction du rapport et de la synthèse stratégique.
+- [x] [2026-06-01 13:51:00] - Audit des rapports d'optimisation (Passe 2) pour PMax Explorer sur GMAB. Validation de la configuration et mise à jour de la documentation.
 
 ## Tâches en Cours
 - Aucune tâche en cours.
