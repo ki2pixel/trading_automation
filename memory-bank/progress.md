@@ -25,6 +25,7 @@
 - [x] [2026-06-01 12:18:00] - Mise à jour exhaustive des documents de conception (productContext.md, systemPatterns.md) selon l'audit gap analysis, reflétant l'architecture réelle (multiprocessing, Parquet, Optuna, API Trading 212).
 - [x] [2026-06-01 13:37:00] - Audit des rapports d'optimisation (Passe 1) pour PMax Explorer. Rédaction du rapport et de la synthèse stratégique.
 - [x] [2026-06-01 13:51:00] - Audit des rapports d'optimisation (Passe 2) pour PMax Explorer sur GMAB. Validation de la configuration et mise à jour de la documentation.
+- [x] [2026-06-01 22:12:00] - Création du rapport Passe 1 et synthèse stratégique pour `hma_crossover`.
 
 ## Tâches en Cours
 - Aucune tâche en cours.
