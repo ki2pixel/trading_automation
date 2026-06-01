@@ -56,7 +56,7 @@
             </select>
           </label>
           <label>Symbole
-            <select x-model="form.symbol" @change="scheduleEstimate(0)">
+            <select x-model="form.symbol" @change="onSymbolChange()">
               <template x-for="symbol in symbols" :key="symbol">
                 <option :value="symbol" x-text="symbol"></option>
               </template>

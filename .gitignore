@@ -58,6 +58,7 @@ financial_datasets/
 SheetsFinance_Export/
 storage/
 strategy_reports_optipie/
+reports/
 
 # Large ZIP archives or dumps
 *.zip

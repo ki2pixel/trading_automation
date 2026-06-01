@@ -38,7 +38,7 @@
     "use_net_bracket_exits": false,
     "take_profit_net_percent": 10.0,
     "stop_loss_net_percent": 10.0,
-    "use_safety_stop": true,
+    "use_safety_stop": false,
     "safety_stop_applies_to": "Long only",
     "safety_stop_mode": "Net loss OR max bars",
     "safety_max_net_loss_mode": "% of entry value",

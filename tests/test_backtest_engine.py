@@ -1875,6 +1875,10 @@ class BackendSecurityTests(unittest.TestCase):
                     "low": [val - 0.5 for val in closes],
                     "close": closes,
                     "volume": [1000] * len(index),
+                    "quote_asset_volume": [1000.0] * len(index),
+                    "number_of_trades": [10] * len(index),
+                    "taker_buy_base_asset_volume": [500.0] * len(index),
+                    "taker_buy_quote_asset_volume": [500.0] * len(index),
                 }
             )
             frame.to_csv(out / "TEST.csv.gz", index=False, compression="gzip")

@@ -17,6 +17,12 @@
 - [x] [2026-05-31 03:05:00] - Correction de la fuite de mémoire et du freeze lors du pré-scan VectorBT de la stratégie `pmax_explorer.py` via le passage par arrays Numpy aux workers.
 - [x] [2026-05-31 13:00:00] - Correction du bug "too many indices for array" bloquant la réduction du parameter_specs dans le pré-scan VectorBT de `pmax_explorer.py`.
 - [x] [2026-05-31 13:00:00] - Accélération massive des grilles d'initialisation MAV pour l'optimisation via la compilation Numba (`@njit`), éliminant le "temps mort" de 150 secondes à 3 secondes.
+- [x] [2026-05-31 15:55:00] - Exécution d'un A/B testing multithreadé (15 workers) prouvant que le safety_stop de 5% n'est pas la cause de la sous-performance sur SAP (absence d'edge de suivi de tendance sur cet actif).
+- [x] [2026-05-31 16:51:00] - Audit des rapports d'optimisation (Passe 1) pour PMax Explorer. Aucun signal éligible n'a été identifié sur l'ensemble des actifs, invalidant la Passe 2 pour ce portefeuille.- [x] [2026-06-01 10:07:00] - Correction du nettoyage des répertoires d'artefacts pour les jobs d'optimisation FAILED (`web.py`).
+- [x] [2026-06-01 10:07:00] - Forçage de l'actualisation des limites temporelles d'historique lors d'un changement de symbole avec l'option `useFullHistory` (`optimizerApp.js`, `index.html`).
+- [x] [2026-06-01 10:07:00] - Correction d'un bug de retour d'état vide (`compute_full_metrics=False`) dans `api_viewer_chart_data` qui faisait échouer `test_fastapi_viewer_chart_data`.
+- [x] [2026-06-01 12:10:00] - Nettoyage sécurisé du dossier scratch (suppression de 25 artefacts de debug et scripts de test obsolètes suite aux correctifs récents).
+- [x] [2026-06-01 12:18:00] - Mise à jour exhaustive des documents de conception (productContext.md, systemPatterns.md) selon l'audit gap analysis, reflétant l'architecture réelle (multiprocessing, Parquet, Optuna, API Trading 212).
 
 ## Tâches en Cours
 - Aucune tâche en cours.

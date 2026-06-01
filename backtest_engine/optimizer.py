@@ -618,7 +618,21 @@ def _evaluate_hma_parameters(
         )
         closed_trades = int(result.metrics.get("closed_trades") or 0)
         total_trades += closed_trades
-        if score_metric not in result.metrics:
+        has_missing_constraint_metrics = False
+        if constraints is not None and constraints.active():
+            required_metrics = []
+            if constraints.min_exposure_pct is not None:
+                required_metrics.append("exposure_pct")
+            if constraints.max_drawdown_pct is not None:
+                required_metrics.append("max_drawdown_pct")
+            if constraints.min_profit_factor is not None:
+                required_metrics.append("profit_factor")
+            for m in required_metrics:
+                if m not in result.metrics:
+                    has_missing_constraint_metrics = True
+                    break
+
+        if score_metric not in result.metrics or has_missing_constraint_metrics:
             from .metrics import compute_metrics, MetricsInput
             metrics, equity_curve = compute_metrics(
                 MetricsInput(

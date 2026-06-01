@@ -348,6 +348,16 @@ def _run_job(
             },
         )
     except Exception as exc:  # noqa: BLE001 - surfaced to local UI
+        # Check if output directory was created before the failure and update store
+        try:
+            strat = payload.get("strategy") if payload else None
+            sym = payload.get("symbol") if payload else None
+            if strat and sym:
+                potential_output_dir = output_root / strat / sym / f"run_{job_id}"
+                if potential_output_dir.exists():
+                    store.update(job_id, output_dir=str(potential_output_dir))
+        except Exception:
+            pass
         store.update(job_id, status="FAILED", error=str(exc))
 
 
@@ -606,9 +616,27 @@ def create_optimizer_app(
                 return _api_error("active jobs must be cancelled or finished before deletion", status_code=409)
 
         output_dir_deleted = False
+        output_path = None
         if job.output_dir:
             try:
                 output_path = resolve_repo_path(repo_root, job.output_dir, "output_dir")
+            except Exception as exc:  # noqa: BLE001 - local API validation response
+                return _api_error(str(exc), status_code=400)
+        else:
+            # Fallback discovery mechanism
+            strategy = job.request.get("strategy")
+            symbol = job.request.get("symbol")
+            if strategy and symbol:
+                try:
+                    reports_dir = get_reports_dir(repo_root)
+                    potential_path = reports_dir / "local_optimizer" / strategy / symbol / f"run_{job_id}"
+                    if potential_path.exists():
+                        output_path = potential_path
+                except Exception:
+                    pass
+
+        if output_path:
+            try:
                 # Safety checks to prevent accidental/malicious recursive deletion
                 reports_dir = get_reports_dir(repo_root)
                 try:
@@ -635,7 +663,7 @@ def create_optimizer_app(
                 if output_path.exists():
                     if not output_path.is_dir():
                         return _api_error("job output_dir is not a directory", status_code=400)
-                    shutil.rmtree(output_path)
+                    shutil.rmtree(output_path, ignore_errors=True)
                     output_dir_deleted = True
             except Exception as exc:  # noqa: BLE001 - local filesystem error should be visible in UI
                 return _api_error(f"could not delete job output directory: {exc}", status_code=500)
@@ -676,9 +704,28 @@ def create_optimizer_app(
                     skipped_active_count += 1
                     continue
 
+            output_path = None
             if job.output_dir:
                 try:
                     output_path = resolve_repo_path(repo_root, job.output_dir, "output_dir")
+                except Exception as exc:
+                    errors.append(f"Job {job_id}: {exc}")
+                    continue
+            else:
+                # Fallback discovery mechanism
+                strategy = job.request.get("strategy")
+                symbol = job.request.get("symbol")
+                if strategy and symbol:
+                    try:
+                        reports_dir = get_reports_dir(repo_root)
+                        potential_path = reports_dir / "local_optimizer" / strategy / symbol / f"run_{job_id}"
+                        if potential_path.exists():
+                            output_path = potential_path
+                    except Exception:
+                        pass
+
+            if output_path:
+                try:
                     # Safety checks to prevent accidental/malicious recursive deletion
                     reports_dir = get_reports_dir(repo_root)
                     try:
@@ -712,7 +759,7 @@ def create_optimizer_app(
                         if not output_path.is_dir():
                             errors.append(f"Job {job_id}: job output_dir is not a directory")
                             continue
-                        shutil.rmtree(output_path)
+                        shutil.rmtree(output_path, ignore_errors=True)
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"Job {job_id}: could not delete job output directory: {exc}")
                     continue
@@ -1038,7 +1085,7 @@ def create_optimizer_app(
             overrides=typed_overrides,
             initial_capital=initial_capital,
             timeframe_minutes=timeframe_minutes,
-            compute_full_metrics=False,
+            compute_full_metrics=True,
             repo_root=repo_root,
         )
 

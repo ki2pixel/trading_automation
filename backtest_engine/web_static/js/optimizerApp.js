@@ -235,9 +235,21 @@ function optimizerApp() {
     async onDatasetChange() {
       try {
         await this.loadSymbols();
-        this.scheduleEstimate(0);
+        if (this.form.useFullHistory) {
+            await this.onFullHistoryChange();
+        } else {
+            this.scheduleEstimate(0);
+        }
       } catch (error) {
         this.showError(error.message || String(error));
+      }
+    },
+
+    async onSymbolChange() {
+      if (this.form.useFullHistory) {
+          await this.onFullHistoryChange();
+      } else {
+          this.scheduleEstimate(0);
       }
     },
 
