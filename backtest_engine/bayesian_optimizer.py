@@ -476,75 +476,75 @@ def _init_worker_bayesian(
                 strategy_mod._SHARED_AVT_RSI_KEYS = avt_shm_metadata["rsi_keys"]
             except Exception as e:
                 logger.warning(f"Failed to mount shared Adaptive Volatility Trend grids onto strategy module: {e}")
-            # Mount shared commas_bot grids if available
-            if commas_bot_shm_metadata is not None:
-                from .shared_memory import SharedIndicatorVolume
-                import numpy as np
+        # Mount shared commas_bot grids if available
+        if commas_bot_shm_metadata is not None:
+            from .shared_memory import SharedIndicatorVolume
+            import numpy as np
 
-                # Attach to MA grid
-                ma_vol = SharedIndicatorVolume(
-                    shm_name=commas_bot_shm_metadata["ma_shm_name"],
-                    shape=commas_bot_shm_metadata["ma_shape"],
-                    dtype=np.dtype(commas_bot_shm_metadata["ma_dtype"])
-                )
-                _WORKER_SHM_VOLUMES.append(ma_vol)
-                ma_grid_view = ma_vol.get_view()
+            # Attach to MA grid
+            ma_vol = SharedIndicatorVolume(
+                shm_name=commas_bot_shm_metadata["ma_shm_name"],
+                shape=commas_bot_shm_metadata["ma_shape"],
+                dtype=np.dtype(commas_bot_shm_metadata["ma_dtype"])
+            )
+            _WORKER_SHM_VOLUMES.append(ma_vol)
+            ma_grid_view = ma_vol.get_view()
 
-                # Attach to ATR grid
-                atr_vol = SharedIndicatorVolume(
-                    shm_name=commas_bot_shm_metadata["atr_shm_name"],
-                    shape=commas_bot_shm_metadata["atr_shape"],
-                    dtype=np.dtype(commas_bot_shm_metadata["atr_dtype"])
-                )
-                _WORKER_SHM_VOLUMES.append(atr_vol)
-                atr_grid_view = atr_vol.get_view()
+            # Attach to ATR grid
+            atr_vol = SharedIndicatorVolume(
+                shm_name=commas_bot_shm_metadata["atr_shm_name"],
+                shape=commas_bot_shm_metadata["atr_shape"],
+                dtype=np.dtype(commas_bot_shm_metadata["atr_dtype"])
+            )
+            _WORKER_SHM_VOLUMES.append(atr_vol)
+            atr_grid_view = atr_vol.get_view()
 
-                # Attach to Swing grid
-                swing_vol = SharedIndicatorVolume(
-                    shm_name=commas_bot_shm_metadata["swing_shm_name"],
-                    shape=commas_bot_shm_metadata["swing_shape"],
-                    dtype=np.dtype(commas_bot_shm_metadata["swing_dtype"])
-                )
-                _WORKER_SHM_VOLUMES.append(swing_vol)
-                swing_grid_view = swing_vol.get_view()
+            # Attach to Swing grid
+            swing_vol = SharedIndicatorVolume(
+                shm_name=commas_bot_shm_metadata["swing_shm_name"],
+                shape=commas_bot_shm_metadata["swing_shape"],
+                dtype=np.dtype(commas_bot_shm_metadata["swing_dtype"])
+            )
+            _WORKER_SHM_VOLUMES.append(swing_vol)
+            swing_grid_view = swing_vol.get_view()
 
-                # Reset lock and mount onto the dynamically loaded strategy module
-                import backtest_engine.strategies.commas_bot as commas_mod_wrapper
-                import threading
-                commas_mod_wrapper._MODULE_LOCK = threading.Lock()
+            # Reset lock and mount onto the dynamically loaded strategy module
+            import backtest_engine.strategies.commas_bot as commas_mod_wrapper
+            import threading
+            commas_mod_wrapper._MODULE_LOCK = threading.Lock()
 
-                from .strategies.commas_bot import _load_strategy_module
-                try:
-                    strategy_mod = _load_strategy_module()
-                    strategy_mod._SHARED_CB_MA_GRID = ma_grid_view
-                    strategy_mod._SHARED_CB_MA_KEYS = commas_bot_shm_metadata["ma_keys"]
-                    strategy_mod._SHARED_CB_ATR_GRID = atr_grid_view
-                    strategy_mod._SHARED_CB_ATR_KEYS = commas_bot_shm_metadata["atr_keys"]
-                    strategy_mod._SHARED_CB_SWING_GRID = swing_grid_view
-                    strategy_mod._SHARED_CB_SWING_KEYS = commas_bot_shm_metadata["swing_keys"]
-                except Exception as e:
-                    logger.warning(f"Failed to mount shared 3Commas Bot grids onto strategy module: {e}")
+            from .strategies.commas_bot import _load_strategy_module
+            try:
+                strategy_mod = _load_strategy_module()
+                strategy_mod._SHARED_CB_MA_GRID = ma_grid_view
+                strategy_mod._SHARED_CB_MA_KEYS = commas_bot_shm_metadata["ma_keys"]
+                strategy_mod._SHARED_CB_ATR_GRID = atr_grid_view
+                strategy_mod._SHARED_CB_ATR_KEYS = commas_bot_shm_metadata["atr_keys"]
+                strategy_mod._SHARED_CB_SWING_GRID = swing_grid_view
+                strategy_mod._SHARED_CB_SWING_KEYS = commas_bot_shm_metadata["swing_keys"]
+            except Exception as e:
+                logger.warning(f"Failed to mount shared 3Commas Bot grids onto strategy module: {e}")
 
-            # Mount shared Noise Boundary grids if available
-            if noise_boundary_shm_metadata is not None:
-                from .shared_memory import SharedIndicatorVolume
-                import numpy as np
+        # Mount shared Noise Boundary grids if available
+        if noise_boundary_shm_metadata is not None:
+            from .shared_memory import SharedIndicatorVolume
+            import numpy as np
 
-                # Attach to Vol grid
-                vol_vol = SharedIndicatorVolume(
-                    shm_name=noise_boundary_shm_metadata["vol_shm_name"],
-                    shape=noise_boundary_shm_metadata["vol_shape"],
-                    dtype=np.dtype(noise_boundary_shm_metadata["vol_dtype"])
-                )
-                _WORKER_SHM_VOLUMES.append(vol_vol)
-                vol_grid_view = vol_vol.get_view()
+            # Attach to Vol grid
+            vol_vol = SharedIndicatorVolume(
+                shm_name=noise_boundary_shm_metadata["vol_shm_name"],
+                shape=noise_boundary_shm_metadata["vol_shape"],
+                dtype=np.dtype(noise_boundary_shm_metadata["vol_dtype"])
+            )
+            _WORKER_SHM_VOLUMES.append(vol_vol)
+            vol_grid_view = vol_vol.get_view()
 
-                import backtest_engine.strategies.noise_boundary_intraday as nb_mod
-                try:
-                    nb_mod._SHARED_NB_VOL_GRID = vol_grid_view
-                    nb_mod._SHARED_NB_VOL_KEYS = noise_boundary_shm_metadata["vol_keys"]
-                except Exception as e:
-                    logger.warning(f"Failed to mount shared Noise Boundary grids onto strategy module: {e}")
+            import backtest_engine.strategies.noise_boundary_intraday as nb_mod
+            try:
+                nb_mod._SHARED_NB_VOL_GRID = vol_grid_view
+                nb_mod._SHARED_NB_VOL_KEYS = noise_boundary_shm_metadata["vol_keys"]
+            except Exception as e:
+                logger.warning(f"Failed to mount shared Noise Boundary grids onto strategy module: {e}")
 
     except Exception as exc:
         import traceback, sys

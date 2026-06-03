@@ -154,9 +154,18 @@ def _wma(series: pd.Series, length: int) -> pd.Series:
         raise ValueError("WMA length must be >= 1")
     weights = np.arange(1, length + 1, dtype=float)
     weight_sum = weights.sum()
-    return series.rolling(length, min_periods=length).apply(
-        lambda values: float(np.dot(values, weights) / weight_sum), raw=True
-    )
+    
+    values = series.to_numpy(dtype=float)
+    if len(values) < length:
+        return pd.Series(np.nan, index=series.index)
+        
+    w = weights[::-1] / weight_sum
+    conv = np.convolve(values, w, mode='valid')
+    
+    pad = np.full(length - 1, np.nan)
+    result = np.concatenate((pad, conv))
+    
+    return pd.Series(result, index=series.index)
 
 
 def _hma(series: pd.Series, length: int) -> pd.Series:
@@ -172,12 +181,23 @@ def _hma(series: pd.Series, length: int) -> pd.Series:
 
 
 def _ha_open(df: pd.DataFrame) -> pd.Series:
-    ha_close = (df["open"] + df["high"] + df["low"] + df["close"]) / 4.0
-    ha_open = pd.Series(np.nan, index=df.index)
-    ha_open.iloc[0] = (df["open"].iloc[0] + df["close"].iloc[0]) / 2.0
+    if len(df) == 0:
+        return pd.Series(dtype=float, index=df.index)
+        
+    open_vals = df["open"].to_numpy(dtype=float)
+    close_vals = df["close"].to_numpy(dtype=float)
+    high_vals = df["high"].to_numpy(dtype=float)
+    low_vals = df["low"].to_numpy(dtype=float)
+    
+    ha_close_vals = (open_vals + high_vals + low_vals + close_vals) / 4.0
+    ha_open_vals = np.empty(len(df), dtype=float)
+    
+    ha_open_vals[0] = (open_vals[0] + close_vals[0]) / 2.0
+    
     for i in range(1, len(df)):
-        ha_open.iloc[i] = (ha_open.iloc[i - 1] + ha_close.iloc[i - 1]) / 2.0
-    return ha_open
+        ha_open_vals[i] = (ha_open_vals[i - 1] + ha_close_vals[i - 1]) / 2.0
+        
+    return pd.Series(ha_open_vals, index=df.index)
 
 
 def get_ma(

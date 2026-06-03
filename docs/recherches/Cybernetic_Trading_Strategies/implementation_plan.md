@@ -57,7 +57,7 @@ graph TB
     subgraph "Stage C: Optuna Orchestrator"
         JS[JournalFileStorage]
         CS[CMA-ES Sampler]
-        PP[ProcessPoolExecutor — 24 workers]
+        PP[ProcessPoolExecutor — 15 workers]
         CT[ConvergenceTracker]
     end
 
@@ -252,7 +252,7 @@ Replaces/wraps the Optuna integration in `bayesian_optimizer.py` for the cyberne
    )
    ```
    - File-based append-only log with symlink-based locking
-   - Zero "database is locked" errors under 24 concurrent processes
+   - Zero "database is locked" errors under 15 concurrent processes
    - Journal files are recoverable and auditable
 
 2. **CMA-ES Sampler** (when selected):
@@ -274,7 +274,7 @@ Replaces/wraps the Optuna integration in `bayesian_optimizer.py` for the cyberne
 4. **Memory-efficient process pool**:
    - Uses `spawn` context (never `fork`) — avoids LLVM/Numba deadlocks
    - Pre-computes Hilbert indicator grid in parent process, shares via POSIX shm
-   - Workers attach read-only views — zero DataFrame copies across 24 processes
+   - Workers attach read-only views — zero DataFrame copies across 15 processes
    - Dynamic memory limit: `min(available_ram * 0.3, 64GB * 0.8)` 
 
 #### [MODIFY] [bayesian_optimizer.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/bayesian_optimizer.py)
@@ -333,7 +333,7 @@ Specialized WFA pipeline for the cybernetic strategy, building on the existing [
 │ For each fold (IS window → OOS window):                     │
 │  1. Load IS data slice from canonical Parquet               │
 │  2. Pre-compute Hilbert indicator grid on IS data           │
-│  3. Share grid via POSIX shm to 24 worker processes         │
+│  3. Share grid via POSIX shm to 15 worker processes         │
 │  4. Run Optuna CMA-ES optimization (N trials) on IS         │
 │  5. Extract best parameters                                 │
 │  6. Validate best params on OOS data (single-process)       │
@@ -368,7 +368,7 @@ Integration tests for the event-driven engine:
 #### [NEW] [test_journal_storage.py](file:///home/kidpixel/trading_automation_v2/tests/test_journal_storage.py)
 
 Stress tests for multi-process robustness:
-- **Concurrent writes**: 24 processes writing to same JournalFileStorage
+- **Concurrent writes**: 15 processes writing to same JournalFileStorage
 - **Recovery**: Kill worker mid-trial, verify journal integrity
 - **Memory cap**: Verify RSS stays under 64GB threshold during 1000-trial run
 
@@ -384,7 +384,7 @@ pytest tests/test_hilbert_transform.py -v --tb=short
 # Stage B: Event-driven engine integration
 pytest tests/test_event_engine.py -v --tb=short
 
-# Stage C: JournalStorage stress test (24 processes, 100 trials)
+# Stage C: JournalStorage stress test (15 processes, 100 trials)
 pytest tests/test_journal_storage.py -v --timeout=300
 
 # Full pipeline: WFA with 3 folds
@@ -393,14 +393,14 @@ python -m backtest_engine optimize \
   --symbol EURUSD \
   --sampler cma_es \
   --storage journal \
-  --workers 24 \
+  --workers 15 \
   --trials 200
 ```
 
 ### Manual Verification
 - Visually inspect Sine Wave / Lead Wave crossover plots on known cycle data
 - Compare Hilbert-derived dominant cycle with MESA / TradeCycles reference values
-- Monitor `htop` during 24-process stress test for memory stability
+- Monitor `htop` during 15-process stress test for memory stability
 - Verify JournalStorage file growth is linear (no corruption or bloat)
 
 ---
@@ -411,7 +411,7 @@ python -m backtest_engine optimize \
 |:---|:---|:---|
 | Hilbert Transform numerical instability on low-volatility periods | High | Clamp amplitude floor at `1e-10`, exponential smoothing on period |
 | Look-ahead bias in phase computation | Critical | Ehlers' FIR filter is causal by construction; unit test with shuffled data |
-| JournalStorage I/O bottleneck on 24 threads | Medium | Symlink-based locking; benchmark vs SQLite WAL mode |
+| JournalStorage I/O bottleneck on 15 threads | Medium | Symlink-based locking; benchmark vs SQLite WAL mode |
 | CMA-ES premature convergence on flat landscapes | Medium | `n_startup_trials=20` random exploration; fallback to TPE |
 | Memory explosion during WFA with large DataFrames | High | Pre-shared POSIX shm; per-fold cleanup; dynamic memory limit |
 | Numba compilation slowdown on first run | Low | `cache=True` flag; AOT compilation for CI |

@@ -26,6 +26,8 @@
 - [x] [2026-06-01 13:37:00] - Audit des rapports d'optimisation (Passe 1) pour PMax Explorer. Rédaction du rapport et de la synthèse stratégique.
 - [x] [2026-06-01 13:51:00] - Audit des rapports d'optimisation (Passe 2) pour PMax Explorer sur GMAB. Validation de la configuration et mise à jour de la documentation.
 - [x] [2026-06-01 22:12:00] - Création du rapport Passe 1 et synthèse stratégique pour `hma_crossover`.
+- [x] [2026-06-02 20:05:00] - Audit de la Passe 1 de la stratégie adaptive_volatility_trend terminé et consigné.
+- [x] [2026-06-02 20:39:00] - Audit de la Passe 2 de la stratégie adaptive_volatility_trend terminé. Rapports mis à jour et setups validés pour production.
 
 ## Tâches en Cours
 - Aucune tâche en cours.
