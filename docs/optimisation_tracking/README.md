@@ -15,6 +15,7 @@ Conformément à la feuille de route (`configs/strategies/README_OPTIMIZATION_RO
 Stratégies documentées :
 - `pmax_explorer/` : Suivi de tendance avec Trailing Stop ATR (Passe 1 et 2 complétées)
 - `hma_crossover/` : Suivi de tendance par croisement de moyennes mobiles de Hull (Stratégie à 1 passe, complétée)
+- `3commas_bot/` : Croisement de MAs (Passe 1 complétée)
 
 Chaque stratégie dispose de son propre sous-dossier contenant :
 - Un fichier par passe (ex: `passe_1_signal.md`) qui détaille les résultats de l'optimiseur, les symboles et timeframes performants, et les paramètres retenus.

@@ -31,6 +31,8 @@
 - [x] [2026-06-03 22:30:00] - Remédiation SonarCloud (Phase 0 et 1 partielle) : Correction des Blockers (retour constant, Path Traversal) et réduction drastique de la complexité cognitive de web.py (extraction des endpoints). Plan d'audit mis à jour dans docs/audit/SonarCloud_Remediation_Plan.md.
 - [x] [2026-06-03 22:45:00] - Remédiation SonarCloud (Cœur de calcul) : Refactorisation de `bayesian_optimizer.py` pour réduire sa complexité cognitive (de 518 à 14). Extraction des allocations POSIX SHM vers `shm_allocators.py`. Fix d'un bug REST `web.py` pour `global-analysis`.
 - [x] [2026-06-03 23:25:00] - Remédiation SonarCloud (Phase 2 & Phase 3 partielle) : Correction des anomalies Majeures (NumPy Random S6711, comparaisons Float S1244, exceptions génériques S0000) et nettoyage des imports (F401). Non-régression validée par suite de tests (275 tests passed). Plan de remédiation clôturé.
+- [x] [2026-06-03 23:33:00] - Audit des rapports d'optimisation (Passe 1) pour 3commas_bot. Rapport et synthèse stratégique documentés.
+- [x] [2026-06-04 00:46:15] - Audit de la Passe 2 de 3commas_bot terminé. Setups de risk-management consignés.
 
 ## Tâches en Cours
 - Aucune tâche en cours.

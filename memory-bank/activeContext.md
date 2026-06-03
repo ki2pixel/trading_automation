@@ -1,10 +1,10 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Aucun. (Attente des prochaines directives pour l'optimisation bayésienne ou la remédiation SonarCloud).
+- Optimisation Passe 3 pour `3commas_bot` (Trailing Stop Dynamique).
 
 ## Prochaines Étapes
-- Lancer et surveiller la Passe 1 d'optimisation de `3commas_bot`.
+- Lancer la Passe 3 d'optimisation de `3commas_bot` (Trailing Stop Dynamique).
 - Poursuivre la Remédiation SonarCloud (Refactorisation des Stratégies).
 - Intégrer les configurations validées pour les actifs GMAB (Pmax, HMA Crossover, Adaptive Volatility Trend), FPE.DE et NVS (HMA Crossover, Adaptive Volatility Trend) dans le moteur de production live.
 
@@ -19,4 +19,6 @@
 - [2026-06-03 22:30:00] - Remédiation SonarCloud : Phase 0 terminée, Phase 1 (web.py) terminée, bayesian_optimizer.py différé. Plan de remédiation enregistré dans `docs/audit/SonarCloud_Remediation_Plan.md`.
 - [2026-06-03 22:45:00] - Remédiation SonarCloud : Refactorisation de `bayesian_optimizer.py` terminée. Complexité cognitive réduite drastiquement grâce à l'extraction de l'allocation SHM vers `shm_allocators.py`. Tous les tests passent avec succès (correction d'un bug mineur de variable manquante dans `web.py` pour `global-analysis`).
 - [2026-06-03 23:25:00] - Remédiation SonarCloud terminée : Phase 2 et Phase 3 partielles exécutées avec succès sans régression. Plan clos.
+- [2026-06-03 23:33:00] - Audit de la Passe 1 de 3commas_bot terminé. Rapport et synthèse stratégique documentés.
+- [2026-06-04 00:46:15] - Audit de la Passe 2 de 3commas_bot terminé. Setups de risk-management consignés.
 
