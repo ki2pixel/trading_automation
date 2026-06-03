@@ -244,8 +244,8 @@ def _compute_signals(long_cond: np.ndarray, short_cond: np.ndarray) -> tuple[np.
         else:
             cond_state[i] = prev_state_raw
 
-        long_signal[i] = bool(long_cond[i] and prev_state_for_signal == -1.0)
-        short_signal[i] = bool(short_cond[i] and prev_state_for_signal == 1.0)
+        long_signal[i] = bool(long_cond[i] and np.isclose(prev_state_for_signal, -1.0, atol=1e-9))
+        short_signal[i] = bool(short_cond[i] and np.isclose(prev_state_for_signal, 1.0, atol=1e-9))
     return cond_state, long_signal, short_signal
 
 
@@ -467,20 +467,337 @@ def _estimate_position_metrics(
     }
 
 
+class _RangeFilterBacktestSession:
+    def __init__(
+        self,
+        config: RangeFilterConfig,
+        compute_full_metrics: bool,
+        early_stop_drawdown_pct: Optional[float],
+        broker: BrokerSimulator,
+        result: pd.DataFrame,
+    ):
+        self.config = config
+        self.compute_full_metrics = compute_full_metrics
+        self.early_stop_drawdown_pct = early_stop_drawdown_pct
+        self.broker = broker
+        self.result = result
+        
+        self.n = len(result)
+        self.index = result.index
+        self.close_arr = result["close"].to_numpy(dtype=float)
+        self.open_arr = result["open"].to_numpy(dtype=float) if "open" in result.columns else self.close_arr
+        self.allow_long_arr = result["allow_long"].to_numpy(dtype=bool)
+        self.allow_short_arr = result["allow_short"].to_numpy(dtype=bool)
+        self.long_signal_arr = result["long_signal"].to_numpy(dtype=bool)
+        self.short_signal_arr = result["short_signal"].to_numpy(dtype=bool)
+
+        self.capital_bucket = _bucket_clamp(self.config.initial_capital_bucket, self.config.max_capital_bucket)
+        self.withdrawn_profit = 0.0
+        self.strategy_netprofit = 0.0
+        self.processed_netprofit = 0.0
+        self.peak_equity = float(self.broker.cash)
+
+        self.position_size = 0.0
+        self.entry_price = np.nan
+        self.entry_bar_index: Optional[int] = None
+        self.entry_time = None
+
+        self.pending_order: Optional[dict] = None
+
+        if self.compute_full_metrics:
+            self.records = {
+                "position_size": [],
+                "position_side": [],
+                "position_avg_price": [],
+                "capital_bucket": [],
+                "withdrawn_profit": [],
+                "strategy_netprofit": [],
+                "realized_net_pnl_on_fill": [],
+                "bars_in_trade": [],
+                "gross_pnl_estimate": [],
+                "estimated_round_trip_costs": [],
+                "estimated_net_if_closed_now": [],
+                "reversal_net_filter_passed": [],
+                "estimated_bucket_after_close": [],
+                "entry_position_value": [],
+                "take_profit_net_threshold": [],
+                "stop_loss_net_threshold": [],
+                "safety_max_net_loss_threshold": [],
+                "safety_loss_triggered": [],
+                "safety_bars_triggered": [],
+                "safety_stop_triggered": [],
+                "hit_net_take_profit": [],
+                "hit_net_stop_loss": [],
+                "long_take_profit_price": [],
+                "long_stop_loss_price": [],
+                "short_take_profit_price": [],
+                "short_stop_loss_price": [],
+                "flat_entry_qty": [],
+                "reverse_entry_qty": [],
+                "entry_allowed_by_cap": [],
+                "order_action": [],
+                "fill_action": [],
+                "fill_price": [],
+            }
+        else:
+            self.records = {
+                "position_size": [],
+                "position_avg_price": [],
+                "realized_net_pnl_on_fill": [],
+                "estimated_net_if_closed_now": [],
+            }
+
+    def _update_bucket_after_closed_profit(self) -> None:
+        if self.strategy_netprofit != self.processed_netprofit:
+            delta_closed_net = self.strategy_netprofit - self.processed_netprofit
+            raw_bucket = self.capital_bucket + delta_closed_net
+            if raw_bucket > self.config.max_capital_bucket:
+                self.withdrawn_profit += raw_bucket - self.config.max_capital_bucket
+            self.capital_bucket = _bucket_clamp(raw_bucket, self.config.max_capital_bucket)
+            self.processed_netprofit = self.strategy_netprofit
+
+    def _execute_target_position(
+        self,
+        target_side: int,
+        target_qty: float,
+        fill_price: float,
+        bar_i: int,
+        reason: str,
+    ) -> float:
+        realized_net = 0.0
+        old_size = self.position_size
+        old_side = 1 if old_size > 0 else -1 if old_size < 0 else 0
+        old_abs = abs(old_size)
+        normalized_target_qty = self.broker.normalize_quantity(max(float(target_qty), 0.0))
+        target_side = int(np.sign(target_side)) if normalized_target_qty > 0 else 0
+        closed_trade_count = len(self.broker.closed_trades)
+
+        if old_side != 0 and (target_side == 0 or target_side != old_side):
+            self.broker.fill_order(
+                Order(
+                    id=f"close-{bar_i}-{closed_trade_count}",
+                    side="sell" if old_side > 0 else "buy",
+                    quantity=old_abs,
+                    comment=reason,
+                    cost_side="long" if old_side > 0 else "short",
+                ),
+                self.index[bar_i],
+                fill_price,
+            )
+            if len(self.broker.closed_trades) > closed_trade_count:
+                broker_trade = self.broker.closed_trades[-1]
+                realized_net = float(broker_trade.net_pnl)
+                self.strategy_netprofit += realized_net
+
+        if target_side == 0 or normalized_target_qty <= 0:
+            self.entry_price = np.nan
+            self.entry_bar_index = None
+            self.entry_time = None
+        elif old_side == target_side and old_side != 0:
+            self.entry_price = self.entry_price
+        else:
+            fill = self.broker.fill_order(
+                Order(
+                    id=f"entry-{bar_i}-{len(self.broker.fills)}",
+                    side="buy" if target_side > 0 else "sell",
+                    quantity=normalized_target_qty,
+                    comment=reason,
+                    cost_side="long" if target_side > 0 else "short",
+                ),
+                self.index[bar_i],
+                fill_price,
+            )
+            if fill is not None:
+                self.entry_price = float(fill.price)
+                self.entry_bar_index = bar_i
+                self.entry_time = self.index[bar_i]
+
+        self.position_size = float(self.broker.position.signed_quantity)
+        self.entry_price = float(self.broker.position.average_price) if not self.broker.position.is_flat else np.nan
+        if self.broker.position.is_flat:
+            self.entry_bar_index = None
+            self.entry_time = None
+
+        return realized_net
+
+    def run(self) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+        for i in range(self.n):
+            bar_realized_net = 0.0
+            close = float(self.close_arr[i])
+            fill_price_for_pending = (
+                float(self.open_arr[i]) if self.config.fill_model == "next_open" else close
+            )
+
+            current_fill_action = ""
+            current_fill_price = np.nan
+            current_order_action = ""
+
+            if self.config.fill_model == "next_open" and self.pending_order is not None:
+                bar_realized_net += self._execute_target_position(
+                    target_side=self.pending_order["target_side"],
+                    target_qty=self.pending_order["target_qty"],
+                    fill_price=fill_price_for_pending,
+                    bar_i=i,
+                    reason=self.pending_order["reason"],
+                )
+                current_fill_action = self.pending_order["reason"]
+                current_fill_price = fill_price_for_pending
+                self.pending_order = None
+
+            self._update_bucket_after_closed_profit()
+
+            metrics = _estimate_position_metrics(
+                close=close,
+                position_size=self.position_size,
+                entry_price=self.entry_price,
+                entry_bar_index=self.entry_bar_index,
+                bar_index=i,
+                capital_bucket=self.capital_bucket,
+                cfg=self.config,
+                fx_rate=self.broker.fx_rate(self.index[i]),
+            )
+
+            entry_allowed_by_cap = close <= self.config.max_entry_price and self.capital_bucket > 0
+            flat_entry_qty = _qty_from_bucket(self.capital_bucket, close)
+            reverse_entry_qty = _qty_from_bucket(metrics["estimated_bucket_after_close"], close)
+
+            hold_until_profitable = (
+                self.config.fee_mode == "Parametric: hold until net covers fees"
+            )
+            exit_only_no_reverse = (
+                self.config.fee_mode == "Parametric: exit only, no forced reversal"
+            )
+            disable_fee_filter = (
+                self.config.fee_mode == "Disabled: always reverse/close on opposite signal"
+            )
+
+            allow_long = bool(self.allow_long_arr[i])
+            allow_short = bool(self.allow_short_arr[i])
+            long_signal = bool(self.long_signal_arr[i])
+            short_signal = bool(self.short_signal_arr[i])
+
+            order: Optional[dict] = None
+
+            def make_order(target_side: int, target_qty: float, reason: str) -> dict:
+                return {
+                    "target_side": target_side,
+                    "target_qty": max(float(target_qty), 0.0),
+                    "reason": reason,
+                }
+
+            if metrics["safety_stop_triggered"] and metrics["in_long"]:
+                order = make_order(0, 0.0, "Safety Stop Long")
+            elif metrics["safety_stop_triggered"] and metrics["in_short"]:
+                order = make_order(0, 0.0, "Safety Stop Short")
+            elif metrics["in_long"] and metrics["hit_net_take_profit"]:
+                order = make_order(0, 0.0, "Net TP Long")
+            elif metrics["in_long"] and metrics["hit_net_stop_loss"]:
+                order = make_order(0, 0.0, "Net SL Long")
+            elif metrics["in_short"] and metrics["hit_net_take_profit"]:
+                order = make_order(0, 0.0, "Net TP Short")
+            elif metrics["in_short"] and metrics["hit_net_stop_loss"]:
+                order = make_order(0, 0.0, "Net SL Short")
+            else:
+                if metrics["flat"] and entry_allowed_by_cap and flat_entry_qty > 0:
+                    if long_signal and allow_long:
+                        order = make_order(1, flat_entry_qty, "Buy")
+                    elif short_signal and allow_short:
+                        order = make_order(-1, flat_entry_qty, "Sell")
+
+                if order is None and metrics["in_long"] and short_signal:
+                    if disable_fee_filter:
+                        if close <= self.config.max_entry_price and reverse_entry_qty > 0:
+                            if allow_short:
+                                order = make_order(-1, reverse_entry_qty, "Sell Rev")
+                            else:
+                                order = make_order(0, 0.0, "Exit Long")
+                        else:
+                            order = make_order(0, 0.0, "Exit Long")
+                    elif exit_only_no_reverse or not allow_short:
+                        order = make_order(0, 0.0, "Exit Long")
+                    elif hold_until_profitable and metrics["reversal_net_filter_passed"]:
+                        if close <= self.config.max_entry_price and reverse_entry_qty > 0:
+                            if allow_short:
+                                order = make_order(-1, reverse_entry_qty, "Sell Rev")
+                            else:
+                                order = make_order(0, 0.0, "Exit Long")
+                        else:
+                            order = make_order(0, 0.0, "Exit Long")
+
+                if order is None and metrics["in_short"] and long_signal:
+                    if disable_fee_filter:
+                        if close <= self.config.max_entry_price and reverse_entry_qty > 0:
+                            if allow_long:
+                                order = make_order(1, reverse_entry_qty, "Buy Rev")
+                            else:
+                                order = make_order(0, 0.0, "Exit Short")
+                        else:
+                            order = make_order(0, 0.0, "Exit Short")
+                    elif exit_only_no_reverse or not allow_long:
+                        order = make_order(0, 0.0, "Exit Short")
+                    elif hold_until_profitable and metrics["reversal_net_filter_passed"]:
+                        if close <= self.config.max_entry_price and reverse_entry_qty > 0:
+                            if allow_long:
+                                order = make_order(1, reverse_entry_qty, "Buy Rev")
+                            else:
+                                order = make_order(0, 0.0, "Exit Short")
+                        else:
+                            order = make_order(0, 0.0, "Exit Short")
+
+            if order is not None:
+                current_order_action = order["reason"]
+                if self.config.fill_model == "close":
+                    bar_realized_net += self._execute_target_position(
+                        target_side=order["target_side"],
+                        target_qty=order["target_qty"],
+                        fill_price=close,
+                        bar_i=i,
+                        reason=order["reason"],
+                    )
+                    current_fill_action = order["reason"]
+                    current_fill_price = close
+                else:
+                    self.pending_order = order
+
+            if self.early_stop_drawdown_pct is not None and self.early_stop_drawdown_pct > 0:
+                current_equity = self.broker.mark_to_market_equity(close, self.index[i])
+                if current_equity > self.peak_equity:
+                    self.peak_equity = current_equity
+                drawdown_pct = (self.peak_equity - current_equity) / self.peak_equity * 100.0 if self.peak_equity > 0 else 0.0
+                if drawdown_pct >= self.early_stop_drawdown_pct:
+                    return pd.DataFrame(self.records, index=self.index[:len(self.records["position_size"])]), self.broker.closed_trades_frame(), True
+
+            self.records["position_size"].append(self.position_size)
+            self.records["position_avg_price"].append(self.entry_price)
+            self.records["realized_net_pnl_on_fill"].append(bar_realized_net)
+            
+            if self.compute_full_metrics:
+                self.records["position_side"].append(1 if self.position_size > 0 else -1 if self.position_size < 0 else 0)
+                self.records["capital_bucket"].append(self.capital_bucket)
+                self.records["withdrawn_profit"].append(self.withdrawn_profit)
+                self.records["strategy_netprofit"].append(self.strategy_netprofit)
+                self.records["flat_entry_qty"].append(flat_entry_qty)
+                self.records["reverse_entry_qty"].append(reverse_entry_qty)
+                self.records["entry_allowed_by_cap"].append(entry_allowed_by_cap)
+                self.records["order_action"].append(current_order_action)
+                self.records["fill_action"].append(current_fill_action)
+                self.records["fill_price"].append(current_fill_price)
+                
+                for key in metrics:
+                    if key in self.records:
+                        self.records[key].append(metrics[key])
+            else:
+                self.records["estimated_net_if_closed_now"].append(metrics["estimated_net_if_closed_now"])
+
+        return pd.DataFrame(self.records, index=self.index), self.broker.closed_trades_frame(), False
+
+
 def run_range_filter_strategy(
     df: pd.DataFrame,
     cfg: Optional[RangeFilterConfig] = None,
     early_stop_drawdown_pct: float | None = None,
     compute_full_metrics: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Add signal/backtest columns and return:
-
-        result_df, trades_df
-
-    The strategy loop follows the Pine order priority:
-        safety stop > net TP/SL > flat entries > opposite-signal exits/reversals.
-    """
     cfg = cfg or RangeFilterConfig()
     if early_stop_drawdown_pct is not None:
         cfg.early_stop_drawdown_pct = early_stop_drawdown_pct
@@ -488,7 +805,6 @@ def run_range_filter_strategy(
 
     result = add_range_filter_columns(df, cfg)
 
-    n = len(result)
     broker = BrokerSimulator(
         BrokerConfig(
             initial_capital=float(cfg.initial_capital_bucket),
@@ -506,361 +822,29 @@ def run_range_filter_strategy(
             fx_rate_provider=cfg.fx_rate_provider,
         )
     )
-    capital_bucket = _bucket_clamp(cfg.initial_capital_bucket, cfg.max_capital_bucket)
-    withdrawn_profit = 0.0
-    strategy_netprofit = 0.0
-    processed_netprofit = 0.0
-    peak_equity = float(broker.cash)
 
-    position_size = 0.0
-    entry_price = np.nan
-    entry_bar_index: Optional[int] = None
-    entry_time = None
-
-    pending_order: Optional[dict] = None
-    trades: list[dict] = []
+    session = _RangeFilterBacktestSession(
+        config=cfg,
+        compute_full_metrics=compute_full_metrics,
+        early_stop_drawdown_pct=early_stop_drawdown_pct,
+        broker=broker,
+        result=result,
+    )
+    
+    records_df, trades_df, _ = session.run()
 
     if compute_full_metrics:
-        columns = {
-            "position_size": np.zeros(n),
-            "position_side": np.zeros(n, dtype=int),
-            "position_avg_price": np.full(n, np.nan),
-            "capital_bucket": np.full(n, np.nan),
-            "withdrawn_profit": np.full(n, np.nan),
-            "strategy_netprofit": np.full(n, np.nan),
-            "realized_net_pnl_on_fill": np.zeros(n),
-            "bars_in_trade": np.zeros(n),
-            "gross_pnl_estimate": np.full(n, np.nan),
-            "estimated_round_trip_costs": np.full(n, np.nan),
-            "estimated_net_if_closed_now": np.full(n, np.nan),
-            "reversal_net_filter_passed": np.zeros(n, dtype=bool),
-            "estimated_bucket_after_close": np.full(n, np.nan),
-            "entry_position_value": np.full(n, np.nan),
-            "take_profit_net_threshold": np.full(n, np.nan),
-            "stop_loss_net_threshold": np.full(n, np.nan),
-            "safety_max_net_loss_threshold": np.full(n, np.nan),
-            "safety_loss_triggered": np.zeros(n, dtype=bool),
-            "safety_bars_triggered": np.zeros(n, dtype=bool),
-            "safety_stop_triggered": np.zeros(n, dtype=bool),
-            "hit_net_take_profit": np.zeros(n, dtype=bool),
-            "hit_net_stop_loss": np.zeros(n, dtype=bool),
-            "long_take_profit_price": np.full(n, np.nan),
-            "long_stop_loss_price": np.full(n, np.nan),
-            "short_take_profit_price": np.full(n, np.nan),
-            "short_stop_loss_price": np.full(n, np.nan),
-            "flat_entry_qty": np.full(n, np.nan),
-            "reverse_entry_qty": np.full(n, np.nan),
-            "entry_allowed_by_cap": np.zeros(n, dtype=bool),
-            "order_action": np.full(n, "", dtype=object),
-            "fill_action": np.full(n, "", dtype=object),
-            "fill_price": np.full(n, np.nan),
-        }
+        for col in records_df.columns:
+            result[col] = records_df[col]
+        return result, trades_df
     else:
-        columns = {
-            "position_size": np.zeros(n),
-            "position_avg_price": np.full(n, np.nan),
-            "realized_net_pnl_on_fill": np.zeros(n),
-            "estimated_net_if_closed_now": np.full(n, np.nan),
-        }
-
-    def update_bucket_after_closed_profit() -> None:
-        nonlocal capital_bucket, withdrawn_profit, processed_netprofit
-        if strategy_netprofit != processed_netprofit:
-            delta_closed_net = strategy_netprofit - processed_netprofit
-            raw_bucket = capital_bucket + delta_closed_net
-            if raw_bucket > cfg.max_capital_bucket:
-                withdrawn_profit += raw_bucket - cfg.max_capital_bucket
-            capital_bucket = _bucket_clamp(raw_bucket, cfg.max_capital_bucket)
-            processed_netprofit = strategy_netprofit
-
-    def execute_target_position(
-        *,
-        target_side: int,
-        target_qty: float,
-        fill_price: float,
-        bar_i: int,
-        reason: str,
-    ) -> float:
-        """
-        Move from current position to target position.
-        target_side: 1 long, -1 short, 0 flat
-        target_qty: final absolute target quantity
-        Returns realized gross PnL from any closed leg.
-        """
-        nonlocal position_size, entry_price, entry_bar_index, entry_time, strategy_netprofit
-
-        realized = 0.0
-        realized_costs = 0.0
-        realized_net = 0.0
-        old_size = position_size
-        old_side = 1 if old_size > 0 else -1 if old_size < 0 else 0
-        old_abs = abs(old_size)
-        normalized_target_qty = broker.normalize_quantity(max(float(target_qty), 0.0))
-        target_side = int(np.sign(target_side)) if normalized_target_qty > 0 else 0
-        closed_trade_count = len(broker.closed_trades)
-
-        # Close existing position if target side differs or target is flat.
-        if old_side != 0 and (target_side == 0 or target_side != old_side):
-            broker.fill_order(
-                Order(
-                    id=f"close-{bar_i}-{len(trades)}",
-                    side="sell" if old_side > 0 else "buy",
-                    quantity=old_abs,
-                    comment=reason,
-                    cost_side="long" if old_side > 0 else "short",
-                ),
-                result.index[bar_i],
-                fill_price,
-            )
-            if len(broker.closed_trades) > closed_trade_count:
-                broker_trade = broker.closed_trades[-1]
-                realized = float(broker_trade.gross_pnl)
-                realized_costs = float(broker_trade.commission)
-                realized_net = float(broker_trade.net_pnl)
-                strategy_netprofit += realized_net
-                trades.append(
-                    {
-                        "entry_time": entry_time,
-                        "exit_time": result.index[bar_i],
-                        "side": broker_trade.side,
-                        "qty": float(broker_trade.quantity),
-                        "entry_price": float(broker_trade.entry_price),
-                        "exit_price": float(broker_trade.exit_price),
-                        "gross_pnl": realized,
-                        "estimated_costs": realized_costs,
-                        "net_pnl": realized_net,
-                        "exit_reason": reason,
-                        "bars_held": (
-                            bar_i - entry_bar_index if entry_bar_index is not None else np.nan
-                        ),
-                    }
-                )
-
-        # Set/open final position.
-        if target_side == 0 or normalized_target_qty <= 0:
-            entry_price = np.nan
-            entry_bar_index = None
-            entry_time = None
-        elif old_side == target_side and old_side != 0:
-            # Pyramiding is disabled in Pine. This branch is included for completeness;
-            # the converted order logic does not add to same-direction positions.
-            entry_price = entry_price
-        else:
-            fill = broker.fill_order(
-                Order(
-                    id=f"entry-{bar_i}-{len(broker.fills)}",
-                    side="buy" if target_side > 0 else "sell",
-                    quantity=normalized_target_qty,
-                    comment=reason,
-                    cost_side="long" if target_side > 0 else "short",
-                ),
-                result.index[bar_i],
-                fill_price,
-            )
-            if fill is not None:
-                entry_price = float(fill.price)
-                entry_bar_index = bar_i
-                entry_time = result.index[bar_i]
-
-        position_size = float(broker.position.signed_quantity)
-        entry_price = float(broker.position.average_price) if not broker.position.is_flat else np.nan
-        if broker.position.is_flat:
-            entry_bar_index = None
-            entry_time = None
-
-        return realized_net
-
-    index = result.index
-    close_arr = result["close"].to_numpy(dtype=float)
-    open_arr = result["open"].to_numpy(dtype=float) if "open" in result.columns else close_arr
-    allow_long_arr = result["allow_long"].to_numpy(dtype=bool)
-    allow_short_arr = result["allow_short"].to_numpy(dtype=bool)
-    long_signal_arr = result["long_signal"].to_numpy(dtype=bool)
-    short_signal_arr = result["short_signal"].to_numpy(dtype=bool)
-
-    for i in range(n):
-        bar_realized_net = 0.0
-        close = float(close_arr[i])
-        fill_price_for_pending = (
-            float(open_arr[i]) if cfg.fill_model == "next_open" else close
-        )
-
-        # Historical Pine with process_orders_on_close=false fills prior market orders
-        # on the next bar's open.
-        if cfg.fill_model == "next_open" and pending_order is not None:
-            bar_realized_net += execute_target_position(
-                target_side=pending_order["target_side"],
-                target_qty=pending_order["target_qty"],
-                fill_price=fill_price_for_pending,
-                bar_i=i,
-                reason=pending_order["reason"],
-            )
-            columns["fill_action"][i] = pending_order["reason"]
-            columns["fill_price"][i] = fill_price_for_pending
-            pending_order = None
-
-        # Pine updates custom bucket after strategy.netprofit changes.
-        update_bucket_after_closed_profit()
-
-        metrics = _estimate_position_metrics(
-            close=close,
-            position_size=position_size,
-            entry_price=entry_price,
-            entry_bar_index=entry_bar_index,
-            bar_index=i,
-            capital_bucket=capital_bucket,
-            cfg=cfg,
-            fx_rate=broker.fx_rate(result.index[i]),
-        )
-
-        entry_allowed_by_cap = close <= cfg.max_entry_price and capital_bucket > 0
-        flat_entry_qty = _qty_from_bucket(capital_bucket, close)
-        reverse_entry_qty = _qty_from_bucket(metrics["estimated_bucket_after_close"], close)
-
-        hold_until_profitable = (
-            cfg.fee_mode == "Parametric: hold until net covers fees"
-        )
-        exit_only_no_reverse = (
-            cfg.fee_mode == "Parametric: exit only, no forced reversal"
-        )
-        disable_fee_filter = (
-            cfg.fee_mode == "Disabled: always reverse/close on opposite signal"
-        )
-
-        allow_long = bool(allow_long_arr[i])
-        allow_short = bool(allow_short_arr[i])
-        long_signal = bool(long_signal_arr[i])
-        short_signal = bool(short_signal_arr[i])
-
-        order: Optional[dict] = None
-
-        def make_order(target_side: int, target_qty: float, reason: str) -> dict:
-            return {
-                "target_side": target_side,
-                "target_qty": max(float(target_qty), 0.0),
-                "reason": reason,
-            }
-
-        if metrics["safety_stop_triggered"] and metrics["in_long"]:
-            order = make_order(0, 0.0, "Safety Stop Long")
-        elif metrics["safety_stop_triggered"] and metrics["in_short"]:
-            order = make_order(0, 0.0, "Safety Stop Short")
-        elif metrics["in_long"] and metrics["hit_net_take_profit"]:
-            order = make_order(0, 0.0, "Net TP Long")
-        elif metrics["in_long"] and metrics["hit_net_stop_loss"]:
-            order = make_order(0, 0.0, "Net SL Long")
-        elif metrics["in_short"] and metrics["hit_net_take_profit"]:
-            order = make_order(0, 0.0, "Net TP Short")
-        elif metrics["in_short"] and metrics["hit_net_stop_loss"]:
-            order = make_order(0, 0.0, "Net SL Short")
-        else:
-            if metrics["flat"] and entry_allowed_by_cap and flat_entry_qty > 0:
-                if long_signal and allow_long:
-                    order = make_order(1, flat_entry_qty, "Buy")
-                elif short_signal and allow_short:
-                    order = make_order(-1, flat_entry_qty, "Sell")
-
-            if order is None and metrics["in_long"] and short_signal:
-                if disable_fee_filter:
-                    if close <= cfg.max_entry_price and reverse_entry_qty > 0:
-                        if allow_short:
-                            order = make_order(-1, reverse_entry_qty, "Sell Rev")
-                        else:
-                            order = make_order(0, 0.0, "Exit Long")
-                    else:
-                        order = make_order(0, 0.0, "Exit Long")
-                elif exit_only_no_reverse or not allow_short:
-                    order = make_order(0, 0.0, "Exit Long")
-                elif hold_until_profitable and metrics["reversal_net_filter_passed"]:
-                    if close <= cfg.max_entry_price and reverse_entry_qty > 0:
-                        if allow_short:
-                            order = make_order(-1, reverse_entry_qty, "Sell Rev")
-                        else:
-                            order = make_order(0, 0.0, "Exit Long")
-                    else:
-                        order = make_order(0, 0.0, "Exit Long")
-
-            if order is None and metrics["in_short"] and long_signal:
-                if disable_fee_filter:
-                    if close <= cfg.max_entry_price and reverse_entry_qty > 0:
-                        if allow_long:
-                            order = make_order(1, reverse_entry_qty, "Buy Rev")
-                        else:
-                            order = make_order(0, 0.0, "Exit Short")
-                    else:
-                        order = make_order(0, 0.0, "Exit Short")
-                elif exit_only_no_reverse or not allow_long:
-                    order = make_order(0, 0.0, "Exit Short")
-                elif hold_until_profitable and metrics["reversal_net_filter_passed"]:
-                    if close <= cfg.max_entry_price and reverse_entry_qty > 0:
-                        if allow_long:
-                            order = make_order(1, reverse_entry_qty, "Buy Rev")
-                        else:
-                            order = make_order(0, 0.0, "Exit Short")
-                    else:
-                        order = make_order(0, 0.0, "Exit Short")
-
-        if order is not None:
-            if "order_action" in columns:
-                columns["order_action"][i] = order["reason"]
-            if cfg.fill_model == "close":
-                bar_realized_net += execute_target_position(
-                    target_side=order["target_side"],
-                    target_qty=order["target_qty"],
-                    fill_price=close,
-                    bar_i=i,
-                    reason=order["reason"],
-                )
-                if "fill_action" in columns:
-                    columns["fill_action"][i] = order["reason"]
-                    columns["fill_price"][i] = close
-            else:
-                pending_order = order
-
-        # Early stop check
-        if cfg.early_stop_drawdown_pct is not None and cfg.early_stop_drawdown_pct > 0:
-            current_equity = broker.mark_to_market_equity(close, result.index[i])
-            if current_equity > peak_equity:
-                peak_equity = current_equity
-            drawdown_pct = (peak_equity - current_equity) / peak_equity * 100.0 if peak_equity > 0 else 0.0
-            if drawdown_pct >= cfg.early_stop_drawdown_pct:
-                for name, values in columns.items():
-                    result[name] = values
-                trades_df = pd.DataFrame(trades)
-                return result.iloc[:i+1], trades_df
-
-        # Save state/metrics as seen after current bar's calculations.
-        columns["position_size"][i] = position_size
-        columns["position_avg_price"][i] = entry_price
-        columns["realized_net_pnl_on_fill"][i] = bar_realized_net
-        
-        if compute_full_metrics:
-            columns["position_side"][i] = 1 if position_size > 0 else -1 if position_size < 0 else 0
-            columns["capital_bucket"][i] = capital_bucket
-            columns["withdrawn_profit"][i] = withdrawn_profit
-            columns["strategy_netprofit"][i] = strategy_netprofit
-            columns["flat_entry_qty"][i] = flat_entry_qty
-            columns["reverse_entry_qty"][i] = reverse_entry_qty
-            columns["entry_allowed_by_cap"][i] = entry_allowed_by_cap
-
-        for key, value in metrics.items():
-            if key in columns:
-                columns[key][i] = value
-
-    if compute_full_metrics:
-        for name, values in columns.items():
-            result[name] = values
-    else:
-        result = pd.DataFrame({
-            "position_size": columns["position_size"],
-            "position_avg_price": columns["position_avg_price"],
-            "realized_net_pnl_on_fill": columns["realized_net_pnl_on_fill"],
-            "estimated_net_if_closed_now": columns["estimated_net_if_closed_now"],
+        out_df = pd.DataFrame({
+            "position_size": records_df["position_size"],
+            "position_avg_price": records_df["position_avg_price"],
+            "realized_net_pnl_on_fill": records_df["realized_net_pnl_on_fill"],
+            "estimated_net_if_closed_now": records_df["estimated_net_if_closed_now"],
         }, index=result.index)
-
-    trades_df = pd.DataFrame(trades)
-    return result, trades_df
-
+        return out_df, trades_df
 
 # Example usage:
 #

@@ -444,6 +444,502 @@ def add_3commas_bot_features(
 # Strategy backtest
 # ---------------------------------------------------------------------------
 
+class _CommasBotBacktestSession:
+    def __init__(
+        self,
+        config: CommasBotConfig,
+        compute_full_metrics: bool,
+        broker: BrokerSimulator,
+        out: pd.DataFrame,
+    ):
+        self.config = config
+        self.compute_full_metrics = compute_full_metrics
+        self.broker = broker
+        
+        self.n = len(out)
+        self.index = out.index
+        self.open_arr = out["open"].to_numpy(dtype=float)
+        self.high_arr = out["high"].to_numpy(dtype=float)
+        self.low_arr = out["low"].to_numpy(dtype=float)
+        self.close_arr = out["close"].to_numpy(dtype=float)
+        self.fill_price_arr = out[config.next_bar_execution_price_col].to_numpy(dtype=float)
+        
+        self.valid_long_arr = out["valid_long_entry"].to_numpy(dtype=bool)
+        self.valid_short_arr = out["valid_short_entry"].to_numpy(dtype=bool)
+        self.within_time_arr = out["within_time"].to_numpy(dtype=bool)
+        self.atr_arr = out["atr"].to_numpy(dtype=float)
+        self.lowest_low_arr = out["lowest_low"].to_numpy(dtype=float)
+        self.highest_high_arr = out["highest_high"].to_numpy(dtype=float)
+        
+        # State
+        self.side = 0
+        self.qty = 0.0
+        self.entry_price = np.nan
+        self.entry_index: Any = None
+        self.entry_bar_number: Optional[int] = None
+        
+        self.look_for_exit = False
+        self.trade_stop_price = 0.0
+        self.trade_target_price = np.nan
+        self.trailing_stop = 0.0
+        self.trade_exit_trigger_price = 0.0
+        
+        self.pending_order: Optional[Dict[str, Any]] = None
+        self.trades: List[Dict[str, Any]] = []
+        
+        from collections import defaultdict
+        self.records = defaultdict(list)
+        
+        self.capital_bucket = bucket_clamp(config.initial_capital_bucket, config.max_capital_bucket)
+        self.withdrawn_profit = 0.0
+        self.peak_equity = float(broker.cash)
+        self.max_dd_stopped = False
+
+    def _update_bucket_with_trade_pnl(self, net_pnl: float) -> None:
+        raw_bucket = self.capital_bucket + float(net_pnl)
+        if raw_bucket > self.config.max_capital_bucket:
+            self.withdrawn_profit += raw_bucket - self.config.max_capital_bucket
+        self.capital_bucket = bucket_clamp(raw_bucket, self.config.max_capital_bucket)
+
+    def _current_gross_pnl(self, mark_price: float, timestamp: Any) -> float:
+        if self.side == 0 or self.qty <= 0 or pd.isna(self.entry_price) or pd.isna(mark_price):
+            return 0.0
+        fx_rate = self.broker.fx_rate(timestamp)
+        mark_price_account = mark_price * fx_rate
+        if self.side > 0:
+            return (mark_price_account - self.entry_price) * self.qty * self.config.point_value
+        return (self.entry_price - mark_price_account) * self.qty * self.config.point_value
+
+    def _close_position(self, exit_price: float, exit_index: Any, exit_bar_number: int, comment: str) -> Dict[str, Any]:
+        if self.side == 0 or self.qty <= 0:
+            return {"filled_order": None, "filled_comment": None, "realized_gross_pnl_on_fill": 0.0, "realized_costs_on_fill": 0.0, "realized_net_pnl_on_fill": 0.0}
+
+        closed_side = self.side
+        closed_qty = self.qty
+        closed_entry_price = self.entry_price
+
+        close_order = Order(
+            id=f"close-{exit_bar_number}-{len(self.trades)}",
+            side="sell" if closed_side > 0 else "buy",
+            quantity=closed_qty,
+            comment=comment,
+            cost_side="long" if closed_side > 0 else "short",
+        )
+        self.broker.fill_order(close_order, exit_index, exit_price)
+        broker_trade = self.broker.closed_trades[-1] if self.broker.closed_trades else None
+
+        gross = float(broker_trade.gross_pnl) if broker_trade is not None else 0.0
+        costs = float(broker_trade.commission) if broker_trade is not None else 0.0
+        net = gross - costs
+
+        self.trades.append({
+            "entry_index": self.entry_index,
+            "exit_index": exit_index,
+            "entry_bar": self.entry_bar_number,
+            "exit_bar": exit_bar_number,
+            "side": _side_name(closed_side),
+            "qty": closed_qty,
+            "entry_price": closed_entry_price,
+            "exit_price": exit_price,
+            "gross_pnl": gross,
+            "estimated_costs": costs,
+            "net_pnl": net,
+            "exit_comment": comment,
+            "bars_held": (exit_bar_number - self.entry_bar_number if self.entry_bar_number is not None else np.nan),
+        })
+
+        self._update_bucket_with_trade_pnl(net)
+
+        self.side = 0
+        self.qty = 0.0
+        self.entry_price = np.nan
+        self.entry_index = None
+        self.entry_bar_number = None
+        self.look_for_exit = False
+        self.trade_stop_price = 0.0
+        self.trade_target_price = np.nan
+        self.trailing_stop = 0.0
+        self.trade_exit_trigger_price = 0.0
+
+        return {"filled_order": "close", "filled_comment": comment, "realized_gross_pnl_on_fill": gross, "realized_costs_on_fill": costs, "realized_net_pnl_on_fill": net}
+
+    def _open_position(self, new_side: int, fill_price: float, fill_index: Any, fill_bar_number: int, comment: str) -> Dict[str, Any]:
+        if new_side == 0 or pd.isna(fill_price) or fill_price <= 0:
+            return {"filled_order": None, "filled_comment": None, "realized_gross_pnl_on_fill": 0.0, "realized_costs_on_fill": 0.0, "realized_net_pnl_on_fill": 0.0}
+
+        entry_bucket_qty = _normalize_qty(qty_from_bucket(self.capital_bucket, fill_price), self.config)
+        if entry_bucket_qty <= 0:
+            return {"filled_order": None, "filled_comment": None, "realized_gross_pnl_on_fill": 0.0, "realized_costs_on_fill": 0.0, "realized_net_pnl_on_fill": 0.0}
+
+        self.side = int(np.sign(new_side))
+        open_order = Order(
+            id=f"entry-{fill_bar_number}-{len(self.trades)}",
+            side="buy" if self.side > 0 else "sell",
+            quantity=entry_bucket_qty,
+            comment=comment,
+            cost_side="long" if self.side > 0 else "short",
+        )
+        fill = self.broker.fill_order(open_order, fill_index, fill_price)
+        self.qty = float(fill.quantity) if fill is not None else entry_bucket_qty
+        self.entry_price = float(fill.price) if fill is not None else float(fill_price)
+        self.entry_index = fill_index
+        self.entry_bar_number = fill_bar_number
+
+        atr_val = float(self.atr_arr[fill_bar_number])
+        ll = float(self.lowest_low_arr[fill_bar_number])
+        hh = float(self.highest_high_arr[fill_bar_number])
+
+        if self.side > 0:
+            long_stop = ll - (atr_val * self.config.risk_m)
+            long_risk = fill_price - long_stop
+            long_limit = fill_price + (self.config.rnr * long_risk)
+            long_limit_dist = fill_price - long_limit
+
+            self.trade_stop_price = long_stop
+            self.trade_target_price = long_limit if self.config.use_limit else np.nan
+            self.trade_exit_trigger_price = fill_price - (long_limit_dist * self.config.rr_exit)
+            self.trailing_stop = self.trade_stop_price
+            self.look_for_exit = False
+        else:
+            short_stop = hh + (atr_val * self.config.risk_m)
+            short_risk = short_stop - fill_price
+            short_limit = fill_price - (self.config.rnr * short_risk)
+            short_limit_dist = short_limit - fill_price
+
+            self.trade_stop_price = short_stop
+            self.trade_target_price = short_limit if self.config.use_limit else np.nan
+            self.trade_exit_trigger_price = fill_price + (short_limit_dist * self.config.rr_exit)
+            self.trailing_stop = self.trade_stop_price
+            self.look_for_exit = False
+
+        return {"filled_order": "entry", "filled_comment": comment, "realized_gross_pnl_on_fill": 0.0, "realized_costs_on_fill": 0.0, "realized_net_pnl_on_fill": 0.0}
+
+    def _execute_order(self, order: Dict[str, Any], fill_price: float, fill_index: Any, fill_bar_number: int) -> Dict[str, Any]:
+        if order is None:
+            return {"filled_order": None, "filled_comment": None, "realized_gross_pnl_on_fill": 0.0, "realized_costs_on_fill": 0.0, "realized_net_pnl_on_fill": 0.0}
+
+        kind = order["kind"]
+        if kind == "close":
+            return self._close_position(fill_price, fill_index, fill_bar_number, order["comment"])
+        if kind == "enter":
+            return self._open_position(order["side"], fill_price, fill_index, fill_bar_number, order["comment"])
+        if kind == "reverse":
+            old_close = self._close_position(fill_price, fill_index, fill_bar_number, order["comment"])
+            new_open = self._open_position(order["side"], fill_price, fill_index, fill_bar_number, order["comment"])
+            return {
+                "filled_order": "reverse",
+                "filled_comment": order["comment"],
+                "realized_gross_pnl_on_fill": old_close["realized_gross_pnl_on_fill"],
+                "realized_costs_on_fill": old_close["realized_costs_on_fill"],
+                "realized_net_pnl_on_fill": old_close["realized_net_pnl_on_fill"],
+                "opened_after_reverse": new_open["filled_order"] == "entry",
+            }
+        raise ValueError(f"Unsupported order kind: {kind}")
+
+    def _make_close_order(self, comment: str) -> Dict[str, Any]:
+        return {"kind": "close", "side": 0, "qty": 0.0, "comment": comment}
+
+    def _make_entry_order(self, new_side: int, comment: str) -> Dict[str, Any]:
+        return {"kind": "enter", "side": new_side, "comment": comment}
+
+    def _make_reverse_order(self, new_side: int, comment: str) -> Dict[str, Any]:
+        return {"kind": "reverse", "side": new_side, "comment": comment}
+
+    def _process_bar(self, bar_number: int) -> None:
+        idx = self.index[bar_number]
+        fill_info = {
+            "filled_order": None,
+            "filled_comment": None,
+            "realized_gross_pnl_on_fill": 0.0,
+            "realized_costs_on_fill": 0.0,
+            "realized_net_pnl_on_fill": 0.0,
+        }
+
+        # 1) Fill pending order from prior bar
+        if self.pending_order is not None:
+            fill_price = float(self.fill_price_arr[bar_number])
+            fill_info = self._execute_order(self.pending_order, fill_price, idx, bar_number)
+            self.pending_order = None
+
+        close_price = float(self.close_arr[bar_number])
+        high_price = float(self.high_arr[bar_number])
+        low_price = float(self.low_arr[bar_number])
+        open_price = float(self.open_arr[bar_number])
+
+        in_long = self.side > 0
+        in_short = self.side < 0
+        flat = self.side == 0
+
+        # --- Common state calculations ---
+        bars_in_trade = (bar_number - self.entry_bar_number if self.entry_bar_number is not None else 0)
+
+        gross_pnl_estimate = self._current_gross_pnl(close_price, idx)
+        estimated_round_trip_costs = _round_trip_costs_for_side(self.side, self.qty, self.config)
+        estimated_net_if_closed_now = gross_pnl_estimate - estimated_round_trip_costs
+        reversal_net_filter_passed = (estimated_net_if_closed_now >= self.config.min_net_profit_after_costs)
+
+        entry_position_value = (self.entry_price * self.qty * self.config.point_value if self.qty > 0 and not pd.isna(self.entry_price) else 0.0)
+        take_profit_net_threshold = (entry_position_value * self.config.take_profit_net_percent / 100.0)
+        stop_loss_net_threshold = (entry_position_value * self.config.stop_loss_net_percent / 100.0)
+
+        if self.config.safety_max_net_loss_mode == "Cash amount":
+            safety_max_net_loss_threshold = float(self.config.safety_max_net_loss_cash)
+        else:
+            safety_max_net_loss_threshold = (entry_position_value * self.config.safety_max_net_loss_percent / 100.0)
+
+        safety_direction_allowed = (
+            self.config.safety_stop_applies_to == "Both"
+            or (self.config.safety_stop_applies_to == "Long only" and in_long)
+            or (self.config.safety_stop_applies_to == "Short only" and in_short)
+        )
+        safety_loss_triggered = (safety_max_net_loss_threshold > 0 and estimated_net_if_closed_now <= -safety_max_net_loss_threshold)
+        safety_bars_triggered = (self.config.safety_max_bars_in_trade > 0 and bars_in_trade >= self.config.safety_max_bars_in_trade)
+
+        if self.config.safety_stop_mode == "Net loss only":
+            safety_condition = safety_loss_triggered
+        elif self.config.safety_stop_mode == "Max bars only":
+            safety_condition = safety_bars_triggered
+        elif self.config.safety_stop_mode == "Net loss OR max bars":
+            safety_condition = safety_loss_triggered or safety_bars_triggered
+        else:
+            safety_condition = safety_loss_triggered and safety_bars_triggered
+
+        safety_stop_triggered = (self.config.use_safety_stop and safety_direction_allowed and safety_condition)
+
+        hit_net_take_profit = (self.config.use_net_bracket_exits and self.qty > 0 and estimated_net_if_closed_now >= take_profit_net_threshold)
+        hit_net_stop_loss = (self.config.use_net_bracket_exits and self.qty > 0 and estimated_net_if_closed_now <= -stop_loss_net_threshold)
+
+        # 2) Update trailing stop
+        if in_long and self.config.trail_stop and self.look_for_exit:
+            if self.config.trail_source == "Close":
+                trail_src = self.close_arr[bar_number - 1] if bar_number > 0 else close_price
+            elif self.config.trail_source == "Open":
+                trail_src = self.open_arr[bar_number - 1] if bar_number > 0 else open_price
+            else:
+                trail_src = float(self.lowest_low_arr[bar_number])
+            trail = trail_src - (float(self.atr_arr[bar_number]) * self.config.trail_stop_size)
+            if trail > self.trailing_stop:
+                self.trailing_stop = trail
+
+        if in_short and self.config.trail_stop and self.look_for_exit:
+            if self.config.trail_source == "Close":
+                trail_src = self.close_arr[bar_number - 1] if bar_number > 0 else close_price
+            elif self.config.trail_source == "Open":
+                trail_src = self.open_arr[bar_number - 1] if bar_number > 0 else open_price
+            else:
+                trail_src = float(self.highest_high_arr[bar_number])
+            trail = trail_src + (float(self.atr_arr[bar_number]) * self.config.trail_stop_size)
+            if trail < self.trailing_stop:
+                self.trailing_stop = trail
+
+        # 3) Priority order generation
+        generated_order = None
+        hit_stop = False
+        hit_limit = False
+        exit_comment = ""
+
+        # 3a) Safety stop (highest priority)
+        if safety_stop_triggered and in_long:
+            generated_order = self._make_close_order("Safety Stop Long")
+        elif safety_stop_triggered and in_short:
+            generated_order = self._make_close_order("Safety Stop Short")
+        # 3b) Optional explicit net TP/SL exits
+        elif in_long and hit_net_take_profit:
+            generated_order = self._make_close_order("Net TP Long")
+        elif in_long and hit_net_stop_loss:
+            generated_order = self._make_close_order("Net SL Long")
+        elif in_short and hit_net_take_profit:
+            generated_order = self._make_close_order("Net TP Short")
+        elif in_short and hit_net_stop_loss:
+            generated_order = self._make_close_order("Net SL Short")
+        # 3c) Native stop / limit exits
+        else:
+            if in_long:
+                effective_stop = self.trailing_stop if (self.config.trail_stop and self.look_for_exit) else self.trade_stop_price
+                if low_price <= effective_stop:
+                    hit_stop = True
+                    exit_comment = "Stop Long"
+                if self.config.use_limit and not pd.isna(self.trade_target_price):
+                    if high_price >= self.trade_target_price:
+                        hit_limit = True
+                        if hit_stop:
+                            exit_comment = "Stop Long"
+                        else:
+                            exit_comment = "Limit Long"
+                if not self.look_for_exit and self.config.trail_stop:
+                    if np.isclose(self.config.rr_exit, 0.0, atol=1e-9):
+                        self.look_for_exit = True
+                    elif high_price >= self.trade_exit_trigger_price:
+                        self.look_for_exit = True
+
+            if in_short:
+                effective_stop = self.trailing_stop if (self.config.trail_stop and self.look_for_exit) else self.trade_stop_price
+                if high_price >= effective_stop:
+                    hit_stop = True
+                    exit_comment = "Stop Short"
+                if self.config.use_limit and not pd.isna(self.trade_target_price):
+                    if low_price <= self.trade_target_price:
+                        hit_limit = True
+                        if hit_stop:
+                            exit_comment = "Stop Short"
+                        else:
+                            exit_comment = "Limit Short"
+                if not self.look_for_exit and self.config.trail_stop:
+                    if np.isclose(self.config.rr_exit, 0.0, atol=1e-9):
+                        self.look_for_exit = True
+                    elif low_price <= self.trade_exit_trigger_price:
+                        self.look_for_exit = True
+
+            if hit_stop or hit_limit:
+                generated_order = self._make_close_order(exit_comment)
+
+        # 4) Max drawdown check
+        if generated_order is None and self.config.set_max_drawdown and not self.max_dd_stopped:
+            current_equity = self.broker.mark_to_market_equity(close_price, idx)
+            if current_equity > self.peak_equity:
+                self.peak_equity = current_equity
+            if self.peak_equity > 0:
+                dd_pct = (self.peak_equity - current_equity) / self.peak_equity
+                if dd_pct >= self.config.max_perc_dd / 100.0:
+                    self.max_dd_stopped = True
+                    if self.side != 0:
+                        close_info = self._close_position(close_price, idx, bar_number, "Max Drawdown")
+                        fill_info = close_info
+
+        in_long = self.side > 0
+        in_short = self.side < 0
+        flat = self.side == 0
+
+        # 5) Entry signals
+        valid_long = bool(self.valid_long_arr[bar_number])
+        valid_short = bool(self.valid_short_arr[bar_number])
+        within_time = bool(self.within_time_arr[bar_number])
+
+        allow_long = self.config.trade_direction_mode != "Short only"
+        allow_short = self.config.trade_direction_mode != "Long only"
+
+        entry_allowed_by_cap = close_price <= self.config.max_entry_price and self.capital_bucket > 0
+        flat_entry_qty = _normalize_qty(qty_from_bucket(self.capital_bucket, close_price), self.config)
+        reverse_entry_qty = flat_entry_qty
+
+        hold_until_profitable = (self.config.fee_mode == "Parametric: hold until net covers fees")
+        exit_only_no_reverse = (self.config.fee_mode == "Parametric: exit only, no forced reversal")
+        disable_fee_filter = (self.config.fee_mode == "Disabled: always reverse/close on opposite signal")
+
+        if generated_order is None and not self.max_dd_stopped and entry_allowed_by_cap:
+            if flat and flat_entry_qty > 0:
+                if valid_short and within_time and allow_short and self.config.short_trades:
+                    generated_order = self._make_entry_order(-1, "Short")
+                elif valid_long and within_time and allow_long and self.config.long_trades:
+                    generated_order = self._make_entry_order(1, "Long")
+
+            if generated_order is None and in_long and valid_short and within_time and allow_short and self.config.short_trades and self.config.flip:
+                if disable_fee_filter:
+                    if close_price <= self.config.max_entry_price and reverse_entry_qty > 0:
+                        generated_order = self._make_reverse_order(-1, "Short Rev")
+                    else:
+                        generated_order = self._make_close_order("Exit Long")
+                elif exit_only_no_reverse:
+                    generated_order = self._make_close_order("Exit Long")
+                elif hold_until_profitable and reversal_net_filter_passed:
+                    if close_price <= self.config.max_entry_price and reverse_entry_qty > 0:
+                        generated_order = self._make_reverse_order(-1, "Short Rev")
+                    else:
+                        generated_order = self._make_close_order("Exit Long")
+
+            if generated_order is None and in_short and valid_long and within_time and allow_long and self.config.long_trades and self.config.flip:
+                if disable_fee_filter:
+                    if close_price <= self.config.max_entry_price and reverse_entry_qty > 0:
+                        generated_order = self._make_reverse_order(1, "Long Rev")
+                    else:
+                        generated_order = self._make_close_order("Exit Short")
+                elif exit_only_no_reverse:
+                    generated_order = self._make_close_order("Exit Short")
+                elif hold_until_profitable and reversal_net_filter_passed:
+                    if close_price <= self.config.max_entry_price and reverse_entry_qty > 0:
+                        generated_order = self._make_reverse_order(1, "Long Rev")
+                    else:
+                        generated_order = self._make_close_order("Exit Short")
+
+        signal_order = None
+        signal_comment = None
+        signal_side = 0
+
+        if generated_order is not None:
+            signal_order = generated_order["kind"]
+            signal_comment = generated_order["comment"]
+            signal_side = generated_order.get("side", 0)
+
+            if self.config.execute_on_next_bar:
+                if signal_order == "close":
+                    fill_info = self._execute_order(generated_order, close_price, idx, bar_number)
+                else:
+                    self.pending_order = generated_order
+            else:
+                fill_info = self._execute_order(generated_order, close_price, idx, bar_number)
+
+        effective_stop = 0.0
+        if in_long:
+            effective_stop = self.trailing_stop if (self.config.trail_stop and self.look_for_exit) else self.trade_stop_price
+        elif in_short:
+            effective_stop = self.trailing_stop if (self.config.trail_stop and self.look_for_exit) else self.trade_stop_price
+
+        if self.compute_full_metrics:
+            self.records["position_side"].append(self.side)
+            self.records["position_label"].append(_side_name(self.side))
+            self.records["position_size"].append(self.side * self.qty)
+            self.records["position_avg_price"].append(self.entry_price)
+            self.records["in_long"].append(in_long)
+            self.records["in_short"].append(in_short)
+            self.records["flat"].append(flat)
+            self.records["look_for_exit"].append(self.look_for_exit)
+            self.records["trade_stop_price"].append(self.trade_stop_price)
+            self.records["trade_target_price"].append(self.trade_target_price)
+            self.records["trailing_stop"].append(self.trailing_stop)
+            self.records["effective_stop"].append(effective_stop)
+            self.records["trade_exit_trigger_price"].append(self.trade_exit_trigger_price)
+            self.records["hit_stop"].append(hit_stop)
+            self.records["hit_limit"].append(hit_limit)
+            self.records["signal_order"].append(signal_order)
+            self.records["signal_comment"].append(signal_comment)
+            self.records["signal_side"].append(signal_side)
+            self.records["max_dd_stopped"].append(self.max_dd_stopped)
+            self.records["capital_bucket"].append(self.capital_bucket)
+            self.records["withdrawn_profit"].append(self.withdrawn_profit)
+            self.records["entry_allowed_by_cap"].append(entry_allowed_by_cap)
+            self.records["flat_entry_qty"].append(flat_entry_qty)
+            self.records["reverse_entry_qty"].append(reverse_entry_qty)
+            self.records["bars_in_trade"].append(bars_in_trade)
+            self.records["gross_pnl_estimate"].append(gross_pnl_estimate)
+            self.records["estimated_round_trip_costs"].append(estimated_round_trip_costs)
+            self.records["estimated_net_if_closed_now"].append(estimated_net_if_closed_now)
+            self.records["reversal_net_filter_passed"].append(reversal_net_filter_passed)
+            self.records["safety_max_net_loss_threshold"].append(safety_max_net_loss_threshold)
+            self.records["safety_loss_triggered"].append(safety_loss_triggered)
+            self.records["safety_bars_triggered"].append(safety_bars_triggered)
+            self.records["safety_stop_triggered"].append(safety_stop_triggered)
+            self.records["hit_net_take_profit"].append(hit_net_take_profit)
+            self.records["hit_net_stop_loss"].append(hit_net_stop_loss)
+            self.records["filled_order"].append(fill_info.get("filled_order"))
+            self.records["filled_comment"].append(fill_info.get("filled_comment"))
+            self.records["realized_gross_pnl_on_fill"].append(fill_info.get("realized_gross_pnl_on_fill", 0.0))
+            self.records["realized_costs_on_fill"].append(fill_info.get("realized_costs_on_fill", 0.0))
+            self.records["realized_net_pnl_on_fill"].append(fill_info.get("realized_net_pnl_on_fill", 0.0))
+        else:
+            self.records["position_size"].append(self.side * self.qty)
+            self.records["position_avg_price"].append(self.entry_price)
+            self.records["estimated_net_if_closed_now"].append(estimated_net_if_closed_now)
+            self.records["realized_net_pnl_on_fill"].append(fill_info.get("realized_net_pnl_on_fill", 0.0))
+
+    def run(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        for bar_number in range(self.n):
+            self._process_bar(bar_number)
+            
+        state_df = pd.DataFrame(self.records, index=self.index)
+        trades_df = pd.DataFrame(self.trades)
+        return state_df, trades_df
+
+
 def run_3commas_bot_strategy(
     df: pd.DataFrame,
     config: Optional[CommasBotConfig] = None,
@@ -478,622 +974,12 @@ def run_3commas_bot_strategy(
         )
     )
 
-    n = len(out)
-    index = out.index
-    open_arr = out["open"].to_numpy(dtype=float)
-    high_arr = out["high"].to_numpy(dtype=float)
-    low_arr = out["low"].to_numpy(dtype=float)
-    close_arr = out["close"].to_numpy(dtype=float)
-    fill_price_arr = out[config.next_bar_execution_price_col].to_numpy(dtype=float)
+    session = _CommasBotBacktestSession(config, compute_full_metrics, broker, out)
+    state_df, trades_df = session.run()
 
-    valid_long_arr = out["valid_long_entry"].to_numpy(dtype=bool)
-    valid_short_arr = out["valid_short_entry"].to_numpy(dtype=bool)
-    within_time_arr = out["within_time"].to_numpy(dtype=bool)
-    atr_arr = out["atr"].to_numpy(dtype=float)
-    lowest_low_arr = out["lowest_low"].to_numpy(dtype=float)
-    highest_high_arr = out["highest_high"].to_numpy(dtype=float)
-
-    # Position state
-    side = 0
-    qty = 0.0
-    entry_price = np.nan
-    entry_index: Any = None
-    entry_bar_number: Optional[int] = None
-
-    # Trade management state (Pine 'var' variables)
-    look_for_exit = False
-    trade_stop_price = 0.0
-    trade_target_price = np.nan
-    trailing_stop = 0.0
-    trade_exit_trigger_price = 0.0
-
-    pending_order: Optional[Dict[str, Any]] = None
-    trades: List[Dict[str, Any]] = []
-    
-    from collections import defaultdict
-    records = defaultdict(list)
-
-    capital_bucket = bucket_clamp(
-        config.initial_capital_bucket,
-        config.max_capital_bucket,
-    )
-    withdrawn_profit = 0.0
-
-    peak_equity = broker.cash
-    max_dd_stopped = False
-
-    def update_bucket_with_trade_pnl(net_pnl: float) -> None:
-        nonlocal capital_bucket, withdrawn_profit
-        raw_bucket = capital_bucket + float(net_pnl)
-        if raw_bucket > config.max_capital_bucket:
-            withdrawn_profit += raw_bucket - config.max_capital_bucket
-        capital_bucket = bucket_clamp(raw_bucket, config.max_capital_bucket)
-
-    def current_gross_pnl(mark_price: float, timestamp: Any) -> float:
-        if side == 0 or qty <= 0 or pd.isna(entry_price) or pd.isna(mark_price):
-            return 0.0
-        fx_rate = broker.fx_rate(timestamp)
-        mark_price_account = mark_price * fx_rate
-        if side > 0:
-            return (mark_price_account - entry_price) * qty * config.point_value
-        return (entry_price - mark_price_account) * qty * config.point_value
-
-    def close_position(
-        exit_price: float,
-        exit_index: Any,
-        exit_bar_number: int,
-        comment: str,
-    ) -> Dict[str, Any]:
-        nonlocal side, qty, entry_price, entry_index, entry_bar_number
-        nonlocal look_for_exit, trade_stop_price, trade_target_price
-        nonlocal trailing_stop, trade_exit_trigger_price
-
-        if side == 0 or qty <= 0:
-            return {
-                "filled_order": None,
-                "filled_comment": None,
-                "realized_gross_pnl_on_fill": 0.0,
-                "realized_costs_on_fill": 0.0,
-                "realized_net_pnl_on_fill": 0.0,
-            }
-
-        closed_side = side
-        closed_qty = qty
-        closed_entry_price = entry_price
-
-        close_order = Order(
-            id=f"close-{exit_bar_number}-{len(trades)}",
-            side="sell" if closed_side > 0 else "buy",
-            quantity=closed_qty,
-            comment=comment,
-            cost_side="long" if closed_side > 0 else "short",
-        )
-        broker.fill_order(close_order, exit_index, exit_price)
-        broker_trade = broker.closed_trades[-1] if broker.closed_trades else None
-
-        gross = float(broker_trade.gross_pnl) if broker_trade is not None else 0.0
-        costs = float(broker_trade.commission) if broker_trade is not None else 0.0
-        net = gross - costs
-
-        trades.append(
-            {
-                "entry_index": entry_index,
-                "exit_index": exit_index,
-                "entry_bar": entry_bar_number,
-                "exit_bar": exit_bar_number,
-                "side": _side_name(closed_side),
-                "qty": closed_qty,
-                "entry_price": closed_entry_price,
-                "exit_price": exit_price,
-                "gross_pnl": gross,
-                "estimated_costs": costs,
-                "net_pnl": net,
-                "exit_comment": comment,
-                "bars_held": (
-                    exit_bar_number - entry_bar_number
-                    if entry_bar_number is not None
-                    else np.nan
-                ),
-            }
-        )
-
-        update_bucket_with_trade_pnl(net)
-
-        side = 0
-        qty = 0.0
-        entry_price = np.nan
-        entry_index = None
-        entry_bar_number = None
-        look_for_exit = False
-        trade_stop_price = 0.0
-        trade_target_price = np.nan
-        trailing_stop = 0.0
-        trade_exit_trigger_price = 0.0
-
-        return {
-            "filled_order": "close",
-            "filled_comment": comment,
-            "realized_gross_pnl_on_fill": gross,
-            "realized_costs_on_fill": costs,
-            "realized_net_pnl_on_fill": net,
-        }
-
-    def open_position(
-        new_side: int,
-        fill_price: float,
-        fill_index: Any,
-        fill_bar_number: int,
-        comment: str,
-    ) -> Dict[str, Any]:
-        nonlocal side, qty, entry_price, entry_index, entry_bar_number
-        nonlocal look_for_exit, trade_stop_price, trade_target_price
-        nonlocal trailing_stop, trade_exit_trigger_price
-
-        if new_side == 0 or pd.isna(fill_price) or fill_price <= 0:
-            return {
-                "filled_order": None,
-                "filled_comment": None,
-                "realized_gross_pnl_on_fill": 0.0,
-                "realized_costs_on_fill": 0.0,
-                "realized_net_pnl_on_fill": 0.0,
-            }
-
-        entry_bucket_qty = _normalize_qty(qty_from_bucket(capital_bucket, fill_price), config)
-        if entry_bucket_qty <= 0:
-            return {
-                "filled_order": None,
-                "filled_comment": None,
-                "realized_gross_pnl_on_fill": 0.0,
-                "realized_costs_on_fill": 0.0,
-                "realized_net_pnl_on_fill": 0.0,
-            }
-
-        side = int(np.sign(new_side))
-        open_order = Order(
-            id=f"entry-{fill_bar_number}-{len(trades)}",
-            side="buy" if side > 0 else "sell",
-            quantity=entry_bucket_qty,
-            comment=comment,
-            cost_side="long" if side > 0 else "short",
-        )
-        fill = broker.fill_order(open_order, fill_index, fill_price)
-        qty = float(fill.quantity) if fill is not None else entry_bucket_qty
-        entry_price = float(fill.price) if fill is not None else float(fill_price)
-        entry_index = fill_index
-        entry_bar_number = fill_bar_number
-
-        # Compute stops / targets based on entry bar data
-        atr_val = float(atr_arr[fill_bar_number])
-        ll = float(lowest_low_arr[fill_bar_number])
-        hh = float(highest_high_arr[fill_bar_number])
-
-        if side > 0:
-            long_stop = ll - (atr_val * config.risk_m)
-            long_risk = fill_price - long_stop
-            long_limit = fill_price + (config.rnr * long_risk)
-            long_limit_dist = fill_price - long_limit
-
-            trade_stop_price = long_stop
-            trade_target_price = long_limit if config.use_limit else np.nan
-            trade_exit_trigger_price = fill_price - (long_limit_dist * config.rr_exit)
-            trailing_stop = trade_stop_price
-            look_for_exit = False
-        else:
-            short_stop = hh + (atr_val * config.risk_m)
-            short_risk = short_stop - fill_price
-            short_limit = fill_price - (config.rnr * short_risk)
-            short_limit_dist = short_limit - fill_price
-
-            trade_stop_price = short_stop
-            trade_target_price = short_limit if config.use_limit else np.nan
-            trade_exit_trigger_price = fill_price + (short_limit_dist * config.rr_exit)
-            trailing_stop = trade_stop_price
-            look_for_exit = False
-
-        return {
-            "filled_order": "entry",
-            "filled_comment": comment,
-            "realized_gross_pnl_on_fill": 0.0,
-            "realized_costs_on_fill": 0.0,
-            "realized_net_pnl_on_fill": 0.0,
-        }
-
-    def execute_order(
-        order: Dict[str, Any],
-        fill_price: float,
-        fill_index: Any,
-        fill_bar_number: int,
-    ) -> Dict[str, Any]:
-        if order is None:
-            return {
-                "filled_order": None,
-                "filled_comment": None,
-                "realized_gross_pnl_on_fill": 0.0,
-                "realized_costs_on_fill": 0.0,
-                "realized_net_pnl_on_fill": 0.0,
-            }
-
-        kind = order["kind"]
-        if kind == "close":
-            return close_position(fill_price, fill_index, fill_bar_number, order["comment"])
-        if kind == "enter":
-            return open_position(order["side"], fill_price, fill_index, fill_bar_number, order["comment"])
-        if kind == "reverse":
-            old_close = close_position(fill_price, fill_index, fill_bar_number, order["comment"])
-            new_open = open_position(order["side"], fill_price, fill_index, fill_bar_number, order["comment"])
-            return {
-                "filled_order": "reverse",
-                "filled_comment": order["comment"],
-                "realized_gross_pnl_on_fill": old_close["realized_gross_pnl_on_fill"],
-                "realized_costs_on_fill": old_close["realized_costs_on_fill"],
-                "realized_net_pnl_on_fill": old_close["realized_net_pnl_on_fill"],
-                "opened_after_reverse": new_open["filled_order"] == "entry",
-            }
-
-        raise ValueError(f"Unsupported order kind: {kind}")
-
-    def make_close_order(comment: str) -> Dict[str, Any]:
-        return {"kind": "close", "side": 0, "qty": 0.0, "comment": comment}
-
-    def make_entry_order(new_side: int, comment: str) -> Dict[str, Any]:
-        return {"kind": "enter", "side": new_side, "comment": comment}
-
-    def make_reverse_order(new_side: int, comment: str) -> Dict[str, Any]:
-        return {"kind": "reverse", "side": new_side, "comment": comment}
-
-    for bar_number in range(n):
-        idx = index[bar_number]
-        fill_info = {
-            "filled_order": None,
-            "filled_comment": None,
-            "realized_gross_pnl_on_fill": 0.0,
-            "realized_costs_on_fill": 0.0,
-            "realized_net_pnl_on_fill": 0.0,
-        }
-
-        # 1) Fill pending order from prior bar
-        if pending_order is not None:
-            fill_price = float(fill_price_arr[bar_number])
-            fill_info = execute_order(pending_order, fill_price, idx, bar_number)
-            pending_order = None
-
-        close_price = float(close_arr[bar_number])
-        high_price = float(high_arr[bar_number])
-        low_price = float(low_arr[bar_number])
-        open_price = float(open_arr[bar_number])
-
-        in_long = side > 0
-        in_short = side < 0
-        flat = side == 0
-
-        # --- Common state calculations ---
-        bars_in_trade = (
-            bar_number - entry_bar_number
-            if entry_bar_number is not None
-            else 0
-        )
-
-        gross_pnl_estimate = current_gross_pnl(close_price, idx)
-        estimated_round_trip_costs = _round_trip_costs_for_side(side, qty, config)
-        estimated_net_if_closed_now = gross_pnl_estimate - estimated_round_trip_costs
-        reversal_net_filter_passed = (
-            estimated_net_if_closed_now >= config.min_net_profit_after_costs
-        )
-
-        entry_position_value = (
-            entry_price * qty * config.point_value
-            if qty > 0 and not pd.isna(entry_price)
-            else 0.0
-        )
-
-        take_profit_net_threshold = (
-            entry_position_value * config.take_profit_net_percent / 100.0
-        )
-        stop_loss_net_threshold = (
-            entry_position_value * config.stop_loss_net_percent / 100.0
-        )
-
-        if config.safety_max_net_loss_mode == "Cash amount":
-            safety_max_net_loss_threshold = float(config.safety_max_net_loss_cash)
-        else:
-            safety_max_net_loss_threshold = (
-                entry_position_value * config.safety_max_net_loss_percent / 100.0
-            )
-
-        safety_direction_allowed = (
-            config.safety_stop_applies_to == "Both"
-            or (config.safety_stop_applies_to == "Long only" and in_long)
-            or (config.safety_stop_applies_to == "Short only" and in_short)
-        )
-        safety_loss_triggered = (
-            safety_max_net_loss_threshold > 0
-            and estimated_net_if_closed_now <= -safety_max_net_loss_threshold
-        )
-        safety_bars_triggered = (
-            config.safety_max_bars_in_trade > 0
-            and bars_in_trade >= config.safety_max_bars_in_trade
-        )
-
-        if config.safety_stop_mode == "Net loss only":
-            safety_condition = safety_loss_triggered
-        elif config.safety_stop_mode == "Max bars only":
-            safety_condition = safety_bars_triggered
-        elif config.safety_stop_mode == "Net loss OR max bars":
-            safety_condition = safety_loss_triggered or safety_bars_triggered
-        else:
-            safety_condition = safety_loss_triggered and safety_bars_triggered
-
-        safety_stop_triggered = (
-            config.use_safety_stop and safety_direction_allowed and safety_condition
-        )
-
-        hit_net_take_profit = (
-            config.use_net_bracket_exits
-            and qty > 0
-            and estimated_net_if_closed_now >= take_profit_net_threshold
-        )
-        hit_net_stop_loss = (
-            config.use_net_bracket_exits
-            and qty > 0
-            and estimated_net_if_closed_now <= -stop_loss_net_threshold
-        )
-
-        # 2) Update trailing stop (before exit checks)
-        if in_long and config.trail_stop and look_for_exit:
-            if config.trail_source == "Close":
-                trail_src = close_arr[bar_number - 1] if bar_number > 0 else close_price
-            elif config.trail_source == "Open":
-                trail_src = open_arr[bar_number - 1] if bar_number > 0 else open_price
-            else:
-                trail_src = float(lowest_low_arr[bar_number])
-            trail = trail_src - (float(atr_arr[bar_number]) * config.trail_stop_size)
-            if trail > trailing_stop:
-                trailing_stop = trail
-
-        if in_short and config.trail_stop and look_for_exit:
-            if config.trail_source == "Close":
-                trail_src = close_arr[bar_number - 1] if bar_number > 0 else close_price
-            elif config.trail_source == "Open":
-                trail_src = open_arr[bar_number - 1] if bar_number > 0 else open_price
-            else:
-                trail_src = float(highest_high_arr[bar_number])
-            trail = trail_src + (float(atr_arr[bar_number]) * config.trail_stop_size)
-            if trail < trailing_stop:
-                trailing_stop = trail
-
-        # 3) Priority order generation
-        generated_order = None
-        hit_stop = False
-        hit_limit = False
-        exit_price = np.nan
-        exit_comment = ""
-
-        # 3a) Safety stop (highest priority)
-        if safety_stop_triggered and in_long:
-            generated_order = make_close_order("Safety Stop Long")
-        elif safety_stop_triggered and in_short:
-            generated_order = make_close_order("Safety Stop Short")
-
-        # 3b) Optional explicit net TP/SL exits
-        elif in_long and hit_net_take_profit:
-            generated_order = make_close_order("Net TP Long")
-        elif in_long and hit_net_stop_loss:
-            generated_order = make_close_order("Net SL Long")
-        elif in_short and hit_net_take_profit:
-            generated_order = make_close_order("Net TP Short")
-        elif in_short and hit_net_stop_loss:
-            generated_order = make_close_order("Net SL Short")
-
-        # 3c) Native stop / limit exits
-        else:
-            if in_long:
-                effective_stop = trailing_stop if (config.trail_stop and look_for_exit) else trade_stop_price
-
-                if low_price <= effective_stop:
-                    hit_stop = True
-                    exit_price = effective_stop
-                    exit_comment = "Stop Long"
-
-                if config.use_limit and not pd.isna(trade_target_price):
-                    if high_price >= trade_target_price:
-                        hit_limit = True
-                        if hit_stop:
-                            exit_price = effective_stop
-                            exit_comment = "Stop Long"
-                        else:
-                            exit_price = trade_target_price
-                            exit_comment = "Limit Long"
-
-                if not look_for_exit and config.trail_stop:
-                    if config.rr_exit == 0.0:
-                        look_for_exit = True
-                    elif high_price >= trade_exit_trigger_price:
-                        look_for_exit = True
-
-            if in_short:
-                effective_stop = trailing_stop if (config.trail_stop and look_for_exit) else trade_stop_price
-
-                if high_price >= effective_stop:
-                    hit_stop = True
-                    exit_price = effective_stop
-                    exit_comment = "Stop Short"
-
-                if config.use_limit and not pd.isna(trade_target_price):
-                    if low_price <= trade_target_price:
-                        hit_limit = True
-                        if hit_stop:
-                            exit_price = effective_stop
-                            exit_comment = "Stop Short"
-                        else:
-                            exit_price = trade_target_price
-                            exit_comment = "Limit Short"
-
-                if not look_for_exit and config.trail_stop:
-                    if config.rr_exit == 0.0:
-                        look_for_exit = True
-                    elif low_price <= trade_exit_trigger_price:
-                        look_for_exit = True
-
-            if hit_stop or hit_limit:
-                generated_order = make_close_order(exit_comment)
-
-        # 4) Max drawdown check (after exits, before entries)
-        if generated_order is None and config.set_max_drawdown and not max_dd_stopped:
-            current_equity = broker.mark_to_market_equity(close_price, idx)
-            if current_equity > peak_equity:
-                peak_equity = current_equity
-            if peak_equity > 0:
-                dd_pct = (peak_equity - current_equity) / peak_equity
-                if dd_pct >= config.max_perc_dd / 100.0:
-                    max_dd_stopped = True
-                    if side != 0:
-                        close_info = close_position(close_price, idx, bar_number, "Max Drawdown")
-                        fill_info = close_info
-
-        in_long = side > 0
-        in_short = side < 0
-        flat = side == 0
-
-        # 5) Entry signals
-        valid_long = bool(valid_long_arr[bar_number])
-        valid_short = bool(valid_short_arr[bar_number])
-        within_time = bool(within_time_arr[bar_number])
-
-        allow_long = config.trade_direction_mode != "Short only"
-        allow_short = config.trade_direction_mode != "Long only"
-
-        # Bucket sizing
-        entry_allowed_by_cap = close_price <= config.max_entry_price and capital_bucket > 0
-        flat_entry_qty = _normalize_qty(qty_from_bucket(capital_bucket, close_price), config)
-        reverse_entry_qty = flat_entry_qty
-
-        hold_until_profitable = (
-            config.fee_mode == "Parametric: hold until net covers fees"
-        )
-        exit_only_no_reverse = (
-            config.fee_mode == "Parametric: exit only, no forced reversal"
-        )
-        disable_fee_filter = (
-            config.fee_mode == "Disabled: always reverse/close on opposite signal"
-        )
-
-        if generated_order is None and not max_dd_stopped and entry_allowed_by_cap:
-            # 5a) Flat entries
-            if flat and flat_entry_qty > 0:
-                if valid_short and within_time and allow_short and config.short_trades:
-                    generated_order = make_entry_order(-1, "Short")
-                elif valid_long and within_time and allow_long and config.long_trades:
-                    generated_order = make_entry_order(1, "Long")
-
-            # 5b) Opposite signal while long (only if flip enabled)
-            if generated_order is None and in_long and valid_short and within_time and allow_short and config.short_trades and config.flip:
-                if disable_fee_filter:
-                    if close_price <= config.max_entry_price and reverse_entry_qty > 0:
-                        generated_order = make_reverse_order(-1, "Short Rev")
-                    else:
-                        generated_order = make_close_order("Exit Long")
-                elif exit_only_no_reverse:
-                    generated_order = make_close_order("Exit Long")
-                elif hold_until_profitable and reversal_net_filter_passed:
-                    if close_price <= config.max_entry_price and reverse_entry_qty > 0:
-                        generated_order = make_reverse_order(-1, "Short Rev")
-                    else:
-                        generated_order = make_close_order("Exit Long")
-
-            # 5c) Opposite signal while short (only if flip enabled)
-            if generated_order is None and in_short and valid_long and within_time and allow_long and config.long_trades and config.flip:
-                if disable_fee_filter:
-                    if close_price <= config.max_entry_price and reverse_entry_qty > 0:
-                        generated_order = make_reverse_order(1, "Long Rev")
-                    else:
-                        generated_order = make_close_order("Exit Short")
-                elif exit_only_no_reverse:
-                    generated_order = make_close_order("Exit Short")
-                elif hold_until_profitable and reversal_net_filter_passed:
-                    if close_price <= config.max_entry_price and reverse_entry_qty > 0:
-                        generated_order = make_reverse_order(1, "Long Rev")
-                    else:
-                        generated_order = make_close_order("Exit Short")
-
-        signal_order = None
-        signal_comment = None
-        signal_side = 0
-
-        if generated_order is not None:
-            signal_order = generated_order["kind"]
-            signal_comment = generated_order["comment"]
-            signal_side = generated_order.get("side", 0)
-
-            if config.execute_on_next_bar:
-                # Exits fill immediately; entries are deferred
-                if signal_order == "close":
-                    same_bar_fill = execute_order(generated_order, close_price, idx, bar_number)
-                    fill_info = same_bar_fill
-                else:
-                    pending_order = generated_order
-            else:
-                same_bar_fill = execute_order(generated_order, close_price, idx, bar_number)
-                fill_info = same_bar_fill
-
-        # Determine effective stop for record keeping
-        effective_stop = 0.0
-        if in_long:
-            effective_stop = trailing_stop if (config.trail_stop and look_for_exit) else trade_stop_price
-        elif in_short:
-            effective_stop = trailing_stop if (config.trail_stop and look_for_exit) else trade_stop_price
-
-        if compute_full_metrics:
-            records["position_side"].append(side)
-            records["position_label"].append(_side_name(side))
-            records["position_size"].append(side * qty)
-            records["position_avg_price"].append(entry_price)
-            records["in_long"].append(in_long)
-            records["in_short"].append(in_short)
-            records["flat"].append(flat)
-            records["look_for_exit"].append(look_for_exit)
-            records["trade_stop_price"].append(trade_stop_price)
-            records["trade_target_price"].append(trade_target_price)
-            records["trailing_stop"].append(trailing_stop)
-            records["effective_stop"].append(effective_stop)
-            records["trade_exit_trigger_price"].append(trade_exit_trigger_price)
-            records["hit_stop"].append(hit_stop)
-            records["hit_limit"].append(hit_limit)
-            records["signal_order"].append(signal_order)
-            records["signal_comment"].append(signal_comment)
-            records["signal_side"].append(signal_side)
-            records["max_dd_stopped"].append(max_dd_stopped)
-            records["capital_bucket"].append(capital_bucket)
-            records["withdrawn_profit"].append(withdrawn_profit)
-            records["entry_allowed_by_cap"].append(entry_allowed_by_cap)
-            records["flat_entry_qty"].append(flat_entry_qty)
-            records["reverse_entry_qty"].append(reverse_entry_qty)
-            records["bars_in_trade"].append(bars_in_trade)
-            records["gross_pnl_estimate"].append(gross_pnl_estimate)
-            records["estimated_round_trip_costs"].append(estimated_round_trip_costs)
-            records["estimated_net_if_closed_now"].append(estimated_net_if_closed_now)
-            records["reversal_net_filter_passed"].append(reversal_net_filter_passed)
-            records["safety_max_net_loss_threshold"].append(safety_max_net_loss_threshold)
-            records["safety_loss_triggered"].append(safety_loss_triggered)
-            records["safety_bars_triggered"].append(safety_bars_triggered)
-            records["safety_stop_triggered"].append(safety_stop_triggered)
-            records["hit_net_take_profit"].append(hit_net_take_profit)
-            records["hit_net_stop_loss"].append(hit_net_stop_loss)
-            records["filled_order"].append(fill_info.get("filled_order"))
-            records["filled_comment"].append(fill_info.get("filled_comment"))
-            records["realized_gross_pnl_on_fill"].append(fill_info.get("realized_gross_pnl_on_fill", 0.0))
-            records["realized_costs_on_fill"].append(fill_info.get("realized_costs_on_fill", 0.0))
-            records["realized_net_pnl_on_fill"].append(fill_info.get("realized_net_pnl_on_fill", 0.0))
-        else:
-            records["position_size"].append(side * qty)
-            records["position_avg_price"].append(entry_price)
-            records["estimated_net_if_closed_now"].append(estimated_net_if_closed_now)
-            records["realized_net_pnl_on_fill"].append(fill_info.get("realized_net_pnl_on_fill", 0.0))
-
-    state_df = pd.DataFrame(records, index=out.index)
     if compute_full_metrics:
         result_df = pd.concat([out, state_df], axis=1)
     else:
         result_df = state_df
-    trades_df = pd.DataFrame(trades)
 
     return result_df, trades_df

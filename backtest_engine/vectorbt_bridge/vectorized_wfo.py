@@ -47,7 +47,7 @@ def main() -> int:
         return np.arange(int(parts[0]), int(parts[1]), int(parts[2]))
 
     fast_windows = _parse_range(args.fast_range)
-    slow_windows = _parse_range(args.slow_range)
+    _parse_range(args.slow_range)
     
     chunk_size = len(price) // args.n_windows
     if chunk_size == 0:

@@ -16,7 +16,6 @@ import argparse
 import json
 from pathlib import Path
 
-import pandas as pd
 
 from backtest_engine.data import load_canonical_market_data
 from backtest_engine.strategies.hma_crossover import HMAConfigOverrides, run_hma_crossover

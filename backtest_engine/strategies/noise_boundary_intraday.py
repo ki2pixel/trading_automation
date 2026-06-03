@@ -10,7 +10,7 @@ import numpy as np
 from ..metrics import MetricsInput, compute_metrics
 from ..reports import BacktestRunResult
 from ..configuration import coerce_strategy_parameters, load_strategy_config
-from ..broker import BrokerSimulator, BrokerConfig, Order, ExitOrchestrator, TimeExitRule, VWAPExitRule, LadderExitRule
+from ..broker import BrokerSimulator, BrokerConfig
 
 
 @dataclass
@@ -172,7 +172,7 @@ def compute_noise_boundary(
         mapped_vol = _SHARED_NB_VOL_GRID[idx, 0]
     else:
         # Try local cache
-        cache_key = (id(bars), lookback_key)
+        cache_key = (id(bars), len(bars), bars.index[0] if len(bars) > 0 else 0, lookback_key)
         if cache_key in _NB_VOL_CACHE:
             mapped_vol = _NB_VOL_CACHE[cache_key]
         else:
@@ -349,9 +349,9 @@ def run_noise_boundary_intraday(
     
     # (Exit rules logic handled by kernel)
     
-    _DVOL_CACHE: dict = getattr(run_noise_boundary_intraday, "_DVOL_CACHE", {})
-    if not hasattr(run_noise_boundary_intraday, "_DVOL_CACHE"):
-        run_noise_boundary_intraday._DVOL_CACHE = _DVOL_CACHE
+    _dvol_cache: dict = getattr(run_noise_boundary_intraday, "_dvol_cache", {})
+    if not hasattr(run_noise_boundary_intraday, "_dvol_cache"):
+        run_noise_boundary_intraday._dvol_cache = _dvol_cache
 
     # Sizing Volatility
     if overrides.sizing_volatility_type == "daily":
@@ -361,21 +361,20 @@ def run_noise_boundary_intraday(
             idx = _SHARED_NB_VOL_KEYS[lookback_key]
             spy_dvol = _SHARED_NB_VOL_GRID[idx, 1]
         else:
-            cache_key = (id(data), lookback_key)
-            if cache_key in _DVOL_CACHE:
-                spy_dvol = _DVOL_CACHE[cache_key]
+            cache_key = (id(data), len(data), data.index[0] if len(data) > 0 else 0, lookback_key)
+            if cache_key in _dvol_cache:
+                spy_dvol = _dvol_cache[cache_key]
             else:
                 daily_close = data["close"].resample("D").last().dropna()
                 daily_returns = daily_close.pct_change()
                 daily_dvol_series = daily_returns.rolling(window=lookback, min_periods=lookback - 1).std().shift(1)
                 normalized_index = data.index.normalize()
                 spy_dvol = daily_dvol_series.reindex(normalized_index).values
-                _DVOL_CACHE[cache_key] = spy_dvol
+                _dvol_cache[cache_key] = spy_dvol
     else:
         spy_dvol = None
 
     # State tracking
-    state_list = []
     
     # Pre-extract NumPy arrays for direct indexing (avoids to_dict("records") overhead)
     timestamps = data.index
@@ -469,7 +468,7 @@ def run_noise_boundary_intraday(
         )
         broker.closed_trades.append(trade)
 
-    state_list = state_arr.tolist()  # Can convert to DataFrame directly
+    state_arr.tolist()  # Can convert to DataFrame directly
     state_df = pd.DataFrame(state_arr, index=timestamps)
     # The dataframe uses specific column names that metrics.py relies on
     state_df.index.name = "timestamp"
@@ -562,7 +561,6 @@ def _init_prescan_worker(close, anchor_up, anchor_down, mapped_vol, timeframe_mi
 def _process_prescan_batch(batch_combos):
     global _worker_close, _worker_anchor_up, _worker_anchor_down, _worker_mapped_vol_by_lookback, _worker_timeframe_minutes
     import pandas as pd
-    import numpy as np
     import vectorbt as vbt
 
     batch_long_entries = {}
@@ -727,18 +725,18 @@ def vectorbt_prescan(
 
         # 2. Dynamic Batch Size (Piste B)
         if workers > 1:
-            BATCH_SIZE = 50
+            batch_size = 50
         else:
-            BATCH_SIZE = 100
+            batch_size = 100
 
-        total_batches = (len(combos) + BATCH_SIZE - 1) // BATCH_SIZE if combos else 0
+        total_batches = (len(combos) + batch_size - 1) // batch_size if combos else 0
         returns_batches: list[pd.Series] = []
 
         close = data["close"]
 
         # 3. Multiprocessing Parallelization (Piste A)
         if workers > 1:
-            logger.info(f"Lancement du Pre-Scan VectorBT en parallèle avec {workers} processus (Batch Size={BATCH_SIZE})...")
+            logger.info(f"Lancement du Pre-Scan VectorBT en parallèle avec {workers} processus (Batch Size={batch_size})...")
             import multiprocessing
             try:
                 ctx = multiprocessing.get_context("fork")
@@ -748,8 +746,8 @@ def vectorbt_prescan(
             # Split combos into list of batches
             batches = []
             for batch_idx in range(total_batches):
-                start_i = batch_idx * BATCH_SIZE
-                end_i = min(start_i + BATCH_SIZE, len(combos))
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(combos))
                 batches.append(combos[start_i:end_i])
 
             import concurrent.futures
@@ -796,15 +794,15 @@ def vectorbt_prescan(
                             except Exception as cb_err:
                                 logger.warning(f"Error in prescan progress callback: {cb_err}")
         else:
-            logger.info(f"Lancement du Pre-Scan VectorBT en séquentiel (Batch Size={BATCH_SIZE})...")
+            logger.info(f"Lancement du Pre-Scan VectorBT en séquentiel (Batch Size={batch_size})...")
             for batch_idx in range(total_batches):
                 if stop_requested is not None and stop_requested():
                     logger.warning("Pre-scan Noise Boundary annulé pendant le calcul des signaux.")
                     _write_prescan_report(output_dir, "cancelled", None, {})
                     return parameter_specs
 
-                start_i = batch_idx * BATCH_SIZE
-                end_i = min(start_i + BATCH_SIZE, len(combos))
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(combos))
                 batch_combos = combos[start_i:end_i]
 
                 batch_long_entries = {}

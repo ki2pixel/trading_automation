@@ -88,18 +88,18 @@ def list_split_files(repo_root: Path) -> list[Path]:
 def load_symbol_currency_map(repo_root: Path, timeframe_minutes: int | str = BASE_TIMEFRAME_MINUTES) -> dict[str, str]:
     if not hasattr(load_symbol_currency_map, "_cache"):
         load_symbol_currency_map._cache = {}
-    _CURRENCY_MAP_CACHE = load_symbol_currency_map._cache
+    _currency_map_cache = load_symbol_currency_map._cache
     cache_key = (str(repo_root), timeframe_minutes)
-    if cache_key in _CURRENCY_MAP_CACHE:
-        return _CURRENCY_MAP_CACHE[cache_key]
+    if cache_key in _currency_map_cache:
+        return _currency_map_cache[cache_key]
         
     path = repo_root / "SheetsFinance_Export" / "fx_data" / _raw_folder_name(timeframe_minutes) / "symbol_currency_map.csv"
     if not path.exists():
-        _CURRENCY_MAP_CACHE[cache_key] = {}
+        _currency_map_cache[cache_key] = {}
         return {}
     df = pd.read_csv(path, dtype=str).fillna("")
     result = {row["symbol"]: row["currency"].upper() for _, row in df.iterrows() if row.get("symbol")}
-    _CURRENCY_MAP_CACHE[cache_key] = result
+    _currency_map_cache[cache_key] = result
     return result
 
 

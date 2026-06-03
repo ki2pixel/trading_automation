@@ -1,0 +1,31 @@
+# Spécifications Fonctionnelles : Refactorisation de bayesian_optimizer.py
+
+## Objectif
+Réduire la complexité cognitive de `backtest_engine/bayesian_optimizer.py` (actuellement à 518) en dessous de 15 par fonction/méthode, comme spécifié dans le plan de remédiation SonarCloud.
+
+## Périmètre
+Le fichier `bayesian_optimizer.py` gère :
+1. L'instanciation de l'étude Optuna avec TPE sampler.
+2. Le parallélisme "Deadlock-Free" (via ProcessPoolExecutor).
+3. L'architecture de grilles POSIX Shared-Memory (allocations et vues zero-copy) pour 7 stratégies.
+4. Le nettoyage (Unlinked Lifecycle Cleanup) de la mémoire partagée.
+5. La boucle d'évaluation des hyperparamètres, pruning, et validation (VectorBT).
+6. La génération de rapports et recommandations (OptimizationSummary).
+
+## Directives de Refactorisation
+1. **Séparation des préoccupations (SoC)** :
+   - Extraire les responsabilités annexes (chargement de configuration, logs, utilitaires de métriques, validation VectorBT).
+   - Extraire la gestion de la mémoire partagée (allocation, attachement, libération) dans des gestionnaires/context managers dédiés par stratégie ou de manière générique.
+   - Simplifier la méthode principale d'optimisation (run_optimization) en déléguant à des sous-méthodes privées ou classes.
+2. **Performance et Thread-Safety** :
+   - Maintenir strictement l'implémentation de la mémoire partagée `/dev/shm` POSIX zero-copy actuelle.
+   - Ne pas altérer la logique de `ProcessPoolExecutor`.
+   - Éviter les variables globales mutables, garantir le typage strict, pas d'imports cycliques.
+3. **Maintien fonctionnel** :
+   - Les entrées (OptimizationConfig, stratégies) et sorties (OptimizationSummary) doivent rester strictement identiques.
+   - Tous les tests existants doivent rester verts.
+
+## Phases
+1. Extraction des utilitaires et de la post-validation.
+2. Extraction de la gestion POSIX Shared-Memory.
+3. Simplification de la boucle d'évaluation Optuna (`objective` function) et de l'orchestrateur (`run_optimization`).

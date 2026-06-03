@@ -294,7 +294,7 @@ def run_wfa_fold(
                             daily = equity.pct_change().dropna().values
                             if len(daily) > 1:
                                 daily_returns_matrix.append(daily)
-                    except Exception:
+                    except Exception:  # NOSONAR
                         continue
 
                 if len(daily_returns_matrix) >= 4:

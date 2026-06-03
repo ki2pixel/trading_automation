@@ -243,7 +243,6 @@ def _init_prescan_worker(close, rolling_high, rolling_low, timeframe_mins):
 def _process_prescan_batch(batch_combos):
     global _worker_close, _worker_rolling_high_cache, _worker_rolling_low_cache, _worker_timeframe_minutes
     import pandas as pd
-    import numpy as np
     import vectorbt as vbt
 
     batch_long_entries = {}
@@ -306,7 +305,6 @@ def vectorbt_prescan(
     afin de rester executable en quelques secondes sur ~100k barres.
     """
     import logging
-    import numpy as np
     from ..optimizer import ParameterGridSpec
 
     logger = logging.getLogger(__name__)
@@ -370,18 +368,18 @@ def vectorbt_prescan(
 
         # 2. Dynamic Batch Size (Piste B)
         if workers > 1:
-            BATCH_SIZE = 50
+            batch_size = 50
         else:
-            BATCH_SIZE = 100
+            batch_size = 100
 
-        total_batches = (len(combos) + BATCH_SIZE - 1) // BATCH_SIZE if combos else 0
+        total_batches = (len(combos) + batch_size - 1) // batch_size if combos else 0
         returns_batches: list[pd.Series] = []
 
         close = data["close"]
 
         # 3. Multiprocessing Parallelization (Piste A)
         if workers > 1:
-            logger.info(f"Lancement du Pre-Scan VectorBT en parallèle avec {workers} processus (Batch Size={BATCH_SIZE})...")
+            logger.info(f"Lancement du Pre-Scan VectorBT en parallèle avec {workers} processus (Batch Size={batch_size})...")
             import multiprocessing
             try:
                 ctx = multiprocessing.get_context("fork")
@@ -390,8 +388,8 @@ def vectorbt_prescan(
 
             batches = []
             for batch_idx in range(total_batches):
-                start_i = batch_idx * BATCH_SIZE
-                end_i = min(start_i + BATCH_SIZE, len(combos))
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(combos))
                 batches.append(combos[start_i:end_i])
 
             import concurrent.futures
@@ -438,15 +436,15 @@ def vectorbt_prescan(
                             except Exception as cb_err:
                                 logger.warning(f"Error in prescan progress callback: {cb_err}")
         else:
-            logger.info(f"Lancement du Pre-Scan VectorBT en séquentiel (Batch Size={BATCH_SIZE})...")
+            logger.info(f"Lancement du Pre-Scan VectorBT en séquentiel (Batch Size={batch_size})...")
             for batch_idx in range(total_batches):
                 if stop_requested is not None and stop_requested():
                     logger.warning("Pre-scan Bjorgum annule pendant le calcul des signaux.")
                     _write_prescan_report(output_dir, "cancelled", None, {})
                     return parameter_specs
 
-                start_i = batch_idx * BATCH_SIZE
-                end_i = min(start_i + BATCH_SIZE, len(combos))
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(combos))
                 batch_combos = combos[start_i:end_i]
 
                 batch_long_entries = {}

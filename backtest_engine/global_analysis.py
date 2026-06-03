@@ -11,11 +11,14 @@ def generate_global_analysis(
     strategy: str,
     output_dir: str | Path = "reports/local_optimizer"
 ) -> dict[str, str]:
+    strategy_clean = Path(strategy).name
+    if not strategy_clean:
+        raise ValueError("Invalid strategy name")
     if output_dir == "reports/local_optimizer":
         from .paths import get_reports_dir
-        base_path = get_reports_dir(repo_root) / "local_optimizer" / strategy
+        base_path = get_reports_dir(repo_root) / "local_optimizer" / strategy_clean
     else:
-        base_path = Path(repo_root) / Path(output_dir) / strategy
+        base_path = Path(repo_root) / Path(output_dir) / strategy_clean
     if not base_path.exists() or not base_path.is_dir():
         raise FileNotFoundError(f"Aucun rapport d'optimisation trouvé pour la stratégie : {strategy} dans {base_path}")
 
@@ -31,7 +34,6 @@ def generate_global_analysis(
         if not run_dirs:
             continue
 
-        best_run_overall = None
         best_score_overall = float('-inf')
         best_reco_data = None
         best_timeframe = ""
@@ -65,11 +67,10 @@ def generate_global_analysis(
 
                     if effective_score > best_score_overall:
                         best_score_overall = effective_score
-                        best_run_overall = run_dir
                         best_reco_data = reco_data
                         best_timeframe = timeframe
 
-            except Exception:
+            except Exception:  # NOSONAR
                 continue
 
         # Si aucun run valide n'est trouvé pour le symbole

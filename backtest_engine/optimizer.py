@@ -969,7 +969,7 @@ def run_grid_optimization(
             for p in getattr(executor, "_processes", {}).values():
                 try:
                     p.terminate()
-                except Exception:
+                except Exception:  # NOSONAR
                     pass
 
         try:

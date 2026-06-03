@@ -74,3 +74,10 @@ reports/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Scratch and refactoring scripts
+fix_*.py
+refactor_*.py
+scratch_*.py
+update_sonar.py
+

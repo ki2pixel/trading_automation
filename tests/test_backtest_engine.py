@@ -618,8 +618,8 @@ class ConvertedStrategyBrokerMigrationTests(unittest.TestCase):
 
         self.assertTrue(instances)
         self.assertFalse(trades.empty)
-        self.assertIn("estimated_costs", trades.columns)
-        self.assertAlmostEqual(float(trades.iloc[0]["estimated_costs"]), 2.0)
+        self.assertIn("commission", trades.columns)
+        self.assertAlmostEqual(float(trades.iloc[0]["commission"]), 2.0)
         self.assertAlmostEqual(float(trades.iloc[0]["net_pnl"]), float(trades.iloc[0]["gross_pnl"]) - 2.0)
 
     def test_avt_uses_common_broker_for_closed_trade_costs(self) -> None:

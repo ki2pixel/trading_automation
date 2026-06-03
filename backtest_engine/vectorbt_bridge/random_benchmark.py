@@ -9,7 +9,6 @@ for Sharpe Ratio and Total Return.
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import pandas as pd
@@ -48,9 +47,10 @@ def main() -> int:
     
     print(f"Generating {args.n_samples} random strategies for {args.symbol}...")
     
-    # Generate multiple sets of signals using numpy choice
-    entries_data = np.random.choice([True, False], size=(len(price), args.n_samples), p=[args.prob_enter, 1 - args.prob_enter])
-    exits_data = np.random.choice([True, False], size=(len(price), args.n_samples), p=[args.prob_exit, 1 - args.prob_exit])
+    # Generate multiple sets of signals using numpy default_rng
+    rng = np.random.default_rng()
+    entries_data = rng.choice([True, False], size=(len(price), args.n_samples), p=[args.prob_enter, 1 - args.prob_enter])
+    exits_data = rng.choice([True, False], size=(len(price), args.n_samples), p=[args.prob_exit, 1 - args.prob_exit])
     
     entries = pd.DataFrame(entries_data, index=price.index)
     exits = pd.DataFrame(exits_data, index=price.index)

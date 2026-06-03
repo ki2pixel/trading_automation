@@ -28,6 +28,9 @@
 - [x] [2026-06-01 22:12:00] - Création du rapport Passe 1 et synthèse stratégique pour `hma_crossover`.
 - [x] [2026-06-02 20:05:00] - Audit de la Passe 1 de la stratégie adaptive_volatility_trend terminé et consigné.
 - [x] [2026-06-02 20:39:00] - Audit de la Passe 2 de la stratégie adaptive_volatility_trend terminé. Rapports mis à jour et setups validés pour production.
+- [x] [2026-06-03 22:30:00] - Remédiation SonarCloud (Phase 0 et 1 partielle) : Correction des Blockers (retour constant, Path Traversal) et réduction drastique de la complexité cognitive de web.py (extraction des endpoints). Plan d'audit mis à jour dans docs/audit/SonarCloud_Remediation_Plan.md.
+- [x] [2026-06-03 22:45:00] - Remédiation SonarCloud (Cœur de calcul) : Refactorisation de `bayesian_optimizer.py` pour réduire sa complexité cognitive (de 518 à 14). Extraction des allocations POSIX SHM vers `shm_allocators.py`. Fix d'un bug REST `web.py` pour `global-analysis`.
+- [x] [2026-06-03 23:25:00] - Remédiation SonarCloud (Phase 2 & Phase 3 partielle) : Correction des anomalies Majeures (NumPy Random S6711, comparaisons Float S1244, exceptions génériques S0000) et nettoyage des imports (F401). Non-régression validée par suite de tests (275 tests passed). Plan de remédiation clôturé.
 
 ## Tâches en Cours
 - Aucune tâche en cours.

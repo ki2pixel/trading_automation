@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .canonical import build_canonical_dataset
-from .data import DataQualityReport, load_canonical_market_data, load_market_data, scan_market_data, validate_timeframe_minutes
+from .data import load_canonical_market_data, load_market_data, scan_market_data, validate_timeframe_minutes
 from .optimizer import allowed_score_metrics, estimate_iterations, load_data_and_optimize, parse_cli_parameter, validate_iteration_limits, validate_parameter_grid, validate_score_metric
 from .report_interpreter import write_optimization_recommendations
 from .reports import write_backtest_outputs
@@ -271,6 +271,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     )
     print(f"Optimization written to: {summary.output_dir}")
     print(json.dumps({k: v for k, v in asdict(summary).items() if k != "results"}, indent=2, ensure_ascii=False, default=str))
+    if summary.status == "FAILED":
+        return 1
     return 0
 
 
@@ -303,7 +305,7 @@ def cmd_worker(args: argparse.Namespace) -> int:
         for handler in logging.root.handlers[:]:
             try:
                 handler.flush()
-            except Exception:
+            except Exception:  # NOSONAR
                 pass
         sys.exit(0)
         

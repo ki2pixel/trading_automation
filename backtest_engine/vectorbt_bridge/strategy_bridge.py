@@ -11,7 +11,6 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from backtest_engine.reports import BacktestRunResult
@@ -161,7 +160,7 @@ def compare_results(
     vbt_net_pnl = float(vbt_trades["net_pnl"].sum()) if n_vbt else 0.0
 
     native_equity = native_result.equity_curve["equity"] if not native_result.equity_curve.empty else pd.Series()
-    vbt_equity = pf.value()
+    pf.value()
 
     native_max_dd = (
         (native_equity / native_equity.cummax() - 1).min() * 100

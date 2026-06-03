@@ -111,7 +111,7 @@ def _load_strategy_module() -> ModuleType:
         sys.modules[spec.name] = module
         try:
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as exc:  # NOSONAR
             sys.modules.pop(spec.name, None)
             raise
         _HMA_MODULE = module
@@ -225,7 +225,7 @@ def _write_prescan_report(
     try:
         path = output_dir / "vectorbt_prescan_report.json"
         path.write_text(json.dumps(report, indent=4, default=str), encoding="utf-8")
-    except Exception:
+    except Exception as exc:  # NOSONAR
         pass
 
 

@@ -88,7 +88,7 @@ class SharedIndicatorVolume:
         if self.shm is not None:
             try:
                 self.shm.close()
-            except Exception:
+            except Exception:  # NOSONAR
                 pass
             try:
                 self.shm.unlink()

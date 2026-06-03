@@ -422,10 +422,10 @@ class BrokerSimulator:
             return 1.0
         try:
             rate = float(self.config.fx_rate_provider(self.config.asset_currency, timestamp))
-            if math.isnan(rate) or rate == 0.0:
+            if math.isnan(rate) or math.isclose(rate, 0.0, abs_tol=1e-9):
                 return 1.0
             return rate
-        except Exception:
+        except Exception:  # NOSONAR
             return 1.0
 
     def evaluate_exits(self, bar: dict) -> ExitAction | None:

@@ -292,7 +292,7 @@ class FastFXProvider:
             self.last_idx = idx
             
             val = self.values[idx]
-            if val == 0.0 or math.isnan(val):
+            if math.isclose(val, 0.0, abs_tol=1e-9) or math.isnan(val):
                 return 1.0
             return val if self.is_inverse else 1.0 / val
         except Exception:
@@ -313,16 +313,16 @@ def build_fx_rate_provider(
     """
     if not hasattr(build_fx_rate_provider, "_cache"):
         build_fx_rate_provider._cache = {}
-    _FX_PROVIDER_CACHE = build_fx_rate_provider._cache
+    _fx_provider_cache = build_fx_rate_provider._cache
 
     minutes = validate_timeframe_minutes(timeframe_minutes)
     cache_key = (symbol, account_currency, minutes)
-    if cache_key in _FX_PROVIDER_CACHE:
-        return _FX_PROVIDER_CACHE[cache_key]
+    if cache_key in _fx_provider_cache:
+        return _fx_provider_cache[cache_key]
 
     map_path = repo_root / "SheetsFinance_Export" / "fx_data" / "raw_5m" / "symbol_currency_map.csv"
     if not map_path.exists():
-        _FX_PROVIDER_CACHE[cache_key] = None
+        _fx_provider_cache[cache_key] = None
         return None
         return None
 
@@ -360,7 +360,7 @@ def build_fx_rate_provider(
         series = df.dropna(subset=["timestamp"]).set_index("timestamp")["close"].sort_index()
 
         provider = FastFXProvider(series, is_inverse=False)
-        _FX_PROVIDER_CACHE[cache_key] = provider
+        _fx_provider_cache[cache_key] = provider
         return provider
 
     # Inverse pair: asset_currency + account_currency (e.g., USDEUR)
@@ -384,10 +384,10 @@ def build_fx_rate_provider(
         series = df.dropna(subset=["timestamp"]).set_index("timestamp")["close"].sort_index()
 
         provider = FastFXProvider(series, is_inverse=True)
-        _FX_PROVIDER_CACHE[cache_key] = provider
+        _fx_provider_cache[cache_key] = provider
         return provider
 
-    _FX_PROVIDER_CACHE[cache_key] = None
+    _fx_provider_cache[cache_key] = None
     return None
 
 
