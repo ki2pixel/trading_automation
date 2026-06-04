@@ -23,185 +23,128 @@ Fast Filesystem Ops optimise chaque opération fichier pour minimiser l'usage de
 
 #### Pour modification de fonction spécifique
 
-```bash
-# 1. Localiser la fonction
-fast_search_files "function calculateTotal" --language python
+1. **Localiser la fonction** :
+   - Si vous cherchez un fichier par son nom (substring match) : utiliser `fast_search_files(directory="/home/kidpixel/trading_automation_v2", pattern="calculations")`.
+   - Si vous cherchez du contenu textuel (regex) : utiliser `grep_search(SearchPath="/home/kidpixel/trading_automation_v2", Query="def calculateTotal")`.
 
-# 2. Lire uniquement le fichier contenant la fonction
-fast_read_multiple_files src/calculations.py --lines 45-67
+2. **Lire uniquement le fichier contenant la fonction** :
+   `fast_read_multiple_files(paths=["/home/kidpixel/trading_automation_v2/src/calculations.py"])`
 
-# 3. Éditer chirurgicalement
-edit_file src/calculations.py --start 45 --end 67 --replacement "new_function_code"
-```
+3. **Éditer chirurgicalement** (remplacer la séquence exacte de lignes) :
+   `edit_file(path="/home/kidpixel/trading_automation_v2/src/calculations.py", edits=[{"oldText": "def calculateTotal():\n    return 0", "newText": "def calculateTotal():\n    return 100"}])`
 
 #### Pour refactoring multi-fichiers
 
-```bash
-# 1. Rechercher toutes les occurrences
-fast_search_files "deprecated_function" --language javascript
+1. **Rechercher toutes les occurrences** (du contenu textuel) :
+   `grep_search(SearchPath="/home/kidpixel/trading_automation_v2", Query="deprecated_function")`
 
-# 2. Lire les sections pertinentes de chaque fichier
-fast_read_multiple_files file1.js file2.js file3.js --context 3
+2. **Lire les fichiers** :
+   `fast_read_multiple_files(paths=["/home/kidpixel/trading_automation_v2/file1.js", "/home/kidpixel/trading_automation_v2/file2.js"])`
 
-# 3. Éditer chaque occurrence chirurgicalement
-edit_file file1.js --line 123 --replacement "new_function_call"
-edit_file file2.js --line 45 --replacement "new_function_call"
-```
+3. **Éditer chaque occurrence chirurgicalement** :
+   `edit_file(path="/home/kidpixel/trading_automation_v2/file1.js", edits=[{"oldText": "deprecated_function()", "newText": "new_function_call()"}])`
+   `edit_file(path="/home/kidpixel/trading_automation_v2/file2.js", edits=[{"oldText": "deprecated_function()", "newText": "new_function_call()"}])`
 
 ## Production-safe patterns
 
-### Recherche optimisée
+### Recherche de fichiers par nom (fast-filesystem)
 
-```bash
-# Recherche ciblée avec filtres
-fast_search_files "class UserController" --language python --exclude test/
-
-# Recherche par pattern avec contexte limité
-fast_search_files "TODO.*performance" --context 2
-
-# Recherche multi-langages
-fast_search_files "import.*React" --language javascript,typescript
+Pour trouver l'emplacement de fichiers par leur nom :
+```json
+// Exemple d'appel fast_search_files (substring match sur le nom du fichier)
+{
+  "directory": "/home/kidpixel/trading_automation_v2",
+  "pattern": "calculations"
+}
 ```
 
-### Lecture chirurgicale
+### Recherche de contenu textuel (ripgrep-agent)
 
-```bash
-# Lire uniquement les lignes nécessaires
-fast_read_multiple_files large_file.py --lines 1000-1050
-
-# Lire avec contexte minimal
-fast_read_multiple_files config.json --context 1
-
-# Lecture multi-fichiers optimisée
-fast_read_multiple_files src/*.js --pattern "export.*function"
+Pour rechercher des patterns à l'intérieur du code, utilisez toujours `grep_search` :
+```json
+// Exemple d'appel grep_search
+{
+  "SearchPath": "/home/kidpixel/trading_automation_v2",
+  "Query": "class UserController",
+  "CaseInsensitive": true
+}
 ```
 
-### Édition précise
+### Lecture chirurgicale (fast-filesystem)
 
-```bash
-# Édition par ligne unique
-edit_file src/app.js --line 234 --replacement "newCode"
+```json
+// Lecture de plusieurs fichiers en une fois
+{
+  "paths": [
+    "/home/kidpixel/trading_automation_v2/backtest_engine/data.py",
+    "/home/kidpixel/trading_automation_v2/backtest_engine/configuration.py"
+  ]
+}
+```
 
-# Édition par bloc
-edit_file src/app.js --start 200 --end 250 --replacement "newBlock"
+### Édition précise (filesystem-agent)
 
-# Édition avec recherche automatique
-edit_file src/app.js --search "oldPattern" --replacement "newPattern"
+```json
+// Exemple d'édition chirurgicale par remplacement de bloc textuel exact
+{
+  "path": "/home/kidpixel/trading_automation_v2/src/app.js",
+  "edits": [
+    {
+      "oldText": "const port = 3000;",
+      "newText": "const port = 8080;"
+    }
+  ]
+}
 ```
 
 ## Token optimization strategies
 
 ### Éviter les chargements massifs
 
-❌ **Incorrect** :
-```bash
-read_file large_project/src/entier_fichier.py  # 5000+ lignes
-```
+❌ **Incorrect** : Charger l'intégralité d'un grand fichier de code (>1000 lignes) avec `read_file` ou `fast_read_file` lorsque seule une fonction est ciblée.
 
 ✅ **Correct** :
-```bash
-fast_search_files "function targetFunction" --language python
-fast_read_multiple_files target_file.py --lines 100-150
-edit_file target_file.py --line 125 --replacement "optimized code"
-```
+1. Localiser la ligne avec `grep_search`.
+2. Lire uniquement une portion limitée avec `view_file` (arguments `StartLine` et `EndLine`).
+3. Modifier chirurgicalement avec `edit_file` en ciblant le bloc exact.
 
 ### Recherche avant lecture
 
-Toujours rechercher avant de lire :
-```bash
-# 1. Localiser
-fast_search_files "targetPattern" --language typescript
-
-# 2. Lire uniquement les résultats
-fast_read_multiple_files results... --context 2
-
-# 3. Éditer
-edit_file target_file.ts --line X --replacement "new code"
-```
-
-### Lecture multiple optimisée
-
-```bash
-# Lire plusieurs fichiers en une seule passe
-fast_read_multiple_files file1.js file2.js file3.js --pattern "export.*"
-
-# Plutôt que
-read_file file1.js
-read_file file2.js  
-read_file file3.js
-```
+Toujours localiser le code précis avant de lire :
+1. **Localiser** : `grep_search` avec la requête désirée.
+2. **Lire** : `view_file` sur le fichier retourné pour le contexte immédiat (ex: 20-30 lignes).
+3. **Modifier** : `edit_file` avec le texte exact à remplacer.
 
 ## Common gotchas
 
 ### Fichiers volumineux (>1000 lignes)
 
-```bash
-# ❌ Ne jamais charger entièrement
-read_file massive_config.json  # 5000+ lignes
-
-# ✅ Utiliser JSON Query pour les gros JSON
-json_query_query_json massive_config.json "$.database.connection"
-
-# ✅ Pour code, recherche ciblée
-fast_search_files "database.*connection" --language python
-fast_read_multiple_files config.py --lines 50-60
-```
+- **RÈGLE D'OR** : Ne jamais charger entièrement les fichiers volumineux.
+- Pour les fichiers JSON massifs, utilisez les outils de `json-query` en passant la structure JSON sous `json_data`.
+- Pour le code source volumineux, localisez d'abord avec `grep_search` et lisez des lignes ciblées via `view_file`.
 
 ### Éditions en cascade
 
-```bash
-# Pour modifications multi-fichiers, utiliser la lecture multiple
-fast_read_multiple_files file1.js file2.js file3.js --pattern "oldFunction"
-
-# Puis éditer séquentiellement
-edit_file file1.js --search "oldFunction" --replacement "newFunction"
-edit_file file2.js --search "oldFunction" --replacement "newFunction"
-```
-
-### Contexte insuffisant
-
-```bash
-# Toujours inclure un peu de contexte pour éviter les erreurs
-fast_read_multiple_files target.py --lines 100-120 --context 3
-
-# Plutôt que
-fast_read_multiple_files target.py --lines 100-120  # Risque d'erreur
-```
+Pour modifier plusieurs fichiers, procédez séquentiellement :
+1. Obtenez la liste des fichiers via `grep_search`.
+2. Lisez les zones ciblées.
+3. Exécutez `edit_file` pour chaque fichier l'un après l'autre (les modifications doivent rester séquentielles).
 
 ## API Reference
 
-### Commandes principales
+### Outils principaux
 
-- `fast_search_files "<pattern>"` : Recherche intelligente avec options
-- `fast_read_multiple_files <files>` : Lecture optimisée multi-fichiers  
-- `edit_file <file>` : Édition chirurgicale précise (Outil du serveur `filesystem-agent`)
-
-### Options de recherche
-
-- `--language <lang>` : Filtrer par langage (python, javascript, typescript, etc.)
-- `--exclude <pattern>` : Exclure fichiers/dossiers
-- `--context <n>` : Nombre de lignes de contexte
-- `--max-results <n>` : Limiter nombre de résultats
-
-### Options de lecture
-
-- `--lines <start-end>` : Lignes spécifiques
-- `--context <n>` : Lignes de contexte supplémentaires
-- `--pattern <regex>` : Filtrer lignes par pattern
-
-### Options d'édition
-
-- `--line <n>` : Ligne spécifique à remplacer
-- `--start <n> --end <n>` : Bloc de lignes
-- `--search <pattern>` : Rechercher et remplacer
-- `--replacement <code>` : Code de remplacement
+- `fast_search_files(directory, pattern)` : Trouve les chemins de fichiers dont le nom contient `pattern` sous `directory`.
+- `fast_read_multiple_files(paths)` : Lit le contenu textuel complet de la liste de fichiers fournie dans `paths`.
+- `edit_file(path, edits, dryRun)` : Applique des modifications basées sur le remplacement de chaînes de caractères exactes (`oldText` -> `newText`).
+- `grep_search(SearchPath, Query, IsRegex, MatchPerLine, CaseInsensitive, Includes)` : Utilise RipGrep pour rechercher du contenu textuel à l'intérieur des fichiers d'un dossier.
 
 ## Debugging checklist
 
 - Confirmer que la recherche retourne les bons fichiers avant lecture
-- Vérifier que les lignes spécifiées existent dans les fichiers
-- Tester les patterns de recherche sur petits échantillons
-- Valider que les éditions ne cassent pas la syntaxe
+- Vérifier que le texte recherché avec `edit_file` correspond exactement (caractères et indentations)
+- Tester les patterns de recherche sur de petits dossiers d'abord
+- Valider que les éditions ne cassent pas la syntaxe du fichier
 - Contrôler l'usage token après chaque opération
 
 ## When to use this skill
@@ -229,4 +172,4 @@ Utilise pour implémenter les tâches générées par Shrimp Task Manager de man
 
 ### Avec JSON Query
 
-Utilise `json_query_query_json` pour les fichiers JSON volumineux avant édition.
+Utilise `json_query_query_json` pour filtrer les données JSON avant traitement.

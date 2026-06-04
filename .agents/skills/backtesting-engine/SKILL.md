@@ -11,6 +11,7 @@ L'agent incarnant cette spécialisation est l'architecte du moteur de simulation
 ## 2. Principes Fondamentaux & Contraintes
 
 - **Vectorisation Impérative**: Les boucles `for` sur les lignes d'un DataFrame Pandas sont strictement interdites. Utiliser `np.where`, `pd.Series.shift()`, et le broadcasting de Numpy pour générer les signaux et calculer le PnL (vectorized backtesting).
+- **Précision Numérique (Floats autorisés)**: Contrairement à l'exécution Live où `Decimal` est obligatoire, l'utilisation de types `float` (ex: `np.float64`) est **requise** dans ce moteur pour garantir la performance des calculs vectorisés avec Pandas/Numpy.
 - **Simulation Orientée Événements**: Pour les stratégies nécessitant une granularité extrême (intra-bougie) ou un ordre d'exécution complexe (Event-Driven backtesting), un moteur de file d'attente (Queue) doit être utilisé, au détriment de la vitesse.
 - **Réalisme Financier**: Toujours inclure un modèle de commission et de slippage. Un backtest sans friction n'a aucune valeur en production.
 - **Thread-Safety**: Lors de l'optimisation de paramètres en parallèle (Multiprocessing), veiller à ce que l'état du moteur ne soit pas corrompu par la concurrence.
@@ -77,6 +78,6 @@ def calculate_metrics(strategy_returns: pd.Series, risk_free_rate: float = 0.0) 
 - ❌ **Overfitting**: Optimiser des centaines de paramètres et sélectionner la combinaison qui a historiquement le mieux marché (curve fitting).
 
 ## 5. Interactions avec les autres Skills
-- Reçoit les données de `database-supabase-postgres`.
+- Reçoit les données de `local-parquet-storage`.
 - Reçoit les signaux de `indicator-generation`.
 - Transmet les résultats bruts à `performance-reporting`.

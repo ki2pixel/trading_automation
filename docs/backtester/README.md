@@ -24,6 +24,7 @@ C'est le moteur Python local. Il prend tes fichiers CSV bruts, les convertit en 
 - [Démarrage rapide (Zéro à un backtest)](./backtest-engine/quickstart.md)
 - [Comprendre et modifier la configuration](./backtest-engine/configuration.md)
 - [Lancer un backtest unitaire](./backtest-engine/runner.md)
+- [Le fonctionnement du simulateur de broker et des sorties (Exits)](./backtest-engine/broker_simulator.md)
 - [Optimiser les paramètres d'une stratégie](./backtest-engine/optimization.md)
 - [Analyser les performances de plusieurs symboles](./backtest-engine/global-analysis.md)
 - [Tester la robustesse avec le Walk-Forward (WFO)](./backtest-engine/walk-forward.md)

@@ -33,6 +33,12 @@
 - [x] [2026-06-03 23:25:00] - Remédiation SonarCloud (Phase 2 & Phase 3 partielle) : Correction des anomalies Majeures (NumPy Random S6711, comparaisons Float S1244, exceptions génériques S0000) et nettoyage des imports (F401). Non-régression validée par suite de tests (275 tests passed). Plan de remédiation clôturé.
 - [x] [2026-06-03 23:33:00] - Audit des rapports d'optimisation (Passe 1) pour 3commas_bot. Rapport et synthèse stratégique documentés.
 - [x] [2026-06-04 00:46:15] - Audit de la Passe 2 de 3commas_bot terminé. Setups de risk-management consignés.
+- [x] [2026-06-04 12:05:00] - Exécution du workflow /docs-updater : Création de la documentation technique (SKILL.md) pour shm_allocators.py, metrics.py, et mise à jour de bayesian_optimizer.py suite à la refactorisation de la gestion mémoire.
+- [x] [2026-06-04 12:10:00] - Traduction en français des documentations (bayesian_optimizer, shm_allocators, metrics_engine) et création de global_analysis.md.
+- [x] [2026-06-04 12:28:00] - Audit et alignement des compétences (skills) dans `.agents/skills/` (remplacement de Supabase par Parquet, mise en conformité avec vectorbt et correction des schémas des outils MCP).
+- [x] [2026-06-04 13:59:00] - Alignement de `codingstandards.md` : ajustement de la règle de Précision Financière pour clarifier la dualité `float` (Backtest vectorisé) vs `Decimal` (Live) et validation de la conformité des règles actuelles.
+- [x] [2026-06-04 14:03:00] - Audit, vérification et alignement complet des compétences (.agents/skills/) avec codingstandards.md (float/Decimal, shm_allocators.py) terminés.
+- [x] [2026-06-04 14:08:00] - Exécution du workflow /docs-updater : Création du document broker_simulator.md (Radon complexity) et mise à jour de l'indexation dans README.md et runner.md.
 
 ## Tâches en Cours
 - Aucune tâche en cours.

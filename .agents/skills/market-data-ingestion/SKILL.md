@@ -78,5 +78,5 @@ def clean_market_data(df: pd.DataFrame) -> pd.DataFrame:
 - ❌ Logger des tokens d'authentification API dans les logs lors des erreurs réseau.
 
 ## 5. Interactions avec les autres Skills
-- Envoie les données persistantes à `database-supabase-postgres`.
+- Envoie les données persistantes à `local-parquet-storage`.
 - Alimente directement en RAM le `indicator-generation` pour la création de signaux live.

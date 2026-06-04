@@ -90,6 +90,7 @@ Pattern spécifique pour l'automatisation :
 
 - Interdiction d'utiliser des itérations natives sur des séries temporelles longues.
 - Penser systématiquement en opérations matricielles pour éviter les fuites de mémoire (RAM spikes).
+- Utiliser impérativement `shm_allocators.py` (POSIX Shared Memory) pour partager les données lourdes (DataFrames, Numpy arrays) entre les processus lors de l'optimisation (Optuna) au lieu de la sérialisation standard.
 
 ## API Reference
 

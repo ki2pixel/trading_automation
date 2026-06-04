@@ -1,12 +1,12 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Optimisation Passe 3 pour `3commas_bot` (Trailing Stop Dynamique).
+- Intégration des configurations validées en production.
+- Poursuivre la Remédiation SonarCloud (Refactorisation des Stratégies).
 
 ## Prochaines Étapes
-- Lancer la Passe 3 d'optimisation de `3commas_bot` (Trailing Stop Dynamique).
+- Intégrer les configurations validées pour les actifs testés dans le moteur de production live.
 - Poursuivre la Remédiation SonarCloud (Refactorisation des Stratégies).
-- Intégrer les configurations validées pour les actifs GMAB (Pmax, HMA Crossover, Adaptive Volatility Trend), FPE.DE et NVS (HMA Crossover, Adaptive Volatility Trend) dans le moteur de production live.
 
 ## Bloquants / Problèmes Actuels
 - Aucun.
@@ -21,4 +21,11 @@
 - [2026-06-03 23:25:00] - Remédiation SonarCloud terminée : Phase 2 et Phase 3 partielles exécutées avec succès sans régression. Plan clos.
 - [2026-06-03 23:33:00] - Audit de la Passe 1 de 3commas_bot terminé. Rapport et synthèse stratégique documentés.
 - [2026-06-04 00:46:15] - Audit de la Passe 2 de 3commas_bot terminé. Setups de risk-management consignés.
+- [2026-06-04 01:42:00] - Audit de la Passe 3 de 3commas_bot (Trailing Stop Dynamique) terminé. Documentation et synthèse mises à jour.
+- [2026-06-04 12:05:00] - Exécution du workflow /docs-updater : Création de la documentation technique (SKILL.md) pour shm_allocators.py, metrics.py, et mise à jour de bayesian_optimizer.py suite à la refactorisation de la gestion mémoire.
+- [2026-06-04 12:10:00] - Traduction en français des documentations (bayesian_optimizer, shm_allocators, metrics_engine) et création de global_analysis.md.
+- [2026-06-04 12:28:00] - Alignement des compétences (.agents/skills) avec l'architecture réelle (Parquet, vectorbt) et les schémas d'outils MCP.
+- [2026-06-04 13:59:00] - Alignement de `codingstandards.md` avec le codebase réel validé (float vs Decimal, multiprocessing, architecture de tests).
+- [2026-06-04 14:03:00] - Audit, vérification et alignement complet des compétences (.agents/skills/) avec codingstandards.md (float/Decimal, shm_allocators.py) terminés.
+- [2026-06-04 14:08:00] - Exécution du workflow /docs-updater : Création de docs/backtester/backtest-engine/broker_simulator.md pour documenter le simulateur de broker et ses Exit Rules. Indexation dans README.md et runner.md.
 

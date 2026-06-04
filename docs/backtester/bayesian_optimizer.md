@@ -1,66 +1,63 @@
-# Documentation : Optimiseur Bayésien
+# Optimiseur Bayésien
 
-## TL;DR
+**TL;DR** : Si vous voulez trouver les meilleurs paramètres de trading sans attendre une semaine, n'utilisez pas la recherche par grille (grid search). Nous utilisons Optuna pour une recherche bayésienne intelligente, couplée à un `ConvergenceTracker` d'arrêt prématuré et à des allocateurs de mémoire isolés.
 
-**TL;DR** : L'optimiseur bayésien utilise une architecture de multiprocessing stricte avec une mémoire partagée POSIX pour éviter les deadlocks du compilateur LLVM et les pics de RAM lors des essais parallèles d'Optuna.
+Vous avez conçu une stratégie de trading avec 5 paramètres. Si vous testez 10 valeurs pour chacun, cela représente 100 000 combinaisons. Une recherche par grille brute prend des heures. Vous vous tournez vers Optuna, qui apprend des essais passés pour deviner les meilleurs paramètres.
 
-## Le Problème de Deadlock avec LLVM
+Cependant, tel quel, l'utilisation d'Optuna sur d'énormes ensembles de données financières crée d'énormes goulots d'étranglement de mémoire et des deadlocks LLVM lors de la mise à l'échelle sur plusieurs cœurs de processeur.
 
-Lors de la création d'un backtester haute performance, le choix évident pour l'optimisation est de combiner Optuna avec des fonctions compilées par Numba et `joblib` pour l'exécution parallèle.
+Pour résoudre ce problème, notre Optimiseur Bayésien impose une stricte séparation des responsabilités : il orchestre la stratégie de recherche (Optuna) et le suivi de convergence, mais délègue toute la gestion de la mémoire à des allocateurs dédiés.
 
-❌ **Le Parallélisme "Naïf"**
+### ❌ L'Approche "Tout en un"
 
-```python
-# Ceci va provoquer un deadlock de façon aléatoire
-study.optimize(objective_function, n_jobs=-1)
-```
-
-Le multithreading par défaut d'Optuna ou le multiprocessing basé sur le forking de `joblib` interagit de façon désastreuse avec Numba (LLVM). Lorsque le processus parent "fork" alors que LLVM est en train de compiler ou de maintenir un verrou interne, le processus enfant hérite d'un verrou bloqué. Toute la suite d'optimisation se bloque indéfiniment, consommant 100% du CPU sur un seul cœur sans rien faire.
-
-Pire encore, copier de larges DataFrames Pandas (données OHLCV + indicateurs) vers 16 ou 32 processus de travail provoque un pic de RAM massif (souvent >32 Go), entraînant l'intervention de l'OOM killer de l'OS qui termine le backtest.
-
-✅ **L'Architecture "Spawn + Mémoire Partagée"**
+Lancer l'optimisation avec un parallélisme naïf et un passage de mémoire direct :
 
 ```python
-# Pool explicite (spawn) avec mémoire partagée sans copie (zero-copy)
-with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn")) as executor:
-    # Les workers s'attachent à la mémoire partagée POSIX pré-allouée
-    futures = [executor.submit(_evaluate_worker, ...) for _ in range(n_trials)]
+def objective(trial):
+    params = suggest_params(trial)
+    # Une énorme copie de mémoire se produit implicitement ici
+    return run_backtest(huge_data, params)
+
+study.optimize(objective, n_jobs=-1) # Provoque un deadlock avec LLVM/Numba !
 ```
 
-En utilisant strictement le contexte `spawn`, nous nous assurons qu'un interpréteur Python vierge est lancé pour chaque worker, éliminant ainsi les deadlocks hérités. Pour résoudre le pic de RAM, nous utilisons la mémoire partagée POSIX (`/dev/shm`).
+### ✅ L'Approche Orchestrée
 
-## Architecture de Grille en Mémoire Partagée POSIX
+Utiliser un multiprocessing basé sur `spawn`, une allocation mémoire isolée et un arrêt prématuré intelligent :
 
-Au lieu de passer des DataFrames aux workers, le processus parent pré-alloue des grilles de mémoire contiguës.
+```python
+# 1. La mémoire est allouée UNE SEULE FOIS via shm_allocators.py
+shm_info = _allocate_strategy_memory(...)
 
-1. **Pré-calcul** : Le processus parent calcule tous les états possibles des indicateurs (par ex., une grille 3D de MM ou de profils de volatilité) avant de lancer les workers.
-2. **Allocation** : Ces grilles sont allouées dans `/dev/shm` via `SharedIndicatorVolume`.
-3. **Vues Zero-Copy** : Les workers reçoivent les métadonnées (forme, dtype, nom_shm) et s'attachent à la mémoire en utilisant des vues zero-copy `numpy.ndarray`.
+# 2. Le ConvergenceTracker évite de perdre du temps
+tracker = ConvergenceTracker(patience=500)
 
-### Tableau des Compromis : Mémoire vs Flexibilité
-
-| Approche | Utilisation Mémoire | Risque de Deadlock | Complexité d'Implémentation |
-| -------- | ------------------- | ------------------ | --------------------------- |
-| Copie de DataFrames | ❌ Très Haute (Risque OOM) | ❌ Élevé (si forking) | ✅ Faible |
-| Mémoire Partagée POSIX | ✅ Extrêmement Faible (1x la taille) | ✅ Aucun (avec spawn) | ❌ Élevée |
+# 3. Le pool 'spawn' explicite évite les deadlocks Numba
+with get_context("spawn").Pool(workers) as pool:
+    # Les workers ne reçoivent que des références, pas des données
+    run_bayesian_optimization(pool, shm_info, tracker)
+```
 
 ## Le Traqueur de Convergence (Convergence Tracker)
 
-Exécuter 10 000 essais est un gaspillage de ressources informatiques si l'optimiseur a déjà trouvé le bassin optimal. Le `ConvergenceTracker` surveille la progression de l'optimisation et s'interrompt prématurément selon trois critères :
+Exécuter 10 000 essais est un gaspillage de puissance de calcul si l'optimiseur a déjà trouvé le maximum global après 1 000 essais. Le `ConvergenceTracker` surveille la progression de l'optimisation et l'interrompt prématurément selon des critères spécifiques :
 
 1. **Patience** : Aucune amélioration absolue pendant `N` itérations consécutives.
 2. **Progression par Fenêtre** : Aucune amélioration *significative* (>1%) pendant `W` fenêtres consécutives de `M` essais.
-3. **Coupe-circuit (Circuit Breaker)** : Une sécurité globale qui stoppe l'optimisation si le nombre total d'itérations depuis la dernière amélioration dépasse un certain ratio du budget total.
 
-## Nettoyage de Cycle de Vie Non-lié (Unlinked Lifecycle)
+## Architecture Mémoire Refactorisée
 
-Lorsqu'on manipule `/dev/shm`, si un worker plante ou que l'utilisateur appuie sur `Ctrl+C`, le segment de mémoire partagée devient orphelin, provoquant des fuites de mémoire persistantes.
+*Note : Dans les versions précédentes, l'Optimiseur Bayésien gérait sa propre mémoire partagée (`/dev/shm`). Cette logique a été extraite.*
 
-L'optimiseur bayésien implémente un nettoyage au cycle de vie non-lié (unlinked) : les volumes de mémoire sont désolidarisés immédiatement après l'attachement ou libérés de manière fiable dans un bloc `finally`, garantissant qu'aucune mémoire fantôme ne persiste entre les sessions.
+Pour réduire la complexité cognitive (Score F abaissé à C), toute l'orchestration de la mémoire partagée et le nettoyage du cycle de vie non-lié sont désormais pris en charge par `shm_allocators.py`. L'Optimiseur Bayésien ne reçoit que des objets de référence légers.
 
-## La Règle d'Or : Calculer Une Fois, Partager Partout
+### Compromis
 
-**La Règle d'Or : Ne recalculez jamais ce que vous pouvez partager, et ne partagez jamais ce que vous ne pouvez pas sérialiser.** 
+| Approche | Vitesse de Recherche | Utilisation des Ressources | Complexité du Code |
+| -------- | -------------------- | -------------------------- | ------------------ |
+| Recherche par Grille | ❌ Lente | ❌ Haute (essais gaspillés) | ✅ Faible |
+| Bayésien + Traqueur | ✅ Rapide | ✅ Basse (arrêt anticipé) | ❌ Haute |
 
-En pré-calculant les grilles d'indicateurs dans le processus parent et en les partageant via la mémoire POSIX, les workers n'exécutent que la boucle de simulation Numba ultra-rapide.
+## La Règle d'Or : Déléguer et Terminer Tôt
+
+Le seul rôle de l'optimiseur est de choisir les meilleurs paramètres suivants et de décider quand s'arrêter. Déléguez tout le reste-spécialement l'allocation mémoire et le calcul des métriques-à des sous-systèmes dédiés.

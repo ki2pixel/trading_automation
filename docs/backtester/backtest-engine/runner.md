@@ -57,7 +57,7 @@ python3 -m backtest_engine run \
 
 ## Le simulateur de broker commun
 
-Sous le capot, toutes les stratégies partagent le même moteur de simulation défini dans `backtest_engine/broker.py`. 
+Sous le capot, toutes les stratégies partagent le même moteur de simulation défini dans `backtest_engine/broker.py`. Pour une explication détaillée de son architecture interne, de son patron d'orchestration de sorties et de la logique mathématique de ses règles de protection, consultez le guide de référence du **[Simulateur de Broker et des Sorties (Exits)](./broker_simulator.md)**.
 
 C'est ce module qui s'occupe de tâches ingrates mais cruciales :
 - **Normaliser les quantités d'achat** : Éviter d'acheter des fractions d'actions non autorisées par ton courtier.

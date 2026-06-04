@@ -23,206 +23,60 @@ JSON Query Expert utilise le pattern "Sniper" pour les fichiers JSON :
 
 #### Pour modification de configuration
 
-```bash
-# 1. Localiser la configuration cible
-json_query_query_json package.json "$.scripts.dev"
-
-# 2. Trouver les lignes correspondantes
-json_query_search_keys package.json "scripts.dev"
-
-# 3. Éditer chirurgicalement
-edit_file package.json --line 15 --replacement '"dev": "vite --port 3000",'
-```
-
-#### Pour manipulation de i18n
-
-```bash
-# 1. Extraire uniquement les traductions nécessaires
-json_query_query_json locales/fr.json "$.pages.home.title"
-
-# 2. Localiser les clés manquantes
-json_query_search_keys locales/fr.json "pages.home"
-
-# 3. Ajouter les traductions manquantes
-edit_file locales/fr.json --line 45 --replacement '"title": "Page d''accueil",'
-```
+1. **Lire le fichier de configuration** (par exemple `package.json`) :
+   Utiliser `fast_read_file` (ou `read_text_file`).
+2. **Interroger la configuration cible avec JSON Query** :
+   Appeler `json_query_query_json(json_data=config_object, query="$.scripts.dev")`.
+3. **Éditer chirurgicalement** :
+   Appeler `edit_file(path="package.json", edits=[{"oldText": "\"dev\": \"old command\",", "newText": "\"dev\": \"vite --port 3000\","}])`.
 
 ## Production-safe patterns
 
 ### Pattern "Sniper" pour fichiers massifs
 
-```bash
-# ❌ JAMAIS charger un gros fichier entièrement
-read_file massive_manifest.json  # 5000+ lignes = PROHIBÉ
+❌ **Incorrect** : Charger un énorme fichier JSON (>1000 lignes) dans le contexte système pour inspection manuelle ou via simple lecture.
 
-# ✅ Pattern "Sniper" obligatoire
-# 1. Inspection ciblée
-json_query_query_json massive_manifest.json "$.components[0].props"
+✅ **Correct** (Pattern "Sniper") :
+1. Charger le fichier JSON avec `fast_read_file` (ou lire des portions ciblées).
+2. Extraire la branche nécessaire via `json_query_query_json(json_data=massive_json, query="$.components[0].props")`.
+3. Localiser la chaîne exacte et appeler `edit_file` pour remplacer le bloc nécessaire.
 
-# 2. Localisation précise  
-json_query_search_keys massive_manifest.json "components[0].props"
+### Recherche et validation avant modification
 
-# 3. Édition chirurgicale
-edit_file massive_manifest.json --line 234 --replacement '"newProp": "value",'
-```
-
-### Recherche multi-niveaux
-
-```bash
-# Pour structures JSON complexes
-json_query_query_json config.json "$.database.connections[0].host"
-json_query_query_json config.json "$.api.endpoints[*].url"
-
-# Rechercher toutes les clés d'un niveau
-json_query_search_keys config.json "database.connections"
-```
-
-### Validation avant modification
-
-```bash
-# 1. Vérifier l'existence du chemin
-json_query_query_json target.json "$.deep.nested.path"
-
-# 2. Confirmer la valeur actuelle
-json_query_query_json target.json "$.deep.nested.path.value"
-
-# 3. Localiser pour édition
-json_query_search_keys target.json "deep.nested.path"
-```
+Pour les structures JSON complexes :
+- Valider le chemin JSONPath désiré : `json_query_query_json(json_data=config_data, query="$.database.connections[0].host")`.
+- Extraire toutes les clés pour cartographier le schéma : `json_query_search_keys(json_data=config_data)`.
+- Trouver des valeurs spécifiques par leur clé : `json_query_search_values(json_data=config_data, key="port")`.
 
 ## Token optimization strategies
 
-### Inspection avant chargement
+### Traitement des fichiers JSON volumineux (>1000 lignes)
 
-```bash
-# Toujours inspecter avant de lire
-json_query_query_json large_config.json "$.featureFlags"
-
-# Si trouvé et petit, alors lire avec contexte
-fast_read_multiple_files large_config.json --lines 100-120 --context 2
-
-# Sinon, continuer avec les requêtes JSONPath
-```
-
-### Extraction de sous-structures
-
-```bash
-# Extraire uniquement la branche nécessaire
-json_query_query_json manifest.json "$.permissions"
-
-# Plutôt que charger tout le manifest
-read_file manifest.json  # 3000+ lignes = GASPILLAGE
-```
-
-### Recherche de clés multiples
-
-```bash
-# Rechercher toutes les occurrences d'une clé
-json_query_search_keys translations.json "*.button.*"
-
-# Filtrer par pattern
-json_query_search_keys config.json "database.*.port"
-```
+- **RÈGLE D'OR** : Ne jamais charger entièrement les JSON massifs dans le prompt de discussion de l'assistant si possible.
+- Pour les fichiers massifs comme `aggregated_metrics.json` ou les fichiers d'historique dans `financial_datasets/`, utilisez le parsing en streaming $O(1)$ RAM (comme `ijson` ou une lecture chunkée) au runtime Python. Le chargement complet via `json.load()` est strictement interdit sur les fichiers massifs de backtest pour éviter les pics de consommation RAM.
 
 ## Common gotchas
 
-### Fichiers > 1000 lignes
+### Erreurs de syntaxe JSONPath
 
-RÈGLE D'OR : Jamais charger entièrement les fichiers JSON > 1000 lignes
+- Toujours utiliser le préfixe de racine `$` (ex : `$.root.array[0].property`).
+- Les expressions de chemin relatives (ne commençant pas par `$`) ne sont pas valides pour `json_query_query_json`.
 
-```bash
-# ❌ PROHIBÉ
-read_file massive_i18n.json  # 15000 lignes
+### Modifications invalidant le JSON
 
-# ✅ OBLIGATOIRE
-json_query_query_json massive_i18n.json "$.fr.common.buttons[*]"
-json_query_search_keys massive_i18n.json "fr.common"
-```
-
-De plus, pour le traitement des historiques de ticks (`financial_datasets/`) ou des métriques (`aggregated_metrics.json`), l'utilisation de parsing en streaming O(1) RAM (comme `ijson` ou lecture chunkée) est OBLIGATOIRE. Le chargement complet via `json.load()` est strictement interdit pour les fichiers massifs de backtest pour éviter les RAM spikes.
-
-### JSONPath syntax errors
-
-```bash
-# Syntaxe correcte pour JSONPath
-json_query_query_json file.json "$.root.array[0].property"  # ✅
-
-# Éviter les chemins relatifs
-json_query_query_json file.json "array[0].property"  # ❌
-```
-
-### Localisation de lignes incorrecte
-
-```bash
-# Toujours vérifier que les lignes existent
-json_query_search_keys target.json "target.key"
-
-# Confirmer avant édition
-fast_read_multiple_files target.json --lines 50-60 --context 1
-```
-
-### Modifications cassant la syntaxe JSON
-
-```bash
-# Valider la syntaxe après modification
-json_query_query_json modified.json "$.root"  # Test de validité
-
-# Utiliser l'option --validate si disponible
-edit_file file.json --line X --replacement "value," --validate
-```
+- Après toute modification via `edit_file` sur un fichier JSON, validez toujours que le JSON résultant reste syntaxiquement correct (en essayant de le parser ou en effectuant une requête JSONPath test dessus).
 
 ## API Reference
 
-### Commandes principales
+### Outils de Requêtage JSON
 
-- `json_query_query_json <file> "<path>"` : Extraction ciblée via JSONPath
-- `json_query_search_keys <file> "<pattern>"` : Recherche de clés par pattern
-- `edit_file <file>` : Édition chirurgicale (voir Fast Filesystem Ops)
+- `json_query_query_json(json_data, query)` : Exécute une requête JSONPath `query` sur l'objet ou tableau `json_data` et retourne les correspondances.
+- `json_query_search_keys(json_data)` : Retourne la liste complète de toutes les clés de l'objet ou tableau `json_data` (aplatie).
+- `json_query_search_values(json_data, key)` : Trouve et retourne toutes les valeurs associées à la clé `key` à n'importe quel niveau de profondeur dans `json_data`.
 
-### Patterns JSONPath courants
+### Outil d'Édition Fichier
 
-```bash
-# Racine
-json_query_query_json file.json "$"
-
-# Propriété simple
-json_query_query_json file.json "$.propertyName"
-
-# Élément de tableau
-json_query_query_json file.json "$.array[0]"
-
-# Tous les éléments
-json_query_query_json file.json "$.array[*]"
-
-# Recherche récursive
-json_query_query_json file.json "$..deeplyNested"
-
-# Filtrage
-json_query_query_json file.json "$.array[?(@.type=='button')]"
-```
-
-### Patterns de recherche de clés
-
-```bash
-# Recherche exacte
-json_query_search_keys file.json "exact.key.name"
-
-# Recherche avec wildcard
-json_query_search_keys file.json "prefix.*.suffix"
-
-# Recherche récursive
-json_query_search_keys file.json "**.targetKey"
-
-# Recherche d'indices
-json_query_search_keys file.json "array[?]"
-```
-
-### Options avancées
-
-- `--pretty` : Formater la sortie JSON
-- `--raw` : Sortie brute sans formatage
-- `--count` : Compter les occurrences
-- `--unique` : Dédupliquer les résultats
+- `edit_file(path, edits, dryRun)` : Modifie le fichier à l'emplacement `path` en remplaçant exactement les chaînes définies dans le tableau `edits` (`oldText` -> `newText`).
 
 ## Debugging checklist
 
@@ -244,16 +98,13 @@ json_query_search_keys file.json "array[?]"
 ## Integration patterns
 
 ### Avec Fast Filesystem
-
-Utilise `edit_file` pour les modifications après localisation avec `json_query_query_json`.
+Utilise `edit_file` pour appliquer les modifications après avoir déterminé la portion exacte de texte à modifier.
 
 ### Avec Sequential Thinking
-
-Utilise `sequentialthinking_tools` pour valider la logique des transformations JSON.
+Utilise `sequentialthinking_tools` pour valider la structure logique des données avant d'effectuer les modifications de schéma JSON.
 
 ### Avec Shrimp Task Manager
-
-Utilise pour manipuler les fichiers de configuration générés par Shrimp Task Manager.
+Utilise pour manipuler les fichiers JSON de backlog ou de configuration de tâches de manière ciblée.
 
 ## File type specific strategies
 

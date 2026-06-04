@@ -10,56 +10,50 @@ Cet agent est l'ingénieur quantitatif spécialisé dans la création de caract�
 
 ## 2. Principes Fondamentaux & Contraintes
 
-- **Performance TA-Lib**: L'utilisation de bibliothèques optimisées en C comme TA-Lib ou `pandas_ta` est privilégiée par rapport à l'implémentation manuelle d'indicateurs classiques (RSI, MACD, Bollinger), sauf besoin d'une variante spécifique.
+- **Performance vectorbt** : L'utilisation de bibliothèques optimisées et vectorisées comme `vectorbt` (vbt) est obligatoire pour les calculs d'indicateurs (Moyennes mobiles, RSI, etc.). Éviter de recalculer manuellement ces indicateurs ou d'utiliser des boucles Python.
 - **Stateful vs Stateless**: Distinguer clairement les calculs "stateless" (ex: RSI sur un batch entier de données pour un backtest) et "stateful" (ex: mise à jour en temps réel d'un EMA à la réception d'un tick sans recalculer tout l'historique).
 - **Normalisation**: Les indicateurs destinés au Machine Learning doivent être stationnaires (ex: rendements, z-scores) et non absolus (prix).
 - **Régimes de Marché**: Toujours envisager des indicateurs macroscopiques pour filtrer les régimes (tendance vs range / forte vs faible volatilité).
 
 ## 3. Schémas de Référence (Patterns)
 
-### A. Utilisation Performante avec pandas_ta
+### A. Utilisation Performante avec vectorbt
 ```python
 import pandas as pd
-import pandas_ta as ta
+import vectorbt as vbt
 
-def add_core_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def add_core_indicators(close_series: pd.Series) -> dict[str, pd.Series]:
     """
-    Ajoute des indicateurs de base en utilisant l'approche vectorisée et performante.
+    Calcule des indicateurs de base de façon hautement vectorisée avec VectorBT.
     """
-    # Stratégie personnalisée pandas_ta pour calcul en lot
-    CustomStrategy = ta.Strategy(
-        name="Core Trading Indicators",
-        description="RSI, MACD, EMA",
-        ta=[
-            {"kind": "rsi", "length": 14},
-            {"kind": "macd", "fast": 12, "slow": 26, "signal": 9},
-            {"kind": "ema", "length": 50},
-            {"kind": "ema", "length": 200}
-        ]
-    )
-    # L'exécution inplace est très rapide
-    df.ta.strategy(CustomStrategy)
-    return df
+    rsi = vbt.RSI.run(close_series, window=14).rsi
+    fast_ma = vbt.MA.run(close_series, window=12).ma
+    slow_ma = vbt.MA.run(close_series, window=26).ma
+    
+    return {
+        "rsi": rsi,
+        "fast_ma": fast_ma,
+        "slow_ma": slow_ma
+    }
 ```
 
 ### B. Indicateur Customisé (Signal de Croisement)
 ```python
 import pandas as pd
-import numpy as np
+import vectorbt as vbt
 
-def generate_crossover_signal(df: pd.DataFrame, short_col: str, long_col: str) -> pd.Series:
+def generate_vbt_signals(close_series: pd.Series, fast_window: int = 12, slow_window: int = 26) -> tuple[pd.Series, pd.Series]:
     """
-    Génère un signal +1 (Achat) / -1 (Vente) / 0 lors d'un croisement de moyennes.
-    Vectorisé, sans loop.
+    Génère des signaux d'entrée et de sortie basés sur le croisement de moyennes mobiles avec VectorBT.
     """
-    # 1 si short > long, sinon 0
-    trend = np.where(df[short_col] > df[long_col], 1, 0)
+    fast_ma = vbt.MA.run(close_series, window=fast_window)
+    slow_ma = vbt.MA.run(close_series, window=slow_window)
     
-    # La différence (diff) détecte les changements de régime
-    # 1 - 0 = 1 (Achat), 0 - 1 = -1 (Vente)
-    cross_events = pd.Series(trend, index=df.index).diff()
+    # Signaux de croisement
+    entries = fast_ma.ma_crossed_above(slow_ma)
+    exits = fast_ma.ma_crossed_below(slow_ma)
     
-    return cross_events.fillna(0)
+    return entries, exits
 ```
 
 ## 4. Pièges à Éviter (Anti-Patterns)
