@@ -218,6 +218,7 @@ def _init_worker_bayesian(
     avt_shm_metadata: dict | None = None,
     commas_bot_shm_metadata: dict | None = None,
     noise_boundary_shm_metadata: dict | None = None,
+    hilbert_shm_metadata: dict | None = None,
 ) -> None:
     global _WORKER_DATA, _WORKER_SYMBOL, _WORKER_FIXED_OVERRIDES, _WORKER_INITIAL_CAPITAL
     global _WORKER_STRATEGY, _WORKER_SCORE_METRIC, _WORKER_MIN_CLOSED_TRADES, _WORKER_TIMEFRAME_MINUTES
@@ -541,6 +542,26 @@ def _init_worker_bayesian(
             except Exception as e:
                 logger.warning(f"Failed to mount shared Noise Boundary grids onto strategy module: {e}")
 
+        # Mount shared Cybernetic Hilbert grid if available
+        if hilbert_shm_metadata is not None:
+            from .shared_memory import SharedIndicatorVolume
+            import numpy as np
+
+            hilbert_vol = SharedIndicatorVolume(
+                shm_name=hilbert_shm_metadata["hilbert_shm_name"],
+                shape=hilbert_shm_metadata["hilbert_shape"],
+                dtype=np.dtype(hilbert_shm_metadata["hilbert_dtype"]),
+            )
+            _WORKER_SHM_VOLUMES.append(hilbert_vol)
+            hilbert_grid_view = hilbert_vol.get_view()
+
+            import backtest_engine.strategies.cybernetic_hilbert as ch_mod
+            try:
+                ch_mod._SHARED_HILBERT_GRID = hilbert_grid_view
+                ch_mod._SHARED_HILBERT_KEYS = hilbert_shm_metadata["hilbert_keys"]
+            except Exception as e:
+                logger.warning(f"Failed to mount shared Cybernetic Hilbert grid onto strategy module: {e}")
+
     except Exception as exc:
         import traceback, sys
         print(f"FATAL EXCEPTION IN WORKER INITIALIZER: {exc}", file=sys.stderr)
@@ -842,6 +863,7 @@ def run_bayesian_optimization(
     prescan_progress_callback: Callable[[int, int], None] | None = None,
     constraints: OptimizationConstraints | None = None,
     job_id: str | None = None,
+    sampler: str | None = None,
 ) -> OptimizationSummary:
     """Run Bayesian hyperparameter search with Optuna TPE.
 
@@ -986,10 +1008,24 @@ def run_bayesian_optimization(
             )
 
     has_categorical = any(spec.kind in ("choice", "bool") for spec in parameter_specs)
-    if n_trials > 1000 and not has_categorical:
-        sampler = optuna.samplers.QMCSampler(qmc_type="sobol", scramble=True, seed=seed)
+
+    # Resolve sampler: auto-select CMA-ES for cybernetic_hilbert, else TPE/QMC
+    effective_sampler = sampler
+    if effective_sampler is None:
+        if strategy == "cybernetic_hilbert" and not has_categorical:
+            effective_sampler = "cmaes"
+        elif n_trials > 1000 and not has_categorical:
+            effective_sampler = "qmc"
+        else:
+            effective_sampler = "tpe"
+
+    if effective_sampler == "cmaes":
+        sampler_obj = optuna.samplers.CmaEsSampler(seed=seed)
+    elif effective_sampler == "qmc":
+        sampler_obj = optuna.samplers.QMCSampler(qmc_type="sobol", scramble=True, seed=seed)
     else:
-        sampler = optuna.samplers.TPESampler(seed=seed, multivariate=True, constant_liar=True)
+        sampler_obj = optuna.samplers.TPESampler(seed=seed, multivariate=True, constant_liar=True)
+    logger.info(f"Optuna sampler: {effective_sampler} ({type(sampler_obj).__name__})")
     
     # Remove stale storage so old distributions (with incorrect bounds) are not reused
     storage_path = output_root / "bayes_opt_journal.log"
@@ -1004,7 +1040,7 @@ def run_bayesian_optimization(
         load_if_exists=True,
         directions=optuna_direction if isinstance(optuna_direction, list) else None,
         direction=optuna_direction if not isinstance(optuna_direction, list) else None,
-        sampler=sampler
+        sampler=sampler_obj
     )
 
     # === INTELLIGENCE VECTORBT : PRE-SCAN ===
@@ -1102,6 +1138,7 @@ def run_bayesian_optimization(
         avt_shm_metadata = metadata_dict["avt_shm_metadata"]
         commas_bot_shm_metadata = metadata_dict["commas_bot_shm_metadata"]
         noise_boundary_shm_metadata = metadata_dict["noise_boundary_shm_metadata"]
+        hilbert_shm_metadata = metadata_dict.get("hilbert_shm_metadata")
 
         if workers == 1:
             import gc as _gc_loop
@@ -1154,7 +1191,7 @@ def run_bayesian_optimization(
                 max_workers=workers,
                 mp_context=multiprocessing.get_context("spawn"),
                 initializer=_init_worker_bayesian,
-                initargs=(shm_metadata, symbol, fixed_overrides, initial_capital, strategy, score_metric, min_closed_trades, minutes, early_stop_drawdown_pct, wfo_windows, repo_root, constraints, hma_shm_metadata, pmax_shm_metadata, rf_shm_metadata, bjorgum_shm_metadata, avt_shm_metadata, commas_bot_shm_metadata, noise_boundary_shm_metadata),
+                initargs=(shm_metadata, symbol, fixed_overrides, initial_capital, strategy, score_metric, min_closed_trades, minutes, early_stop_drawdown_pct, wfo_windows, repo_root, constraints, hma_shm_metadata, pmax_shm_metadata, rf_shm_metadata, bjorgum_shm_metadata, avt_shm_metadata, commas_bot_shm_metadata, noise_boundary_shm_metadata, hilbert_shm_metadata),
             )
             cancelled = False
 

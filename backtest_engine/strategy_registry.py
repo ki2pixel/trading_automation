@@ -55,6 +55,13 @@ from .strategies.noise_boundary_intraday import (
     noise_boundary_overrides_from_mapping,
     vectorbt_prescan as noise_boundary_vectorbt_prescan,
 )
+from .strategies.cybernetic_hilbert import (
+    CyberneticHilbertConfigOverrides,
+    run_cybernetic_hilbert,
+    load_cybernetic_hilbert_overrides_from_config,
+    cybernetic_hilbert_overrides_from_mapping,
+    vectorbt_prescan as cybernetic_hilbert_vectorbt_prescan,
+)
 
 @dataclass
 class StrategyInfo:
@@ -91,7 +98,7 @@ class StrategyRegistry:
         return list(cls._registry.keys())
 
 
-# Static Registration of all 7 strategies
+# Static Registration of all 8 strategies
 StrategyRegistry.register(
     StrategyInfo(
         name="hma_crossover",
@@ -179,6 +186,19 @@ StrategyRegistry.register(
         overrides_from_mapping_function=noise_boundary_overrides_from_mapping,
         indicators=["upper_enter", "lower_enter", "upper_exit", "lower_exit", "daily_open"],
         vectorbt_prescan=noise_boundary_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="cybernetic_hilbert",
+        config_override_class=CyberneticHilbertConfigOverrides,
+        run_function=run_cybernetic_hilbert,
+        load_overrides_function=load_cybernetic_hilbert_overrides_from_config,
+        overrides_from_mapping_function=cybernetic_hilbert_overrides_from_mapping,
+        indicators=["sine_wave", "lead_wave", "phase_mode", "dominant_cycle"],
+        vectorbt_prescan=cybernetic_hilbert_vectorbt_prescan,
         clear_feature_cache=None,
     )
 )

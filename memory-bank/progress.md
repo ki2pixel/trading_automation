@@ -39,6 +39,8 @@
 - [x] [2026-06-04 13:59:00] - Alignement de `codingstandards.md` : ajustement de la règle de Précision Financière pour clarifier la dualité `float` (Backtest vectorisé) vs `Decimal` (Live) et validation de la conformité des règles actuelles.
 - [x] [2026-06-04 14:03:00] - Audit, vérification et alignement complet des compétences (.agents/skills/) avec codingstandards.md (float/Decimal, shm_allocators.py) terminés.
 - [x] [2026-06-04 14:08:00] - Exécution du workflow /docs-updater : Création du document broker_simulator.md (Radon complexity) et mise à jour de l'indexation dans README.md et runner.md.
+- [x] [2026-06-04 14:30:00] - Audit de la Passe 1 de bjorgum_double_tap terminé. Échec de la détection d'edge. Synthèse stratégique et rapport de passe 1 documentés.
+- [x] [2026-06-04 19:38:00] - Implémentation, intégration (POSIX SHM, Bayesian Optimizer) et vérification de la stratégie Cybernetic Trading (John Ehlers' Hilbert Transform).
 
 ## Tâches en Cours
 - Aucune tâche en cours.

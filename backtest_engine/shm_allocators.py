@@ -628,6 +628,71 @@ def _allocate_noise_boundary_intraday(data, parameter_specs, fixed_overrides, wo
 
     return noise_boundary_shm_metadata
 
+def _allocate_cybernetic_hilbert(data, parameter_specs, fixed_overrides, workers, shm_objects):
+    """Pre-compute Hilbert Transform indicators for each unique smooth_period.
+
+    Stores a 3D grid of shape ``(n_periods, 4, n_bars)`` where the 4 channels
+    are ``[sine_wave, lead_wave, dominant_cycle, phase_mode]``.
+    """
+    hilbert_shm_metadata = None
+    smooth_specs = next((s for s in parameter_specs if s.name == "hilbert_smooth_period"), None)
+    smooth_vals = (
+        sorted({int(v) for v in smooth_specs.values})
+        if (smooth_specs and smooth_specs.values)
+        else [_get_fixed_val(fixed_overrides, "hilbert_smooth_period", 7)]
+    )
+
+    # 4 channels × n_periods × n_bars
+    estimated_bytes = len(smooth_vals) * 4 * len(data) * 8
+    max_memory_limit = _get_dynamic_memory_limit()
+    if estimated_bytes > max_memory_limit:
+        logger.warning(
+            f"Shared memory grid for Cybernetic Hilbert is too large "
+            f"({estimated_bytes / (1024**2):.1f} MB, "
+            f"limit: {max_memory_limit / (1024**2):.1f} MB). "
+            f"Skipping precalculation to protect system memory."
+        )
+        return hilbert_shm_metadata
+
+    from .indicators.hilbert_transform import hilbert_transform_ehlers
+
+    close_arr = data["close"].to_numpy(dtype=np.float64)
+    hilbert_keys = {int(v): i for i, v in enumerate(smooth_vals)}
+    hilbert_grid_arr = np.zeros((len(smooth_vals), 4, len(data)), dtype=np.float64)
+
+    for smooth_period, idx in hilbert_keys.items():
+        result = hilbert_transform_ehlers(close_arr, smooth_period_factor=smooth_period)
+        hilbert_grid_arr[idx, 0] = result["sine_wave"]
+        hilbert_grid_arr[idx, 1] = result["lead_wave"]
+        hilbert_grid_arr[idx, 2] = result["dominant_cycle"]
+        hilbert_grid_arr[idx, 3] = result["phase_mode"]
+
+    hilbert_shm = SharedIndicatorVolume(array_to_share=hilbert_grid_arr)
+    shm_objects.append(hilbert_shm)
+
+    hilbert_shm_metadata = {
+        "hilbert_shm_name": hilbert_shm.shm_name,
+        "hilbert_shape": hilbert_shm.shape,
+        "hilbert_dtype": str(hilbert_shm.dtype),
+        "hilbert_keys": hilbert_keys,
+    }
+
+    try:
+        import backtest_engine.strategies.cybernetic_hilbert as ch_mod
+        if workers > 1:
+            import gc as _gc
+            ch_mod._SHARED_HILBERT_GRID = hilbert_shm.get_view()
+            ch_mod._SHARED_HILBERT_KEYS = hilbert_keys
+            del hilbert_grid_arr
+            _gc.collect()
+        else:
+            ch_mod._SHARED_HILBERT_GRID = hilbert_grid_arr
+            ch_mod._SHARED_HILBERT_KEYS = hilbert_keys
+    except Exception as e:
+        logger.debug(f"Failed to mount local parent Cybernetic Hilbert grid: {e}")
+
+    return hilbert_shm_metadata
+
 def allocate_shared_memory_for_strategy(strategy: str, data: pd.DataFrame, parameter_specs: list, fixed_overrides: Any, workers: int, shm_objects: list) -> dict:
     """
     Alloue la mémoire partagée POSIX et précalcule les grilles selon la stratégie.
@@ -640,7 +705,8 @@ def allocate_shared_memory_for_strategy(strategy: str, data: pd.DataFrame, param
         "bjorgum_shm_metadata": None,
         "avt_shm_metadata": None,
         "commas_bot_shm_metadata": None,
-        "noise_boundary_shm_metadata": None
+        "noise_boundary_shm_metadata": None,
+        "hilbert_shm_metadata": None,
     }
     
     if strategy == "hma_crossover":
@@ -657,6 +723,8 @@ def allocate_shared_memory_for_strategy(strategy: str, data: pd.DataFrame, param
         metadata_dict["commas_bot_shm_metadata"] = _allocate_3commas_bot(data, parameter_specs, fixed_overrides, workers, shm_objects)
     elif strategy == "noise_boundary_intraday":
         metadata_dict["noise_boundary_shm_metadata"] = _allocate_noise_boundary_intraday(data, parameter_specs, fixed_overrides, workers, shm_objects)
+    elif strategy == "cybernetic_hilbert":
+        metadata_dict["hilbert_shm_metadata"] = _allocate_cybernetic_hilbert(data, parameter_specs, fixed_overrides, workers, shm_objects)
         
     return metadata_dict
 
@@ -737,5 +805,12 @@ def reset_shared_memory_for_strategy(strategy: str) -> None:
         try:
             nb_mod._SHARED_NB_VOL_GRID = None
             nb_mod._SHARED_NB_VOL_KEYS = None
+        except Exception:  # NOSONAR
+            pass
+    elif strategy == "cybernetic_hilbert":
+        import backtest_engine.strategies.cybernetic_hilbert as ch_mod
+        try:
+            ch_mod._SHARED_HILBERT_GRID = None
+            ch_mod._SHARED_HILBERT_KEYS = None
         except Exception:  # NOSONAR
             pass

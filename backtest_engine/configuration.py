@@ -1161,6 +1161,43 @@ NOISE_BOUNDARY_PARAMETER_DEFINITIONS: dict[str, StrategyParameterDefinition] = {
 }
 
 
+# Cybernetic Hilbert Transform parameter definitions (Ehlers' signal processing)
+CYBERNETIC_HILBERT_PARAMETER_DEFINITIONS: dict[str, StrategyParameterDefinition] = {
+    "hilbert_smooth_period": StrategyParameterDefinition(
+        name="hilbert_smooth_period",
+        kind="numeric",
+        value_type="int",
+        description="WMA smoothing factor for the detrending stage of the Hilbert Transform",
+        default=7,
+        group="Indicator",
+        default_start=4,
+        default_end=20,
+        default_step=1,
+    ),
+    "phase_mode_enabled": StrategyParameterDefinition(
+        name="phase_mode_enabled",
+        kind="bool",
+        value_type="bool",
+        description="Enable cycling/trending phase mode filter (only trade in Cycling regime)",
+        default=True,
+        group="Indicator",
+        choices=["true", "false"],
+    ),
+    "require_cycling_bars": StrategyParameterDefinition(
+        name="require_cycling_bars",
+        kind="numeric",
+        value_type="int",
+        description="Minimum consecutive cycling bars required before entry signal is valid",
+        default=1,
+        group="Indicator",
+        default_start=1,
+        default_end=5,
+        default_step=1,
+    ),
+    **get_v3_parameters(),
+}
+
+
 STRATEGY_PARAMETER_DEFINITIONS = {
     "hma_crossover": HMA_PARAMETER_DEFINITIONS,
     "pmax_explorer": PMAX_EXPLORER_PARAMETER_DEFINITIONS,
@@ -1169,6 +1206,7 @@ STRATEGY_PARAMETER_DEFINITIONS = {
     "3commas_bot": THREECOMAS_BOT_PARAMETER_DEFINITIONS,
     "bjorgum_double_tap": BJORGUM_DOUBLE_TAP_PARAMETER_DEFINITIONS,
     "noise_boundary_intraday": NOISE_BOUNDARY_PARAMETER_DEFINITIONS,
+    "cybernetic_hilbert": CYBERNETIC_HILBERT_PARAMETER_DEFINITIONS,
 }
 
 

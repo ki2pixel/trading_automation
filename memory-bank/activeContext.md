@@ -28,4 +28,5 @@
 - [2026-06-04 13:59:00] - Alignement de `codingstandards.md` avec le codebase réel validé (float vs Decimal, multiprocessing, architecture de tests).
 - [2026-06-04 14:03:00] - Audit, vérification et alignement complet des compétences (.agents/skills/) avec codingstandards.md (float/Decimal, shm_allocators.py) terminés.
 - [2026-06-04 14:08:00] - Exécution du workflow /docs-updater : Création de docs/backtester/backtest-engine/broker_simulator.md pour documenter le simulateur de broker et ses Exit Rules. Indexation dans README.md et runner.md.
-
+- [2026-06-04 14:30:00] - Audit de la Passe 1 de bjorgum_double_tap terminé. Échec de la détection d'edge. Synthèse stratégique et rapport de passe 1 documentés.
+- [2026-06-04 19:38:00] - Implémentation, intégration (POSIX SHM, Bayesian Optimizer) et vérification de la stratégie Cybernetic Trading (John Ehlers' Hilbert Transform).
