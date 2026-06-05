@@ -40,7 +40,7 @@ from .paths import get_reports_dir
 
 ParameterKindPayload = Literal["numeric", "choice", "bool"]
 ScoreDirectionPayload = Literal["max", "min"]
-StrategyPayload = Literal["hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert"]
+StrategyPayload = Literal["hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric"]
 
 
 class ParameterSpecPayload(BaseModel):
@@ -931,6 +931,12 @@ def create_optimizer_app(
                     "parameters": [asdict(param) for param in optimizable_parameters("cybernetic_hilbert").values()],
                     "schema": [asdict(param) for param in parameter_definitions("cybernetic_hilbert").values()],
                     "score_metrics": list(allowed_score_metrics("cybernetic_hilbert")),
+                },
+                {
+                    "name": "smart_trader_geometric",
+                    "parameters": [asdict(param) for param in optimizable_parameters("smart_trader_geometric").values()],
+                    "schema": [asdict(param) for param in parameter_definitions("smart_trader_geometric").values()],
+                    "score_metrics": list(allowed_score_metrics("smart_trader_geometric")),
                 },
             ]
         }

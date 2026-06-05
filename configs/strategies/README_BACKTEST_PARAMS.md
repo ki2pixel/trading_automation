@@ -239,6 +239,23 @@ Stratégie basée sur le traitement de signal pour identifier dynamiquement la p
 
 ---
 
+## 8. Smart Trader Geometric
+
+Stratégie basée sur le framework géométrique isotrope (ICS), mesurant les distances et aires des prix par rapport aux extremums historiques sans lag temporel.
+
+### Paramètres core (haute priorité)
+
+| Paramètre               | Défaut | Type   | Plage suggérée | Description                                           |
+|-------------------------|--------|--------|----------------|-------------------------------------------------------|
+| `lookback_period`       | 23     | int    | 10 - 50        | Fenêtre de lookback pour définir le Ceiling et le Floor |
+| `min_long_entry_slots`  | 1      | int    | 1 - 5          | Nombre minimum de slots valides (quorum) pour achat   |
+| `min_short_entry_slots` | 1      | int    | 1 - 5          | Nombre minimum de slots valides (quorum) pour vente   |
+| `signal_mode`           | Close  | str    | Close / Live   | Confirmation sur clôture ("Close") ou temps réel ("Live") |
+
+**Conseil** : Le `lookback_period` définit la taille de la boîte géométrique (anchor). Un lookback court réagira très vite au bruit, un lookback long captera de vastes tendances. Ajuster les `slots` permet de durcir ou assouplir les conditions d'entrée (quorum).
+
+---
+
 ## Recommandations Globales de Filtrage des Backtests
 
 Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas être identiques pour toutes les stratégies. L'horizon de temps et la logique de la stratégie imposent d'adapter ces critères.
@@ -282,6 +299,7 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 | Bjorgum Double Tap            | 7              | Moyenne-Elevee            |
 | Noise Boundary Intraday       | 9              | Moyenne-Elevee            |
 | 3Commas-Bot                   | 8              | Moyenne-Elevee            |
+| Smart Trader Geometric        | 4              | Moyenne                   |
 
 ---
 

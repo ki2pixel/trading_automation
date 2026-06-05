@@ -49,14 +49,20 @@
 - [x] [2026-06-04 20:04:00] - Correction de l'erreur 500 sur `/api/strategies` en ajoutant `cybernetic_hilbert` aux listes des stratégies autorisées dans `backtest_engine/optimizer.py`.
 - [x] [2026-06-04 20:12:00] - Correction de l'erreur 400 sur `/api/estimate` en ajoutant `cybernetic_hilbert` au littéral `StrategyPayload` (Pydantic) dans `web.py`.
 - [x] [2026-06-04 21:03:00] - Mise à jour de `README_OPTIMIZATION_ROADMAP.md` pour diviser l'optimisation Cybernetic en 2 passes (Trend Mode / Phase Mode) afin d'exploiter correctement l'algorithme CMA-ES.
-- [x] [2026-06-05 01:22:00] - Audit complet et création des rapports d'optimisation (Passe 1 Trend Mode) pour la stratégie cybernetic_hilbert.
+- [x] [2026-06-05 21:16:00] - Audit de la Passe 1 de cybernetic_hilbert (Trend Mode) terminé. Consignation des résultats et mise à jour de la documentation et de la synthèse stratégique.
+- [x] [2026-06-05 21:33:00] - Audit de la Passe 2 de cybernetic_hilbert (Phase Mode) terminé. Rejet total. Documentation de l'échec et configuration finale figée sur la Passe 1 (Trend Mode).
+- [x] [2026-06-05 21:47:00] - Audit de la Passe 3 de cybernetic_hilbert (Time Stop) terminé. Résultats identiques à la Passe 1. Le Time Stop n'apporte aucun gain. Synthèse mise à jour.
 - [x] [2026-06-05 13:51:00] - Correction du bug d'early stop drawdown (pct=0) dans la stratégie `cybernetic_hilbert`.
 
 - [x] [2026-06-05 14:11:00] - Optimisation de boucle `cybernetic_hilbert.py` (Numpy arrays pré-extraits, évitement du dictionnaire quand position flat).
 - [x] [2026-06-05 14:25:00] - Vectorisation complète de `_generate_signals` et `_build_state_from_broker` dans `cybernetic_hilbert.py` (élimination totale des boucles O(N) en pur Python).
+- [x] [2026-06-05 22:42:00] - Implémentation et tests unitaires de la stratégie géométrique Smart Trader Final Episode (Yang-Zhang, ICS, Numba Frozen Anchors).
+- [x] [2026-06-06 01:26:00] - Intégration complète de Smart Trader Geometric au moteur d'optimisation et à l'UI (`optimizer.py`, `web.py`).
+- [x] [2026-06-06 01:26:00] - Mise à jour des documents `README_BACKTEST_PARAMS.md` et `README_OPTIMIZATION_ROADMAP.md` pour intégrer Smart Trader.
+- [x] [2026-06-06 01:26:00] - Déploiement du support de conversion Forex V3 (`asset_currency`, `account_currency`) sur l'ensemble des fichiers `.json` de configuration des stratégies.
 
 ## Tâches en Cours
-- Aucune tâche en cours.
+- Aucune tâche active.
 
 ## Tâches Futures
 - [ ] Conception du moteur de backtest.

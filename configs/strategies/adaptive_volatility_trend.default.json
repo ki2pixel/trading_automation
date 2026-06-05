@@ -1,7 +1,7 @@
 {
   "strategy": "adaptive_volatility_trend",
   "version": 1,
-  "description": "Configuration locale typée dérivée de la stratégie Adaptive Volatility Trend V3.2 Capped Bucket par WillyAlgoTrader.",
+  "description": "Configuration locale typ\u00e9e d\u00e9riv\u00e9e de la strat\u00e9gie Adaptive Volatility Trend V3.2 Capped Bucket par WillyAlgoTrader.",
   "parameters": {
     "source": "close",
     "length": 21,
@@ -41,7 +41,10 @@
     "apply_estimated_costs_to_realized_pnl": true,
     "allow_fractional_quantity": true,
     "quantity_precision": 6,
-    "early_stop_drawdown_pct": 0
+    "early_stop_drawdown_pct": 0,
+    "asset_currency": null,
+    "account_currency": "EUR",
+    "fx_rate_provider": null
   },
   "backtest": {
     "base_currency": "EUR",
@@ -63,20 +66,20 @@
     "margin_short": 100
   },
   "notes": [
-    "Les paramètres visuels TradingView (labels, background, couleurs, table) ne changent pas le backtest local et ne sont pas repris ici.",
-    "preset: valeurs acceptées = Conservative, Default, Aggressive, Scalping. Override length/atr_len/atr_mult si preset != Default.",
-    "Lexique trade_direction_mode: valeurs acceptées = Long & Short, Long only, Short only.",
-    "Lexique fee_mode: valeurs acceptées = Parametric: hold until net covers fees, Parametric: exit only, no forced reversal, Disabled: always reverse/close on opposite signal.",
-    "Lexique safety_stop_applies_to: valeurs acceptées = Both, Long only, Short only.",
-    "Lexique safety_stop_mode: valeurs acceptées = Net loss only, Max bars only, Net loss OR max bars, Net loss AND max bars.",
-    "Lexique safety_max_net_loss_mode: valeurs acceptées = Cash amount, % of entry value.",
-    "Lexique execution: valeurs acceptées = next_open, close.",
-    "Lexique source: valeurs acceptées = close, open, high, low, hl2, hlc3, ohlc4 ou nom de colonne existante.",
-    "early_stop_drawdown_pct: 0 = désactivé ; sinon arrêt prématuré si drawdown >= ce pourcentage.",
-    "Lexique backtest.default_order_size.type: valeur TradingView recommandée ici = percent_of_equity.",
-    "Lexique backtest.commission.type: valeurs acceptées = percent, EUR per contract, EUR per order.",
-    "Lexique backtest.base_currency: valeur recommandée = EUR.",
-    "Lexique backtest.asset_currency: null déclenche la découverte automatique depuis symbol_currency_map.csv.",
-    "Lexique backtest.account_currency: null définit la devise du compte par défaut à EUR."
+    "Les param\u00e8tres visuels TradingView (labels, background, couleurs, table) ne changent pas le backtest local et ne sont pas repris ici.",
+    "preset: valeurs accept\u00e9es = Conservative, Default, Aggressive, Scalping. Override length/atr_len/atr_mult si preset != Default.",
+    "Lexique trade_direction_mode: valeurs accept\u00e9es = Long & Short, Long only, Short only.",
+    "Lexique fee_mode: valeurs accept\u00e9es = Parametric: hold until net covers fees, Parametric: exit only, no forced reversal, Disabled: always reverse/close on opposite signal.",
+    "Lexique safety_stop_applies_to: valeurs accept\u00e9es = Both, Long only, Short only.",
+    "Lexique safety_stop_mode: valeurs accept\u00e9es = Net loss only, Max bars only, Net loss OR max bars, Net loss AND max bars.",
+    "Lexique safety_max_net_loss_mode: valeurs accept\u00e9es = Cash amount, % of entry value.",
+    "Lexique execution: valeurs accept\u00e9es = next_open, close.",
+    "Lexique source: valeurs accept\u00e9es = close, open, high, low, hl2, hlc3, ohlc4 ou nom de colonne existante.",
+    "early_stop_drawdown_pct: 0 = d\u00e9sactiv\u00e9 ; sinon arr\u00eat pr\u00e9matur\u00e9 si drawdown >= ce pourcentage.",
+    "Lexique backtest.default_order_size.type: valeur TradingView recommand\u00e9e ici = percent_of_equity.",
+    "Lexique backtest.commission.type: valeurs accept\u00e9es = percent, EUR per contract, EUR per order.",
+    "Lexique backtest.base_currency: valeur recommand\u00e9e = EUR.",
+    "Lexique backtest.asset_currency: null d\u00e9clenche la d\u00e9couverte automatique depuis symbol_currency_map.csv.",
+    "Lexique backtest.account_currency: null d\u00e9finit la devise du compte par d\u00e9faut \u00e0 EUR."
   ]
 }

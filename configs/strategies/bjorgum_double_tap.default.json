@@ -39,7 +39,10 @@
     "apply_estimated_costs_to_realized_pnl": true,
     "allow_fractional_quantity": true,
     "quantity_precision": 6,
-    "early_stop_drawdown_pct": 0.0
+    "early_stop_drawdown_pct": 0.0,
+    "asset_currency": null,
+    "account_currency": "EUR",
+    "fx_rate_provider": null
   },
   "backtest": {
     "base_currency": "EUR",

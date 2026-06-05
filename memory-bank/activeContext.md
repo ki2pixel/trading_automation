@@ -1,8 +1,7 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Optimisation de la stratégie cybernetic_hilbert : lancement de la Passe 2 (Phase Mode).
-- Intégration des configurations validées en production.
+- Aucune tâche active.
 
 ## Prochaines Étapes
 - Intégrer les configurations validées pour les actifs testés dans le moteur de production live.
@@ -38,7 +37,9 @@
 - [2026-06-04 20:04:00] - Correction de l'erreur 500 sur `/api/strategies` en ajoutant `cybernetic_hilbert` aux listes des stratégies autorisées dans `backtest_engine/optimizer.py`.
 - [2026-06-04 20:12:00] - Correction de l'erreur 400 sur `/api/estimate` en ajoutant `cybernetic_hilbert` au littéral `StrategyPayload` (Pydantic) dans `web.py`.
 - [2026-06-04 21:03:00] - Mise à jour de `README_OPTIMIZATION_ROADMAP.md` pour diviser l'optimisation Cybernetic en 2 passes (Trend Mode / Phase Mode) afin d'exploiter correctement l'algorithme CMA-ES.
-- [2026-06-05 01:22:00] - Audit de la Passe 1 de cybernetic_hilbert (Trend Mode) terminé. Aucun edge détecté. Synthèse stratégique et rapport documentés.
+- [2026-06-05 21:16:00] - Audit de la Passe 1 de cybernetic_hilbert (Trend Mode) terminé. Edge détecté sur NVO et ZEAL.CO. Paramètres validés pour la Passe 2.
+- [2026-06-05 21:33:00] - Audit de la Passe 2 de cybernetic_hilbert (Phase Mode) terminé. Aucun edge trouvé. Le Mode Phase est désactivé. La stratégie tournera exclusivement en Trend Mode (Passe 1).
+- [2026-06-05 21:47:00] - Audit de la Passe 3 de cybernetic_hilbert (Time Stop) terminé. Aucune amélioration constatée (`safety_max_bars_in_trade = 0` optimal). La configuration finale de production reste bloquée sur la Passe 1 pure.
 - [2026-06-05 01:11:00] - Rédaction et sauvegarde de l'analyse détaillée du Google Coral AI Edge TPU (Workload Fit & Incompatibilités) dans docs/recherches/Coral-USB-TPU/Analyse-Workload-Fit-TPU.md. Recommandation : NO-GO.
 - [2026-06-05 01:47:00] - Arbitrage TPE vs CMA-ES statué : l'hyper-optimisation GPU asymétrique (JAX) est recommandée pour les algorithmes TPE séquentiels.
 - [2026-06-05 01:47:00] - Implémentation du Zéro-Copie véritable dans `backtest_engine/shm_allocators.py` et `shared_memory.py` via `create=True`.
@@ -46,3 +47,7 @@
 - [2026-06-05 14:11:00] - Optimisation de `cybernetic_hilbert.py` : extraction Numpy et optimisation de boucle.
 - [2026-06-05 14:25:00] - Vectorisation complète de `_generate_signals` et `_build_state_from_broker` dans `cybernetic_hilbert.py` (élimination totale des goulots O(N) Python pur).
 - [2026-06-05 13:51:00] - Correction du bug d'early stop drawdown (pct=0) dans la stratégie `cybernetic_hilbert`.
+- [2026-06-05 22:42:00] - Implémentation de la stratégie géométrique Smart Trader Final Episode via ICS et Numba.
+- [2026-06-06 01:26:00] - Intégration complète de la stratégie Smart Trader Geometric au moteur (optimizer.py, web.py).
+- [2026-06-06 01:26:00] - Mise à jour de la documentation d'optimisation (READMEs) pour Smart Trader Geometric.
+- [2026-06-06 01:26:00] - Mise à jour globale des configurations de stratégies JSON pour supporter l'architecture de conversion Forex V3.

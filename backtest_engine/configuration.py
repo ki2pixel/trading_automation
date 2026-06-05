@@ -1198,6 +1198,54 @@ CYBERNETIC_HILBERT_PARAMETER_DEFINITIONS: dict[str, StrategyParameterDefinition]
 }
 
 
+# Smart Trader Geometric parameter definitions
+SMART_TRADER_GEOMETRIC_PARAMETER_DEFINITIONS: dict[str, StrategyParameterDefinition] = {
+    "signal_mode": StrategyParameterDefinition(
+        name="signal_mode",
+        kind="choice",
+        value_type="str",
+        description="Mode de signalisation",
+        default="Close",
+        group="Indicator",
+        choices=["Close", "Live"],
+    ),
+    "lookback_period": StrategyParameterDefinition(
+        name="lookback_period",
+        kind="numeric",
+        value_type="int",
+        description="Période de lookback pour l'ICS",
+        default=23,
+        group="Indicator",
+        default_start=10,
+        default_end=50,
+        default_step=1,
+    ),
+    "min_long_entry_slots": StrategyParameterDefinition(
+        name="min_long_entry_slots",
+        kind="numeric",
+        value_type="int",
+        description="Minimum slots requis pour Long Entry",
+        default=1,
+        group="Quorum Logic",
+        default_start=1,
+        default_end=10,
+        default_step=1,
+    ),
+    "min_short_entry_slots": StrategyParameterDefinition(
+        name="min_short_entry_slots",
+        kind="numeric",
+        value_type="int",
+        description="Minimum slots requis pour Short Entry",
+        default=1,
+        group="Quorum Logic",
+        default_start=1,
+        default_end=10,
+        default_step=1,
+    ),
+    **get_v3_parameters(),
+}
+
+
 STRATEGY_PARAMETER_DEFINITIONS = {
     "hma_crossover": HMA_PARAMETER_DEFINITIONS,
     "pmax_explorer": PMAX_EXPLORER_PARAMETER_DEFINITIONS,
@@ -1207,6 +1255,7 @@ STRATEGY_PARAMETER_DEFINITIONS = {
     "bjorgum_double_tap": BJORGUM_DOUBLE_TAP_PARAMETER_DEFINITIONS,
     "noise_boundary_intraday": NOISE_BOUNDARY_PARAMETER_DEFINITIONS,
     "cybernetic_hilbert": CYBERNETIC_HILBERT_PARAMETER_DEFINITIONS,
+    "smart_trader_geometric": SMART_TRADER_GEOMETRIC_PARAMETER_DEFINITIONS,
 }
 
 

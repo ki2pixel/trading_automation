@@ -1,7 +1,7 @@
 {
   "strategy": "cybernetic_hilbert",
   "version": 1,
-  "description": "Configuration par défaut pour la stratégie Cybernetic Trading (John Ehlers' Hilbert Transform).",
+  "description": "Configuration par d\u00e9faut pour la strat\u00e9gie Cybernetic Trading (John Ehlers' Hilbert Transform).",
   "source_exports": {},
   "parameters": {
     "hilbert_smooth_period": 7,
@@ -33,7 +33,10 @@
     "apply_estimated_costs_to_realized_pnl": true,
     "allow_fractional_quantity": true,
     "quantity_precision": 6,
-    "early_stop_drawdown_pct": 0
+    "early_stop_drawdown_pct": 0,
+    "asset_currency": null,
+    "account_currency": "EUR",
+    "fx_rate_provider": null
   },
   "backtest": {
     "base_currency": "EUR",
@@ -55,13 +58,13 @@
     "margin_short": 100
   },
   "notes": [
-    "Configuration créée localement pour tester la stratégie algorithmique Cybernetic Trading.",
-    "Les paramètres hilbert_smooth_period, phase_mode_enabled et require_cycling_bars gèrent le traitement du signal.",
-    "Lexique trade_direction_mode: valeurs acceptées = Long & Short, Long only, Short only.",
-    "Lexique fee_mode: valeurs acceptées = Parametric: hold until net covers fees, Parametric: exit only, no forced reversal, Disabled: always reverse/close on opposite signal.",
-    "Lexique safety_stop_applies_to: valeurs acceptées = Both, Long only, Short only.",
-    "Lexique safety_stop_mode: valeurs acceptées = Net loss only, Max bars only, Net loss OR max bars, Net loss AND max bars.",
-    "Lexique safety_max_net_loss_mode: valeurs acceptées = Cash amount, % of entry value.",
-    "Lexique next_bar_execution_price_col/source_col: valeurs acceptées = open, high, low, close."
+    "Configuration cr\u00e9\u00e9e localement pour tester la strat\u00e9gie algorithmique Cybernetic Trading.",
+    "Les param\u00e8tres hilbert_smooth_period, phase_mode_enabled et require_cycling_bars g\u00e8rent le traitement du signal.",
+    "Lexique trade_direction_mode: valeurs accept\u00e9es = Long & Short, Long only, Short only.",
+    "Lexique fee_mode: valeurs accept\u00e9es = Parametric: hold until net covers fees, Parametric: exit only, no forced reversal, Disabled: always reverse/close on opposite signal.",
+    "Lexique safety_stop_applies_to: valeurs accept\u00e9es = Both, Long only, Short only.",
+    "Lexique safety_stop_mode: valeurs accept\u00e9es = Net loss only, Max bars only, Net loss OR max bars, Net loss AND max bars.",
+    "Lexique safety_max_net_loss_mode: valeurs accept\u00e9es = Cash amount, % of entry value.",
+    "Lexique next_bar_execution_price_col/source_col: valeurs accept\u00e9es = open, high, low, close."
   ]
 }

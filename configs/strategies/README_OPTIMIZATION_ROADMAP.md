@@ -106,5 +106,21 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *À optimiser* : `exit_mode` (`ladder`, `vwap`, `combined`) et les paramètres de `ladder` (steps, ratios).
   - *Objectif* : Capturer des profits partiels en intraday pour lisser la courbe de gains (Sharpe Ratio).
 
+### 9. Smart Trader Geometric
+*Note : Cette stratégie utilisant l'optimisation bayésienne continue, les paramètres catégoriques ou booléens (`signal_mode`, bracket exits) doivent être traités séparément pour éviter de briser la continuité mathématique de l'algorithme d'optimisation.*
+
+- **Passe 1 : Géométrie et Quorum (Core)**
+  - *À bloquer* : Fixer `signal_mode = "Close"`, désactiver les safety stops et `use_net_bracket_exits = false`.
+  - *À optimiser* : `lookback_period` (Int), `min_long_entry_slots` (Int), `min_short_entry_slots` (Int).
+  - *Objectif* : Trouver la structure géométrique de base qui génère les meilleurs signaux directionnels purs.
+- **Passe 2 : Risk-Management & Exits**
+  - *À bloquer* : Le trio `lookback` et `slots` trouvé en Passe 1. Fixer `use_net_bracket_exits = true`.
+  - *À optimiser* : `take_profit_net_percent` (Float), `stop_loss_net_percent` (Float).
+  - *Objectif* : Optimiser les objectifs de gains mathématiques sur le squelette validé.
+- **Passe 3 (Optionnelle) : Mode de Signal**
+  - *À bloquer* : Tous les paramètres précédents.
+  - *À optimiser* : Tester avec `signal_mode = "Live"` vs `"Close"`.
+  - *Objectif* : Voir si l'exécution intra-barre (Live) améliore le rendement en réduisant le slippage implicite d'attente de clôture.
+
 ---
 *Si à une étape N, vous ne trouvez aucun résultat positif, cela signifie souvent que l'étape N-1 n'était pas assez robuste. Il faut alors revenir en arrière et tester un autre "sweet spot" issu de l'étape précédente.*

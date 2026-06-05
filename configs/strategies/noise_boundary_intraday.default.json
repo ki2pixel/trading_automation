@@ -1,7 +1,7 @@
 {
   "strategy": "noise_boundary_intraday",
   "version": 1,
-  "description": "Configuration locale typée pour la stratégie Noise Boundary Intraday.",
+  "description": "Configuration locale typ\u00e9e pour la strat\u00e9gie Noise Boundary Intraday.",
   "parameters": {
     "lookback_days": 20,
     "volatility_multiplier_enter": 2.0,
@@ -44,7 +44,10 @@
     "allow_fractional_quantity": true,
     "quantity_precision": 6,
     "early_stop_drawdown_pct": 50,
-    "entry_on_high_low": true
+    "entry_on_high_low": true,
+    "asset_currency": null,
+    "account_currency": "EUR",
+    "fx_rate_provider": null
   },
   "backtest": {
     "base_currency": "EUR",
@@ -66,19 +69,19 @@
     "margin_short": 100
   },
   "notes": [
-    "Paramètres par défaut de la stratégie Noise Boundary Intraday.",
-    "Lexique trade_direction_mode: valeurs acceptées = Long & Short, Long only, Short only.",
-    "Lexique fee_mode: valeurs acceptées = Parametric: hold until net covers fees, Parametric: exit only, no forced reversal, Disabled: always reverse/close on opposite signal.",
-    "Lexique safety_stop_applies_to: valeurs acceptées = Both, Long only, Short only.",
-    "Lexique safety_stop_mode: valeurs acceptées = Net loss only, Max bars only, Net loss OR max bars, Net loss AND max bars.",
-    "Lexique safety_max_net_loss_mode: valeurs acceptées = Cash amount, % of entry value.",
-    "Lexique exit_mode: valeurs acceptées = time_only, vwap, ladder, combined.",
-    "Lexique next_bar_execution_price_col: valeurs acceptées = open, high, low, close.",
-    "Lexique backtest.default_order_size.type: valeur TradingView recommandée ici = percent_of_equity.",
-    "Lexique backtest.base_currency: valeur recommandée = EUR.",
-    "Lexique backtest.asset_currency: null déclenche la découverte automatique depuis symbol_currency_map.csv.",
-    "Lexique backtest.account_currency: null définit la devise du compte par défaut à EUR.",
-    "Lexique allow_overnight: valeurs acceptées = true, false (autorise le portage des positions overnight en désactivant la sortie temporelle de fin de session).",
-    "Lexique use_vwap_filter: valeurs acceptées = true, false (active ou désactive la condition VWAP à l'entrée)."
+    "Param\u00e8tres par d\u00e9faut de la strat\u00e9gie Noise Boundary Intraday.",
+    "Lexique trade_direction_mode: valeurs accept\u00e9es = Long & Short, Long only, Short only.",
+    "Lexique fee_mode: valeurs accept\u00e9es = Parametric: hold until net covers fees, Parametric: exit only, no forced reversal, Disabled: always reverse/close on opposite signal.",
+    "Lexique safety_stop_applies_to: valeurs accept\u00e9es = Both, Long only, Short only.",
+    "Lexique safety_stop_mode: valeurs accept\u00e9es = Net loss only, Max bars only, Net loss OR max bars, Net loss AND max bars.",
+    "Lexique safety_max_net_loss_mode: valeurs accept\u00e9es = Cash amount, % of entry value.",
+    "Lexique exit_mode: valeurs accept\u00e9es = time_only, vwap, ladder, combined.",
+    "Lexique next_bar_execution_price_col: valeurs accept\u00e9es = open, high, low, close.",
+    "Lexique backtest.default_order_size.type: valeur TradingView recommand\u00e9e ici = percent_of_equity.",
+    "Lexique backtest.base_currency: valeur recommand\u00e9e = EUR.",
+    "Lexique backtest.asset_currency: null d\u00e9clenche la d\u00e9couverte automatique depuis symbol_currency_map.csv.",
+    "Lexique backtest.account_currency: null d\u00e9finit la devise du compte par d\u00e9faut \u00e0 EUR.",
+    "Lexique allow_overnight: valeurs accept\u00e9es = true, false (autorise le portage des positions overnight en d\u00e9sactivant la sortie temporelle de fin de session).",
+    "Lexique use_vwap_filter: valeurs accept\u00e9es = true, false (active ou d\u00e9sactive la condition VWAP \u00e0 l'entr\u00e9e)."
   ]
 }

@@ -1,7 +1,7 @@
 {
   "strategy": "range_filter",
   "version": 1,
-  "description": "Configuration locale typée pour la stratégie Range Filter Buy and Sell 5min V3.2 Capped Bucket.",
+  "description": "Configuration locale typ\u00e9e pour la strat\u00e9gie Range Filter Buy and Sell 5min V3.2 Capped Bucket.",
   "parameters": {
     "source_col": "close",
     "sampling_period": 100,
@@ -31,7 +31,10 @@
     "apply_estimated_costs_to_realized_pnl": true,
     "allow_fractional_quantity": true,
     "quantity_precision": 6,
-    "early_stop_drawdown_pct": 0
+    "early_stop_drawdown_pct": 0,
+    "asset_currency": null,
+    "account_currency": "EUR",
+    "fx_rate_provider": null
   },
   "backtest": {
     "base_currency": "EUR",
@@ -53,16 +56,16 @@
     "margin_short": 100
   },
   "notes": [
-    "Paramètres par défaut de la stratégie Range Filter V3.2 Capped Bucket.",
-    "Lexique trade_direction_mode: valeurs acceptées = Long & Short, Long only, Short only.",
-    "Lexique fee_mode: valeurs acceptées = Parametric: hold until net covers fees, Parametric: exit only, no forced reversal, Disabled: always reverse/close on opposite signal.",
-    "Lexique safety_stop_applies_to: valeurs acceptées = Both, Long only, Short only.",
-    "Lexique safety_stop_mode: valeurs acceptées = Net loss only, Max bars only, Net loss OR max bars, Net loss AND max bars.",
-    "Lexique safety_max_net_loss_mode: valeurs acceptées = Cash amount, % of entry value.",
-    "Lexique fill_model: valeurs acceptées = next_open, close.",
-    "Lexique backtest.default_order_size.type: valeur TradingView recommandée ici = percent_of_equity.",
-    "Lexique backtest.base_currency: valeur recommandée = EUR.",
-    "Lexique backtest.asset_currency: null déclenche la découverte automatique depuis symbol_currency_map.csv.",
-    "Lexique backtest.account_currency: null définit la devise du compte par défaut à EUR."
+    "Param\u00e8tres par d\u00e9faut de la strat\u00e9gie Range Filter V3.2 Capped Bucket.",
+    "Lexique trade_direction_mode: valeurs accept\u00e9es = Long & Short, Long only, Short only.",
+    "Lexique fee_mode: valeurs accept\u00e9es = Parametric: hold until net covers fees, Parametric: exit only, no forced reversal, Disabled: always reverse/close on opposite signal.",
+    "Lexique safety_stop_applies_to: valeurs accept\u00e9es = Both, Long only, Short only.",
+    "Lexique safety_stop_mode: valeurs accept\u00e9es = Net loss only, Max bars only, Net loss OR max bars, Net loss AND max bars.",
+    "Lexique safety_max_net_loss_mode: valeurs accept\u00e9es = Cash amount, % of entry value.",
+    "Lexique fill_model: valeurs accept\u00e9es = next_open, close.",
+    "Lexique backtest.default_order_size.type: valeur TradingView recommand\u00e9e ici = percent_of_equity.",
+    "Lexique backtest.base_currency: valeur recommand\u00e9e = EUR.",
+    "Lexique backtest.asset_currency: null d\u00e9clenche la d\u00e9couverte automatique depuis symbol_currency_map.csv.",
+    "Lexique backtest.account_currency: null d\u00e9finit la devise du compte par d\u00e9faut \u00e0 EUR."
   ]
 }

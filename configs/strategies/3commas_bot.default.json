@@ -1,7 +1,7 @@
 {
   "strategy": "3commas_bot",
   "version": 1,
-  "description": "Configuration locale typée dérivée de la stratégie 3Commas-Bot convertie depuis Pine Script.",
+  "description": "Configuration locale typ\u00e9e d\u00e9riv\u00e9e de la strat\u00e9gie 3Commas-Bot convertie depuis Pine Script.",
   "parameters": {
     "long_trades": true,
     "short_trades": true,
@@ -46,7 +46,10 @@
     "allow_fractional_quantity": true,
     "quantity_precision": 6,
     "apply_estimated_costs_to_realized_pnl": true,
-    "early_stop_drawdown_pct": 0
+    "early_stop_drawdown_pct": 0,
+    "asset_currency": null,
+    "account_currency": "EUR",
+    "fx_rate_provider": null
   },
   "backtest": {
     "base_currency": "EUR",
@@ -68,13 +71,13 @@
     "margin_short": 100
   },
   "notes": [
-    "Les paramètres visuels TradingView (labels, background, couleurs) ne changent pas le backtest local et ne sont pas repris ici.",
-    "ma_type1 / ma_type2: valeurs acceptées = EMA, HEMA, SMA, HMA, WMA, DEMA, VWMA, VWAP, T3.",
-    "Lexique next_bar_execution_price_col: valeurs acceptées = open, high, low, close.",
-    "Lexique backtest.default_order_size.type: valeur TradingView recommandée ici = percent_of_equity.",
-    "Lexique backtest.commission.type: valeurs acceptées = percent, EUR per contract, EUR per order.",
-    "Lexique backtest.base_currency: valeur recommandée = EUR.",
-    "Lexique backtest.asset_currency: null déclenche la découverte automatique depuis symbol_currency_map.csv.",
-    "Lexique backtest.account_currency: null définit la devise du compte par défaut à EUR."
+    "Les param\u00e8tres visuels TradingView (labels, background, couleurs) ne changent pas le backtest local et ne sont pas repris ici.",
+    "ma_type1 / ma_type2: valeurs accept\u00e9es = EMA, HEMA, SMA, HMA, WMA, DEMA, VWMA, VWAP, T3.",
+    "Lexique next_bar_execution_price_col: valeurs accept\u00e9es = open, high, low, close.",
+    "Lexique backtest.default_order_size.type: valeur TradingView recommand\u00e9e ici = percent_of_equity.",
+    "Lexique backtest.commission.type: valeurs accept\u00e9es = percent, EUR per contract, EUR per order.",
+    "Lexique backtest.base_currency: valeur recommand\u00e9e = EUR.",
+    "Lexique backtest.asset_currency: null d\u00e9clenche la d\u00e9couverte automatique depuis symbol_currency_map.csv.",
+    "Lexique backtest.account_currency: null d\u00e9finit la devise du compte par d\u00e9faut \u00e0 EUR."
   ]
 }

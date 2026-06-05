@@ -62,6 +62,13 @@ from .strategies.cybernetic_hilbert import (
     cybernetic_hilbert_overrides_from_mapping,
     vectorbt_prescan as cybernetic_hilbert_vectorbt_prescan,
 )
+from .strategies.smart_trader_geometric import (
+    SmartTraderGeometricConfigOverrides,
+    run_smart_trader_geometric,
+    load_smart_trader_geometric_overrides_from_config,
+    smart_trader_geometric_overrides_from_mapping,
+    vectorbt_prescan as stg_vectorbt_prescan,
+)
 
 @dataclass
 class StrategyInfo:
@@ -199,6 +206,19 @@ StrategyRegistry.register(
         overrides_from_mapping_function=cybernetic_hilbert_overrides_from_mapping,
         indicators=["sine_wave", "lead_wave", "phase_mode", "dominant_cycle"],
         vectorbt_prescan=cybernetic_hilbert_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="smart_trader_geometric",
+        config_override_class=SmartTraderGeometricConfigOverrides,
+        run_function=run_smart_trader_geometric,
+        load_overrides_function=load_smart_trader_geometric_overrides_from_config,
+        overrides_from_mapping_function=smart_trader_geometric_overrides_from_mapping,
+        indicators=["Ceil distance", "Ctr distance", "Flr distance", "PnU distance", "PnD distance"],
+        vectorbt_prescan=stg_vectorbt_prescan,
         clear_feature_cache=None,
     )
 )
