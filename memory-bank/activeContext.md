@@ -1,8 +1,8 @@
 # Contexte Actif
 
 ## Focus Actuel
+- Optimisation de la stratégie cybernetic_hilbert : lancement de la Passe 2 (Phase Mode).
 - Intégration des configurations validées en production.
-- Poursuivre la Remédiation SonarCloud (Refactorisation des Stratégies).
 
 ## Prochaines Étapes
 - Intégrer les configurations validées pour les actifs testés dans le moteur de production live.
@@ -30,3 +30,19 @@
 - [2026-06-04 14:08:00] - Exécution du workflow /docs-updater : Création de docs/backtester/backtest-engine/broker_simulator.md pour documenter le simulateur de broker et ses Exit Rules. Indexation dans README.md et runner.md.
 - [2026-06-04 14:30:00] - Audit de la Passe 1 de bjorgum_double_tap terminé. Échec de la détection d'edge. Synthèse stratégique et rapport de passe 1 documentés.
 - [2026-06-04 19:38:00] - Implémentation, intégration (POSIX SHM, Bayesian Optimizer) et vérification de la stratégie Cybernetic Trading (John Ehlers' Hilbert Transform).
+- [2026-06-04 19:46:00] - Exécution du workflow /docs-updater : Création de la documentation technique (Cybernetic Hilbert Transform) et mise à jour de l'indexation dans README.md.
+- [2026-06-04 19:47:00] - Traduction en français de la documentation cybernetic_hilbert.md pour cohérence.
+- [2026-06-04 19:53:00] - Intégration de la stratégie Cybernetic Trading dans les guides d'optimisation (README_BACKTEST_PARAMS.md et README_OPTIMIZATION_ROADMAP.md).
+- [2026-06-04 19:57:00] - Création du fichier de configuration par défaut `configs/strategies/cybernetic_hilbert.default.json`.
+- [2026-06-04 20:02:00] - Ajout de `cybernetic_hilbert` au backend UI (`web.py`) et déclaration de ses indicateurs dans le frontend (`viewer.js`).
+- [2026-06-04 20:04:00] - Correction de l'erreur 500 sur `/api/strategies` en ajoutant `cybernetic_hilbert` aux listes des stratégies autorisées dans `backtest_engine/optimizer.py`.
+- [2026-06-04 20:12:00] - Correction de l'erreur 400 sur `/api/estimate` en ajoutant `cybernetic_hilbert` au littéral `StrategyPayload` (Pydantic) dans `web.py`.
+- [2026-06-04 21:03:00] - Mise à jour de `README_OPTIMIZATION_ROADMAP.md` pour diviser l'optimisation Cybernetic en 2 passes (Trend Mode / Phase Mode) afin d'exploiter correctement l'algorithme CMA-ES.
+- [2026-06-05 01:22:00] - Audit de la Passe 1 de cybernetic_hilbert (Trend Mode) terminé. Aucun edge détecté. Synthèse stratégique et rapport documentés.
+- [2026-06-05 01:11:00] - Rédaction et sauvegarde de l'analyse détaillée du Google Coral AI Edge TPU (Workload Fit & Incompatibilités) dans docs/recherches/Coral-USB-TPU/Analyse-Workload-Fit-TPU.md. Recommandation : NO-GO.
+- [2026-06-05 01:47:00] - Arbitrage TPE vs CMA-ES statué : l'hyper-optimisation GPU asymétrique (JAX) est recommandée pour les algorithmes TPE séquentiels.
+- [2026-06-05 01:47:00] - Implémentation du Zéro-Copie véritable dans `backtest_engine/shm_allocators.py` et `shared_memory.py` via `create=True`.
+- [2026-06-05 01:47:00] - Bridage Numba AVX2 ajouté dans `start_backtest_engine.sh` pour éviter le downclocking thermique du CPU.
+- [2026-06-05 14:11:00] - Optimisation de `cybernetic_hilbert.py` : extraction Numpy et optimisation de boucle.
+- [2026-06-05 14:25:00] - Vectorisation complète de `_generate_signals` et `_build_state_from_broker` dans `cybernetic_hilbert.py` (élimination totale des goulots O(N) Python pur).
+- [2026-06-05 13:51:00] - Correction du bug d'early stop drawdown (pct=0) dans la stratégie `cybernetic_hilbert`.

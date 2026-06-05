@@ -27,6 +27,7 @@ class SharedIndicatorVolume:
         shm_name: str | None = None,
         shape: tuple[int, ...] | None = None,
         dtype: np.dtype | str | None = None,
+        create: bool = False,
     ):
         self.shm: shared_memory.SharedMemory | None = None
         self.shm_name: str | None = None
@@ -47,6 +48,19 @@ class SharedIndicatorVolume:
             parent_view = np.ndarray(self.shape, dtype=self.dtype, buffer=self.shm.buf)
             parent_view[:] = array_to_share[:]
             logger.debug(f"Allocated shared memory '{self.shm_name}' with size {self.nbytes} bytes.")
+        elif create:
+            # New zero-copy parent process flow: allocate uninitialized POSIX segment
+            if shape is None or dtype is None:
+                raise ValueError("Zero-copy allocation requires 'shape' and 'dtype'.")
+            self.shape = shape
+            self.dtype = np.dtype(dtype)
+            # Calculate bytes: product of shape * itemsize
+            itemsize = self.dtype.itemsize
+            self.nbytes = int(np.prod(self.shape)) * itemsize
+
+            self.shm = shared_memory.SharedMemory(create=True, size=self.nbytes)
+            self.shm_name = self.shm.name
+            logger.debug(f"Allocated ZERO-COPY shared memory '{self.shm_name}' with size {self.nbytes} bytes.")
         else:
             # Worker process flow: capture descriptor values for lazy mapping
             if shm_name is None or shape is None or dtype is None:

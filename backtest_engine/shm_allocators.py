@@ -54,11 +54,11 @@ def _allocate_hma_crossover(data, parameter_specs, fixed_overrides, workers, shm
             )
         else:
             close_series = data["close"]
-            hma_grid_arr = np.zeros((len(unique_lengths), len(data)), dtype=np.float64)
+            hma_shm = SharedIndicatorVolume(shape=(len(unique_lengths), len(data)), dtype=np.float64, create=True)
+            hma_grid_arr = hma_shm.get_view()
             for i, length in enumerate(unique_lengths):
                 hma_grid_arr[i] = hma_func(close_series, length).values
 
-            hma_shm = SharedIndicatorVolume(array_to_share=hma_grid_arr)
             shm_objects.append(hma_shm)
 
             hma_shm_metadata = {
@@ -128,7 +128,8 @@ def _allocate_pmax_explorer(data, parameter_specs, fixed_overrides, workers, shm
             f"Skipping precalculation to protect system memory."
         )
     else:
-        mavg_grid_arr = np.zeros((len(mavg_combos), len(data)), dtype=np.float64)
+        mavg_shm = SharedIndicatorVolume(shape=(len(mavg_combos), len(data)), dtype=np.float64, create=True)
+        mavg_grid_arr = mavg_shm.get_view()
         for combo, idx in mavg_keys.items():
             mav_type, length = combo
             if mav_type == "SMA":
@@ -150,15 +151,13 @@ def _allocate_pmax_explorer(data, parameter_specs, fixed_overrides, workers, shm
             else:
                 mavg_grid_arr[idx] = strategy_mod.pine_ema(src_arr, length)
 
-        atr_grid_arr = np.zeros((len(atr_combos), len(data)), dtype=np.float64)
+        atr_shm = SharedIndicatorVolume(shape=(len(atr_combos), len(data)), dtype=np.float64, create=True)
+        atr_grid_arr = atr_shm.get_view()
         for combo, idx in atr_keys.items():
             periods, change_atr = combo
             atr_grid_arr[idx] = strategy_mod.compute_atr(high_arr, low_arr, close_arr, periods, change_atr)
 
-        mavg_shm = SharedIndicatorVolume(array_to_share=mavg_grid_arr)
         shm_objects.append(mavg_shm)
-
-        atr_shm = SharedIndicatorVolume(array_to_share=atr_grid_arr)
         shm_objects.append(atr_shm)
 
         pmax_shm_metadata = {
@@ -210,8 +209,10 @@ def _allocate_range_filter(data, parameter_specs, fixed_overrides, workers, shm_
             f"Skipping precalculation to protect system memory."
         )
     else:
-        smrng_grid_arr = np.zeros((len(combos), len(data)), dtype=np.float64)
-        filt_grid_arr = np.zeros((len(combos), len(data)), dtype=np.float64)
+        smrng_shm = SharedIndicatorVolume(shape=(len(combos), len(data)), dtype=np.float64, create=True)
+        smrng_grid_arr = smrng_shm.get_view()
+        filt_shm = SharedIndicatorVolume(shape=(len(combos), len(data)), dtype=np.float64, create=True)
+        filt_grid_arr = filt_shm.get_view()
 
         for combo, idx in rf_keys.items():
             period, mult = combo
@@ -221,10 +222,7 @@ def _allocate_range_filter(data, parameter_specs, fixed_overrides, workers, shm_
             smrng_grid_arr[idx] = smrng_series.to_numpy(dtype=float)
             filt_grid_arr[idx] = filt_series.to_numpy(dtype=float)
 
-        smrng_shm = SharedIndicatorVolume(array_to_share=smrng_grid_arr)
         shm_objects.append(smrng_shm)
-
-        filt_shm = SharedIndicatorVolume(array_to_share=filt_grid_arr)
         shm_objects.append(filt_shm)
 
         rf_shm_metadata = {
@@ -271,19 +269,24 @@ def _allocate_bjorgum_double_tap(data, parameter_specs, fixed_overrides, workers
         low_series = data["low"]
         close_series = data["close"]
 
-        piv_high_grid_arr = np.zeros((len(length_vals), len(data)), dtype=np.float64)
-        piv_low_grid_arr = np.zeros((len(length_vals), len(data)), dtype=np.float64)
+        piv_high_shm = SharedIndicatorVolume(shape=(len(length_vals), len(data)), dtype=np.float64, create=True)
+        piv_high_grid_arr = piv_high_shm.get_view()
+        piv_low_shm = SharedIndicatorVolume(shape=(len(length_vals), len(data)), dtype=np.float64, create=True)
+        piv_low_grid_arr = piv_low_shm.get_view()
         for idx, length in enumerate(length_vals):
             piv_high_grid_arr[idx] = high_series.rolling(int(length), min_periods=1).max().to_numpy()
             piv_low_grid_arr[idx] = low_series.rolling(int(length), min_periods=1).min().to_numpy()
 
-        roll_min_grid_arr = np.zeros((len(lookback_vals), len(data)), dtype=np.float64)
-        roll_max_grid_arr = np.zeros((len(lookback_vals), len(data)), dtype=np.float64)
+        roll_min_shm = SharedIndicatorVolume(shape=(len(lookback_vals), len(data)), dtype=np.float64, create=True)
+        roll_min_grid_arr = roll_min_shm.get_view()
+        roll_max_shm = SharedIndicatorVolume(shape=(len(lookback_vals), len(data)), dtype=np.float64, create=True)
+        roll_max_grid_arr = roll_max_shm.get_view()
         for idx, lookback in enumerate(lookback_vals):
             roll_min_grid_arr[idx] = low_series.rolling(int(lookback), min_periods=1).min().to_numpy()
             roll_max_grid_arr[idx] = high_series.rolling(int(lookback), min_periods=1).max().to_numpy()
 
-        atr_grid_arr = np.zeros((len(atr_length_vals), len(data)), dtype=np.float64)
+        atr_shm = SharedIndicatorVolume(shape=(len(atr_length_vals), len(data)), dtype=np.float64, create=True)
+        atr_grid_arr = atr_shm.get_view()
         
         closes = close_series.to_numpy(dtype=float)
         prev_closes = np.roll(closes, 1)
@@ -298,19 +301,10 @@ def _allocate_bjorgum_double_tap(data, parameter_specs, fixed_overrides, workers
         for idx, atr_length in enumerate(atr_length_vals):
             atr_grid_arr[idx] = tr_series.ewm(alpha=1.0 / int(atr_length), adjust=False).mean().to_numpy()
 
-        atr_shm = SharedIndicatorVolume(array_to_share=atr_grid_arr)
         shm_objects.append(atr_shm)
-
-        piv_high_shm = SharedIndicatorVolume(array_to_share=piv_high_grid_arr)
         shm_objects.append(piv_high_shm)
-
-        piv_low_shm = SharedIndicatorVolume(array_to_share=piv_low_grid_arr)
         shm_objects.append(piv_low_shm)
-
-        roll_min_shm = SharedIndicatorVolume(array_to_share=roll_min_grid_arr)
         shm_objects.append(roll_min_shm)
-
-        roll_max_shm = SharedIndicatorVolume(array_to_share=roll_max_grid_arr)
         shm_objects.append(roll_max_shm)
 
         bjorgum_shm_metadata = {
@@ -414,7 +408,8 @@ def _allocate_adaptive_volatility_trend(data, parameter_specs, fixed_overrides, 
             f"Skipping precalculation to protect system memory."
         )
     else:
-        ama_grid_arr = np.zeros((len(ama_combos), 2, len(data)), dtype=np.float64)
+        ama_shm = SharedIndicatorVolume(shape=(len(ama_combos), 2, len(data)), dtype=np.float64, create=True)
+        ama_grid_arr = ama_shm.get_view()
         for combo, idx in ama_keys.items():
             src, l, s = combo
             source_series = strategy_mod._price_source(data, src)
@@ -427,26 +422,23 @@ def _allocate_adaptive_volatility_trend(data, parameter_specs, fixed_overrides, 
         low_series = data["low"]
         close_series = data["close"]
         
-        atr_grid_arr = np.zeros((len(atr_len_vals), len(data)), dtype=np.float64)
+        atr_shm = SharedIndicatorVolume(shape=(len(atr_len_vals), len(data)), dtype=np.float64, create=True)
+        atr_grid_arr = atr_shm.get_view()
         atr_keys = {int(v): i for i, v in enumerate(atr_len_vals)}
         for atr_len, idx in atr_keys.items():
             atr_series = strategy_mod._atr(high_series, low_series, close_series, atr_len)
             atr_grid_arr[idx] = atr_series.to_numpy(dtype=float)
 
-        rsi_grid_arr = np.zeros((len(rsi_combos), len(data)), dtype=np.float64)
+        rsi_shm = SharedIndicatorVolume(shape=(len(rsi_combos), len(data)), dtype=np.float64, create=True)
+        rsi_grid_arr = rsi_shm.get_view()
         for combo, idx in rsi_keys.items():
             src, rl = combo
             source_series = strategy_mod._price_source(data, src)
             rsi_series = strategy_mod._rsi(source_series, rl)
             rsi_grid_arr[idx] = rsi_series.to_numpy(dtype=float)
 
-        ama_shm = SharedIndicatorVolume(array_to_share=ama_grid_arr)
         shm_objects.append(ama_shm)
-
-        atr_shm = SharedIndicatorVolume(array_to_share=atr_grid_arr)
         shm_objects.append(atr_shm)
-
-        rsi_shm = SharedIndicatorVolume(array_to_share=rsi_grid_arr)
         shm_objects.append(rsi_shm)
 
         avt_shm_metadata = {
@@ -516,20 +508,23 @@ def _allocate_3commas_bot(data, parameter_specs, fixed_overrides, workers, shm_o
             f"Skipping precalculation to protect system memory."
         )
     else:
-        ma_grid_arr = np.zeros((len(ma_combos), len(data)), dtype=np.float64)
+        ma_shm = SharedIndicatorVolume(shape=(len(ma_combos), len(data)), dtype=np.float64, create=True)
+        ma_grid_arr = ma_shm.get_view()
         close_series = data["close"]
         for combo, idx in ma_keys.items():
             ma_type, length = combo
             ma_series = strategy_mod.get_ma(close_series, ma_type, length, df=data)
             ma_grid_arr[idx] = ma_series.to_numpy(dtype=float)
 
-        atr_grid_arr = np.zeros((len(atr_len_vals), len(data)), dtype=np.float64)
+        atr_shm = SharedIndicatorVolume(shape=(len(atr_len_vals), len(data)), dtype=np.float64, create=True)
+        atr_grid_arr = atr_shm.get_view()
         atr_keys = {int(v): i for i, v in enumerate(atr_len_vals)}
         for atr_len, idx in atr_keys.items():
             atr_series = strategy_mod.atr(data, atr_len)
             atr_grid_arr[idx] = atr_series.to_numpy(dtype=float)
 
-        swing_grid_arr = np.zeros((len(swing_lookback_vals), 2, len(data)), dtype=np.float64)
+        swing_shm = SharedIndicatorVolume(shape=(len(swing_lookback_vals), 2, len(data)), dtype=np.float64, create=True)
+        swing_grid_arr = swing_shm.get_view()
         swing_keys = {int(v): i for i, v in enumerate(swing_lookback_vals)}
         for swing_lookback, idx in swing_keys.items():
             low_series = data["low"]
@@ -539,13 +534,8 @@ def _allocate_3commas_bot(data, parameter_specs, fixed_overrides, workers, shm_o
             swing_grid_arr[idx, 0] = low_lowest.to_numpy(dtype=float)
             swing_grid_arr[idx, 1] = high_highest.to_numpy(dtype=float)
 
-        ma_shm = SharedIndicatorVolume(array_to_share=ma_grid_arr)
         shm_objects.append(ma_shm)
-
-        atr_shm = SharedIndicatorVolume(array_to_share=atr_grid_arr)
         shm_objects.append(atr_shm)
-
-        swing_shm = SharedIndicatorVolume(array_to_share=swing_grid_arr)
         shm_objects.append(swing_shm)
 
         commas_bot_shm_metadata = {
@@ -584,7 +574,8 @@ def _allocate_noise_boundary_intraday(data, parameter_specs, fixed_overrides, wo
 
     import backtest_engine.strategies.noise_boundary_intraday as nb_mod
 
-    vol_grid_arr = np.zeros((len(lookback_vals), 2, len(data)), dtype=np.float64)
+    vol_shm = SharedIndicatorVolume(shape=(len(lookback_vals), 2, len(data)), dtype=np.float64, create=True)
+    vol_grid_arr = vol_shm.get_view()
     vol_keys = {int(v): i for i, v in enumerate(lookback_vals)}
 
     normalized_index = data.index.normalize()
@@ -610,7 +601,6 @@ def _allocate_noise_boundary_intraday(data, parameter_specs, fixed_overrides, wo
         spy_dvol_filled = np.where(np.isnan(spy_dvol), 0.0, spy_dvol)
         vol_grid_arr[idx, 1] = spy_dvol_filled
 
-    vol_shm = SharedIndicatorVolume(array_to_share=vol_grid_arr)
     shm_objects.append(vol_shm)
 
     noise_boundary_shm_metadata = {
@@ -656,9 +646,10 @@ def _allocate_cybernetic_hilbert(data, parameter_specs, fixed_overrides, workers
 
     from .indicators.hilbert_transform import hilbert_transform_ehlers
 
+    hilbert_shm = SharedIndicatorVolume(shape=(len(smooth_vals), 4, len(data)), dtype=np.float64, create=True)
+    hilbert_grid_arr = hilbert_shm.get_view()
     close_arr = data["close"].to_numpy(dtype=np.float64)
     hilbert_keys = {int(v): i for i, v in enumerate(smooth_vals)}
-    hilbert_grid_arr = np.zeros((len(smooth_vals), 4, len(data)), dtype=np.float64)
 
     for smooth_period, idx in hilbert_keys.items():
         result = hilbert_transform_ehlers(close_arr, smooth_period_factor=smooth_period)
@@ -667,7 +658,6 @@ def _allocate_cybernetic_hilbert(data, parameter_specs, fixed_overrides, workers
         hilbert_grid_arr[idx, 2] = result["dominant_cycle"]
         hilbert_grid_arr[idx, 3] = result["phase_mode"]
 
-    hilbert_shm = SharedIndicatorVolume(array_to_share=hilbert_grid_arr)
     shm_objects.append(hilbert_shm)
 
     hilbert_shm_metadata = {

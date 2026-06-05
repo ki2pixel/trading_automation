@@ -85,7 +85,7 @@ Le **Backtest Engine** est le cœur d'analyse quantitative écrit en Python. Il 
 
 ### Fonctionnalités principales
 
-- **7 stratégies intégrées** : HMA Crossover, Adaptive Volatility Trend (AVT), Range Filter, 3Commas Bot, PMax Explorer, Bjorgum Double Tap et Noise Boundary Intraday.
+- **8 stratégies intégrées** : HMA Crossover, Adaptive Volatility Trend (AVT), Range Filter, 3Commas Bot, PMax Explorer, Bjorgum Double Tap, Noise Boundary Intraday et [Cybernetic Trading](./docs/strategies/cybernetic_hilbert.md).
 - **Optimisation multi-cœurs** :
   - *Grid Search* (recherche exhaustive sur grille) avec déduplication active des paramètres inactifs.
   - *Bayesian Optimization* (Tree-structured Parzen Estimator via Optuna TPE) pour converger rapidement vers les meilleures configurations en limitant les itérations, avec arrêt dynamique sur convergence.

@@ -223,6 +223,22 @@ Stratégie intraday basée sur des bandes de volatilité dynamiques (bruit) cons
 
 ---
 
+## 7. Cybernetic Trading (Transformée de Hilbert)
+
+Stratégie basée sur le traitement de signal pour identifier dynamiquement la phase du cycle dominant.
+
+### Paramètres core (haute priorité)
+
+| Paramètre               | Défaut | Type   | Plage suggérée | Description                                           |
+|-------------------------|--------|--------|----------------|-------------------------------------------------------|
+| `hilbert_smooth_period` | 7      | int    | 4 - 20         | Lissage de base pour le calcul In-Phase/Quadrature    |
+| `phase_mode_enabled`    | true   | bool   | true/false     | Gater les signaux selon le mode de marché (Cyclique)  |
+| `require_cycling_bars`  | 1      | int    | 1 - 5          | Nombre de barres cycliques consécutives avant entrée  |
+
+**Conseil** : Cette stratégie a un très petit espace de recherche. Le paramètre `hilbert_smooth_period` contrôle la réactivité globale. Activer `phase_mode_enabled` est crucial pour éviter de trader lors de forts mouvements tendanciels.
+
+---
+
 ## Recommandations Globales de Filtrage des Backtests
 
 Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas être identiques pour toutes les stratégies. L'horizon de temps et la logique de la stratégie imposent d'adapter ces critères.
@@ -250,6 +266,7 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 | **`adaptive_volatility`** (Tendance)| 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 | **`range_filter`** (Tendance) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 | **`bjorgum_double_tap`** (Pattern/Swing)| 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
+| **`cybernetic_hilbert`** (Retournement) | 30 - 50 | `return_vs_buy_hold_pct_points` | -20% à -25% | 1.25 |
 
 ---
 
@@ -259,6 +276,7 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 |-------------------------------|----------------|---------------------------|
 | Range Filter                  | 2              | Faible                    |
 | HMA Crossover                 | 4              | Faible                    |
+| Cybernetic Trading            | 3              | Faible                    |
 | PMax Explorer                 | 6              | Faible-Moyenne            |
 | Adaptive Volatility Trend     | 6-7            | Moyenne                   |
 | Bjorgum Double Tap            | 7              | Moyenne-Elevee            |

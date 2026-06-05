@@ -48,7 +48,23 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
 ## Catégorie C : Stratégies Complexes (3 Passes)
 *Ces stratégies possèdent des logiques de money management, de trailing stops dynamiques et d'horaires d'exécution. Les diviser est **obligatoire**.*
 
-### 5. 3Commas-Bot
+### 5. Cybernetic Trading (Transformée de Hilbert)
+*Note : Cette stratégie exploite l'algorithme génétique CMA-ES. Pour éviter de casser sa matrice de covariance avec des "falaises" mathématiques, **aucun paramètre booléen** (ex: `use_net_bracket_exits`) ne doit être inclus dans l'espace de recherche (search space). Ils doivent être fixés en dur.*
+
+- **Passe 1 : Mode Tendance & TP/SL (Trend Mode)**
+  - *À bloquer* : Fixer `phase_mode_enabled = false` (désactive le mode cyclique), `use_net_bracket_exits = true` (active les sorties PnL) et `use_safety_stop = false`.
+  - *À optimiser* : `hilbert_smooth_period` (Int), `take_profit_net_percent` (Float) et `stop_loss_net_percent` (Float).
+  - *Objectif* : Trouver la meilleure combinaison purement continue pour surfer les tendances avec un filet de sécurité (TP/SL).
+- **Passe 2 : Mode Oscillation (Phase Mode)**
+  - *À bloquer* : Fixer `phase_mode_enabled = true`. Reprendre le meilleur trio `[hilbert_smooth_period, TP, SL]` trouvé en Passe 1.
+  - *À optimiser* : `require_cycling_bars` (Int).
+  - *Objectif* : Affiner le filtre de trading de range (mean-reversion) sur les cycles dominants sans détruire le signal de base.
+- **Passe 3 (Optionnelle) : Time Stop (Filtre Temporel)**
+  - *À bloquer* : Tous les paramètres trouvés aux Passes 1 et 2. Fixer `use_safety_stop = true`.
+  - *À optimiser* : `safety_max_bars_in_trade` (Int).
+  - *Objectif* : Couper les positions qui stagnent trop longtemps (Time Stop) pour libérer le capital.
+
+### 6. 3Commas-Bot
 - **Passe 1 : Le Signal (Croisement MAs)**
   - *À optimiser* : `ma_type1`, `ma_type2`, `ma_length1`, `ma_length2`.
   - *À bloquer* : `trail_stop = false`, et fixez `rnr = 1.0`, `risk_m = 1.0`.
@@ -62,7 +78,7 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *À optimiser* : `trail_stop = true`, `trail_stop_size`, `rr_exit`.
   - *Objectif* : Laisser courir les gains une fois la cible initiale atteinte.
 
-### 6. Bjorgum Double Tap
+### 7. Bjorgum Double Tap
 - **Passe 1 : Détection du Pattern**
   - *À optimiser* : `tol` (tolérance géométrique), `length` (pivot), `dLong`, `dShort`.
   - *À bloquer* : Fixer les cibles très loin (`fib = 100` ou plus, `stopPer = 0`) et désactiver l'ATR stop (`atrStop = false`).
@@ -76,7 +92,7 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *À optimiser* : `atrStop = true`, `atrLength`, `atrMult`.
   - *Objectif* : Sécuriser les gains sur les très grands mouvements.
 
-### 7. Noise Boundary Intraday
+### 8. Noise Boundary Intraday
 - **Passe 1 : Le Signal Volatilité Brut**
   - *À optimiser* : `lookback_days`, `volatility_multiplier_enter`, `volatility_multiplier_exit`.
   - *À bloquer* : Mode de sortie basique (`exit_mode = time_only`), Safety stop OFF, filtres VWAP OFF.

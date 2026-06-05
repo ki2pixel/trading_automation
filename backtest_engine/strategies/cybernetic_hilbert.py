@@ -156,34 +156,29 @@ def _generate_signals(
     sine, lead, _, pm = _get_hilbert_arrays(close, hilbert_smooth_period)
     n = len(close)
 
-    entries_long = np.zeros(n, dtype=np.bool_)
-    exits_long = np.zeros(n, dtype=np.bool_)
-    entries_short = np.zeros(n, dtype=np.bool_)
-    exits_short = np.zeros(n, dtype=np.bool_)
+    # Lead Wave crosses below Sine Wave → buy signal (bottom detection)
+    cross_below = (lead[:-1] >= sine[:-1]) & (lead[1:] < sine[1:])
+    # Lead Wave crosses above Sine Wave → sell signal (top detection)
+    cross_above = (lead[:-1] <= sine[:-1]) & (lead[1:] > sine[1:])
 
-    # Track consecutive cycling bars for the require_cycling_bars filter
-    consecutive_cycling = 0
+    # Pad to match original length (first element is False)
+    cross_below = np.concatenate(([False], cross_below))
+    cross_above = np.concatenate(([False], cross_above))
 
-    for i in range(1, n):
-        # Phase mode gate
-        if pm[i] == 1.0:
-            consecutive_cycling += 1
+    if phase_mode_enabled:
+        if require_cycling_bars <= 1:
+            cycling_ok = (pm == 1.0)
         else:
-            consecutive_cycling = 0
+            # Vectorized rolling consecutive check using pandas
+            cycling_ok = pd.Series(pm).rolling(require_cycling_bars).sum() == require_cycling_bars
+            cycling_ok = cycling_ok.fillna(False).to_numpy()
+    else:
+        cycling_ok = np.ones(n, dtype=bool)
 
-        cycling_ok = (not phase_mode_enabled) or (consecutive_cycling >= require_cycling_bars)
-
-        # Lead Wave crosses below Sine Wave → buy signal (bottom detection)
-        cross_below = (lead[i - 1] >= sine[i - 1]) and (lead[i] < sine[i])
-        # Lead Wave crosses above Sine Wave → sell signal (top detection)
-        cross_above = (lead[i - 1] <= sine[i - 1]) and (lead[i] > sine[i])
-
-        if cross_below and cycling_ok:
-            entries_long[i] = True
-            exits_short[i] = True
-        if cross_above and cycling_ok:
-            entries_short[i] = True
-            exits_long[i] = True
+    entries_long = cross_below & cycling_ok
+    exits_short = cross_below & cycling_ok
+    entries_short = cross_above & cycling_ok
+    exits_long = cross_above & cycling_ok
 
     return entries_long, exits_long, entries_short, exits_short
 
@@ -284,11 +279,18 @@ def _build_state_from_broker(
 
     cur_qty = 0.0
     cur_avg = 0.0
+    last_idx = 0
+    pos_qty = np.zeros(n, dtype=np.float64)
 
-    for i in range(n):
-        ts = timestamps[i]
-        fills_at_bar = fill_by_bar.get(ts, [])
-        for fill in fills_at_bar:
+    fill_indices = [bar_positions.get(ts, -1) for ts in fill_by_bar.keys()]
+    fill_indices = sorted([i for i in fill_indices if i != -1])
+
+    for idx in fill_indices:
+        if idx > last_idx:
+            pos_qty[last_idx:idx] = cur_qty
+            pos_avg[last_idx:idx] = cur_avg
+        ts = timestamps[idx]
+        for fill in fill_by_bar[ts]:
             delta = fill.signed_quantity
             new_qty = cur_qty + delta
             if cur_qty == 0 or cur_qty * delta > 0:
@@ -308,17 +310,27 @@ def _build_state_from_broker(
                     # Reversal
                     cur_qty = new_qty
                     cur_avg = fill.price
+        pos_qty[idx] = cur_qty
+        pos_avg[idx] = cur_avg
+        last_idx = idx + 1
 
-        pos_size[i] = abs(cur_qty)
-        pos_avg[i] = cur_avg
+    if last_idx < n:
+        pos_qty[last_idx:n] = cur_qty
+        pos_avg[last_idx:n] = cur_avg
 
-        # Estimate open PnL at this bar's close
-        if cur_qty != 0 and cur_avg > 0:
-            price_at_close = float(close_arr[i])
-            fx = broker.fx_rate(ts)
-            price_account = price_at_close * fx
-            side_mult = 1.0 if cur_qty > 0 else -1.0
-            open_pnl[i] = (price_account - cur_avg) * abs(cur_qty) * side_mult * broker.config.point_value
+    pos_size[:] = np.abs(pos_qty)
+
+    mask = (pos_qty != 0) & (pos_avg > 0)
+    if mask.any():
+        active_indices = np.where(mask)[0]
+        if broker.config.asset_currency == broker.config.account_currency:
+            price_account = close_arr[active_indices]
+        else:
+            fx_arr = np.array([broker.fx_rate(timestamps[idx]) for idx in active_indices])
+            price_account = close_arr[active_indices] * fx_arr
+        
+        side_mult = np.sign(pos_qty[active_indices])
+        open_pnl[active_indices] = (price_account - pos_avg[active_indices]) * np.abs(pos_qty[active_indices]) * side_mult * broker.config.point_value
 
     state = pd.DataFrame(
         {
@@ -429,20 +441,31 @@ def run_cybernetic_hilbert(
 
     # Pre-extract arrays for fast access
     timestamps = bars.index
-    exec_arr = bars[exec_col].values if exec_col in bars.columns else bars["open"].values
-    close_arr = bars["close"].values
+    ts_arr = timestamps.to_pydatetime()
+    exec_arr = bars[exec_col].to_numpy(dtype=np.float64) if exec_col in bars.columns else bars["open"].to_numpy(dtype=np.float64)
+    open_arr = bars["open"].to_numpy(dtype=np.float64)
+    high_arr = bars["high"].to_numpy(dtype=np.float64)
+    low_arr = bars["low"].to_numpy(dtype=np.float64)
+    close_arr = bars["close"].to_numpy(dtype=np.float64)
     n_bars = len(bars)
 
     # Early-stop drawdown tracking
     drawdown_limit = overrides.early_stop_drawdown_pct
+    check_drawdown = drawdown_limit is not None and drawdown_limit > 0
     peak_equity = initial_capital
     order_counter = 0
+
+    # Pre-mask signals
+    if not allow_long:
+        entries_long[:] = False
+    if not allow_short:
+        entries_short[:] = False
 
     # Pending signal for execute_on_next_bar
     pending_signal: str | None = None  # "long", "short", "exit_long", "exit_short"
 
     for i in range(n_bars):
-        ts = timestamps[i]
+        ts = ts_arr[i]
         exec_price = float(exec_arr[i])
 
         # Execute pending signal from previous bar (next-bar execution)
@@ -510,19 +533,20 @@ def run_cybernetic_hilbert(
             pending_signal = None
 
         # Evaluate exit rules (safety stop, bracket exits)
-        bar_dict = {
-            "timestamp": ts,
-            "open": float(bars.iloc[i]["open"]),
-            "high": float(bars.iloc[i]["high"]),
-            "low": float(bars.iloc[i]["low"]),
-            "close": float(close_arr[i]),
-        }
-        broker.evaluate_exits(bar_dict)
+        if not broker.position.is_flat and broker.exit_orchestrator is not None:
+            bar_dict = {
+                "timestamp": ts,
+                "open": float(open_arr[i]),
+                "high": float(high_arr[i]),
+                "low": float(low_arr[i]),
+                "close": float(close_arr[i]),
+            }
+            broker.evaluate_exits(bar_dict)
 
         # Process new signals — queue for next-bar execution
-        if entries_long[i] and allow_long:
+        if entries_long[i]:
             pending_signal = "long"
-        elif entries_short[i] and allow_short:
+        elif entries_short[i]:
             pending_signal = "short"
         elif exits_long[i]:
             pending_signal = "exit_long"
@@ -530,8 +554,8 @@ def run_cybernetic_hilbert(
             pending_signal = "exit_short"
 
         # Early-stop drawdown check
-        if drawdown_limit is not None:
-            equity = broker.mark_to_market_equity(float(close_arr[i]), ts)
+        if check_drawdown:
+            equity = broker.cash if broker.position.is_flat else broker.mark_to_market_equity(float(close_arr[i]), ts)
             if equity > peak_equity:
                 peak_equity = equity
             if peak_equity > 0:

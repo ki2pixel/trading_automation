@@ -14,6 +14,7 @@ REPO_ROOT="."
 
 # Redirect optimizer/backtest reports via BACKTEST_REPORTS_DIR env var
 export BACKTEST_REPORTS_DIR="${BACKTEST_REPORTS_DIR:-/mnt/venv_ext4/trading_automation_v2/reports}"
+export NUMBA_CPU_FEATURES="-avx512f,+avx2"
 OUTPUT_DIR="$BACKTEST_REPORTS_DIR/local_optimizer"
 
 # Couleurs pour l'affichage

@@ -41,6 +41,19 @@
 - [x] [2026-06-04 14:08:00] - Exécution du workflow /docs-updater : Création du document broker_simulator.md (Radon complexity) et mise à jour de l'indexation dans README.md et runner.md.
 - [x] [2026-06-04 14:30:00] - Audit de la Passe 1 de bjorgum_double_tap terminé. Échec de la détection d'edge. Synthèse stratégique et rapport de passe 1 documentés.
 - [x] [2026-06-04 19:38:00] - Implémentation, intégration (POSIX SHM, Bayesian Optimizer) et vérification de la stratégie Cybernetic Trading (John Ehlers' Hilbert Transform).
+- [x] [2026-06-04 19:46:00] - Exécution du workflow /docs-updater : Création de la documentation technique (Cybernetic Hilbert Transform) et mise à jour de l'indexation dans README.md.
+- [x] [2026-06-04 19:47:00] - Traduction en français de la documentation cybernetic_hilbert.md pour cohérence.
+- [x] [2026-06-04 19:53:00] - Intégration de la stratégie Cybernetic Trading dans les guides d'optimisation (README_BACKTEST_PARAMS.md et README_OPTIMIZATION_ROADMAP.md).
+- [x] [2026-06-04 19:57:00] - Création du fichier de configuration par défaut `configs/strategies/cybernetic_hilbert.default.json`.
+- [x] [2026-06-04 20:02:00] - Ajout de `cybernetic_hilbert` au backend UI (`web.py`) et déclaration de ses indicateurs dans le frontend (`viewer.js`).
+- [x] [2026-06-04 20:04:00] - Correction de l'erreur 500 sur `/api/strategies` en ajoutant `cybernetic_hilbert` aux listes des stratégies autorisées dans `backtest_engine/optimizer.py`.
+- [x] [2026-06-04 20:12:00] - Correction de l'erreur 400 sur `/api/estimate` en ajoutant `cybernetic_hilbert` au littéral `StrategyPayload` (Pydantic) dans `web.py`.
+- [x] [2026-06-04 21:03:00] - Mise à jour de `README_OPTIMIZATION_ROADMAP.md` pour diviser l'optimisation Cybernetic en 2 passes (Trend Mode / Phase Mode) afin d'exploiter correctement l'algorithme CMA-ES.
+- [x] [2026-06-05 01:22:00] - Audit complet et création des rapports d'optimisation (Passe 1 Trend Mode) pour la stratégie cybernetic_hilbert.
+- [x] [2026-06-05 13:51:00] - Correction du bug d'early stop drawdown (pct=0) dans la stratégie `cybernetic_hilbert`.
+
+- [x] [2026-06-05 14:11:00] - Optimisation de boucle `cybernetic_hilbert.py` (Numpy arrays pré-extraits, évitement du dictionnaire quand position flat).
+- [x] [2026-06-05 14:25:00] - Vectorisation complète de `_generate_signals` et `_build_state_from_broker` dans `cybernetic_hilbert.py` (élimination totale des boucles O(N) en pur Python).
 
 ## Tâches en Cours
 - Aucune tâche en cours.
