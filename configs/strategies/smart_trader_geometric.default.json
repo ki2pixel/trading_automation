@@ -28,10 +28,10 @@
     "point_value": 1.0,
     "execute_on_next_bar": true,
     "next_bar_execution_price_col": "open",
-    "apply_estimated_costs_to_realized_pnl": false,
+    "apply_estimated_costs_to_realized_pnl": true,
     "allow_fractional_quantity": true,
     "quantity_precision": 6,
-    "early_stop_drawdown_pct": 50.0,
+    "early_stop_drawdown_pct": 0,
     "asset_currency": null,
     "account_currency": "EUR",
     "fx_rate_provider": null

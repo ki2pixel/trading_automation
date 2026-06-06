@@ -284,6 +284,7 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 | **`range_filter`** (Tendance) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 | **`bjorgum_double_tap`** (Pattern/Swing)| 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 | **`cybernetic_hilbert`** (Retournement) | 30 - 50 | `return_vs_buy_hold_pct_points` | -20% à -25% | 1.25 |
+| **`smart_trader_geometric`** (Tendance) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 
 ---
 
@@ -303,4 +304,4 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 
 ---
 
-*Document mis à jour le 2026-05-24 suite au diagnostic de viabilité statistique.*
+*Document mis à jour le 2026-06-06 suite au diagnostic de viabilité statistique et ajout de stratégies.*
