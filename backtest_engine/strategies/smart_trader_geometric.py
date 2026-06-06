@@ -279,7 +279,9 @@ def run_smart_trader_geometric(
     
     default_slots = [
         {"variable": "Ceil angle", "condition": ">", "threshold": 0.0, "apply_to": "Long entry"},
-        {"variable": "Flr angle", "condition": "<", "threshold": 0.0, "apply_to": "Short entry"}
+        {"variable": "Flr angle", "condition": "<", "threshold": 0.0, "apply_to": "Short entry"},
+        {"variable": "Ceil angle", "condition": "<", "threshold": 0.0, "apply_to": "Long exit"},
+        {"variable": "Flr angle", "condition": ">", "threshold": 0.0, "apply_to": "Short exit"}
     ]
 
     config = SmartTraderGeometricConfig(
