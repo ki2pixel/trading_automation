@@ -253,6 +253,7 @@ Stratégie basée sur le framework géométrique isotrope (ICS), mesurant les di
 | `signal_mode`           | Close  | str    | Close / Live   | Confirmation sur clôture ("Close") ou temps réel ("Live") |
 
 **Conseil** : Le `lookback_period` définit la taille de la boîte géométrique (anchor). Un lookback court réagira très vite au bruit, un lookback long captera de vastes tendances. Ajuster les `slots` permet de durcir ou assouplir les conditions d'entrée (quorum).
+⚠️ **Attention** : Si vous configurez le comportement global sur `trade_direction_mode: "Long only"`, excluez absolument `min_short_entry_slots` (et les `estimated_commission/slippage_per_side_short`) de votre grille d'optimisation pour éviter les calculs redondants. Faites l'inverse en mode *Short only*.
 
 ---
 
