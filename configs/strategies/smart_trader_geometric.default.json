@@ -5,6 +5,20 @@
     "lookback_period": 23,
     "min_long_entry_slots": 1,
     "min_short_entry_slots": 1,
+    "slots": [
+      {
+        "variable": "Ceil angle",
+        "condition": ">",
+        "threshold": 0.0,
+        "apply_to": "Long entry"
+      },
+      {
+        "variable": "Flr angle",
+        "condition": "<",
+        "threshold": 0.0,
+        "apply_to": "Short entry"
+      }
+    ],
     "max_entry_price": 300,
     "max_capital_bucket": 300,
     "initial_capital_bucket": 300,

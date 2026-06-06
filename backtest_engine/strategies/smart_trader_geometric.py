@@ -26,6 +26,7 @@ try:
     from smart_trader_geometric import (
         SmartTraderGeometricConfig,
         run_smart_trader_geometric_strategy,
+        add_smart_trader_geometric_features,
     )
 except ImportError:
     pass
@@ -41,6 +42,7 @@ class SmartTraderGeometricConfigOverrides:
     lookback_period: int | None = None
     min_long_entry_slots: int | None = None
     min_short_entry_slots: int | None = None
+    slots: list[dict[str, Any]] | None = None
     # ── V3 common parameters ──
     max_entry_price: float | None = None
     max_capital_bucket: float | None = None
@@ -275,15 +277,22 @@ def run_smart_trader_geometric(
 
     bars = _to_strategy_ohlcv(data)
     
+    default_slots = [
+        {"variable": "Ceil angle", "condition": ">", "threshold": 0.0, "apply_to": "Long entry"},
+        {"variable": "Flr angle", "condition": "<", "threshold": 0.0, "apply_to": "Short entry"}
+    ]
+
     config = SmartTraderGeometricConfig(
         signal_mode=overrides.signal_mode or "Close",
         lookback_period=overrides.lookback_period or 23,
         min_long_entry_slots=overrides.min_long_entry_slots or 1,
         min_short_entry_slots=overrides.min_short_entry_slots or 1,
+        slots=overrides.slots if overrides.slots is not None else default_slots
     )
     
     # Run core geometric signal logic
     df = data.copy()
+    df = add_smart_trader_geometric_features(df, config)
     raw_state, _ = run_smart_trader_geometric_strategy(df, config)
 
     entries_long = df['long_entry'].fillna(False).to_numpy()
