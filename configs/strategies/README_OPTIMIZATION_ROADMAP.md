@@ -111,7 +111,7 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
 
 - **Passe 1 : Géométrie et Quorum (Core)**
   - *À bloquer* : Fixer `signal_mode = "Close"`, désactiver les safety stops et `use_net_bracket_exits = false`.
-  - *À optimiser* : `lookback_period` (Int), `min_long_entry_slots` (Int), `min_short_entry_slots` (Int).
+  - *À optimiser* : `lookback_period` (Int), `min_long_entry_slots` (Int). Ajoutez `min_short_entry_slots` (Int) **uniquement** si vous opérez dans les deux directions (excluez-le en mode "Long only").
   - *Objectif* : Trouver la structure géométrique de base qui génère les meilleurs signaux directionnels purs.
 - **Passe 2 : Risk-Management & Exits**
   - *À bloquer* : Le trio `lookback` et `slots` trouvé en Passe 1. Fixer `use_net_bracket_exits = true`.
