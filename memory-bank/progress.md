@@ -60,6 +60,9 @@
 - [x] [2026-06-06 01:26:00] - Intégration complète de Smart Trader Geometric au moteur d'optimisation et à l'UI (`optimizer.py`, `web.py`).
 - [x] [2026-06-06 01:26:00] - Mise à jour des documents `README_BACKTEST_PARAMS.md` et `README_OPTIMIZATION_ROADMAP.md` pour intégrer Smart Trader.
 - [x] [2026-06-06 01:26:00] - Déploiement du support de conversion Forex V3 (`asset_currency`, `account_currency`) sur l'ensemble des fichiers `.json` de configuration des stratégies.
+- [x] [2026-06-07 23:17:00] - Analyse et audit de la Passe 1 de la stratégie Smart Trader Geometric terminés. Documentation d'optimisation (Passe 1 et Synthèse Stratégique) mise à jour.
+- [x] [2026-06-07 23:35:00] - Analyse et audit de la Passe 2 de la stratégie Smart Trader Geometric (Risk Management) terminés. Succès majeur sur ZEAL.CO et LOGI. Documentation mise à jour.
+- [x] [2026-06-07 23:51:00] - Analyse et audit de la Passe 3 de la stratégie Smart Trader Geometric (Signal Mode Live vs Close) terminés. Documentation d'optimisation clôturée. Les configurations sont prêtes pour le moteur live.
 
 ## Tâches en Cours
 - Aucune tâche active.
