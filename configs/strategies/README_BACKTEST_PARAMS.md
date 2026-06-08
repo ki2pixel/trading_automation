@@ -257,6 +257,61 @@ Stratégie basée sur le framework géométrique isotrope (ICS), mesurant les di
 
 ---
 
+## 9. Smart Trader Episode 1 | Unified Matrix
+
+Stratégie avancée basée sur l'action des prix, détectant les pics de volume acheteurs/vendeurs (Highest/Lowest Buyers/Sellers) et modélisant la décroissance de leur pouvoir via un algorithme de PathTracker.
+
+### Paramètres core (haute priorité)
+
+| Paramètre               | Défaut | Type   | Plage suggérée | Description                                           |
+|-------------------------|--------|--------|----------------|-------------------------------------------------------|
+| `universal_len`         | 23     | int    | 10 - 50        | Longueur universelle (lookback pour max/min volume)   |
+| `long_power_min`        | 60.0   | float  | 50.0 - 100.0   | Pouvoir minimum des acheteurs pour valider un achat   |
+| `short_power_max`       | 40.0   | float  | 0.0 - 50.0     | Pouvoir maximum des acheteurs pour valider une vente  |
+| `opp_dom_threshold`     | 80.0   | float  | 50.0 - 100.0   | Seuil de domination du camp opposé                    |
+| `max_decay_angle`       | -15.0  | float  | -45.0 - 0.0    | Angle de décroissance maximum autorisé                |
+
+### Paramètres d'exécution & Risque
+
+| Paramètre               | Défaut | Type   | Plage suggérée | Description                                           |
+|-------------------------|--------|--------|----------------|-------------------------------------------------------|
+| `calc_method`           | Geometry | str  | Geometry / Intrabar | Mode de calcul (Géométrique ou ultra-précis)          |
+| `sl_buffer_pct`         | 0.0    | float  | 0.0 - 5.0      | Buffer de Stop Loss en % (ajoute de la marge)         |
+| `tp_buffer_pct`         | 0.0    | float  | 0.0 - 5.0      | Buffer de Take Profit en % (réduit la cible)          |
+| `allow_long`            | true   | bool   | true/false     | Autorise la prise de position longue                  |
+| `allow_short`           | true   | bool   | true/false     | Autorise la prise de position courte                  |
+
+**Conseil** : Le `universal_len` et les seuils de `power` (`long_power_min`, `short_power_max`) définissent le squelette du signal. Ajustez `max_decay_angle` pour rendre les entrées plus ou moins restrictives sur la décroissance de momentum.
+
+---
+
+## 10. Dual RSI DCA Long
+
+Stratégie de DCA (Dollar Cost Averaging) basée sur la confirmation croisée de deux RSI (un pour l'entrée, un pour la sortie). Utilise une progression géométrique des lots de rattrapage (Averaging Orders).
+
+### Paramètres core (haute priorité)
+
+| Paramètre               | Défaut | Type   | Plage suggérée | Description                                           |
+|-------------------------|--------|--------|----------------|-------------------------------------------------------|
+| `entry_rsi_len`         | 14     | int    | 7 - 21         | Longueur du RSI d'entrée                              |
+| `entry_rsi_level`       | 31.0   | float  | 20.0 - 45.0    | Seuil de survente pour valider l'entrée (croisement à la hausse) |
+| `exit_rsi_len`          | 14     | int    | 7 - 21         | Longueur du RSI de sortie                             |
+| `exit_rsi_level`        | 69.0   | float  | 55.0 - 80.0    | Seuil de surachat pour armer la sortie                |
+
+### Paramètres DCA & Exécution
+
+| Paramètre               | Défaut | Type   | Plage suggérée | Description                                           |
+|-------------------------|--------|--------|----------------|-------------------------------------------------------|
+| `min_profit_pct`        | 2.4    | float  | 0.5 - 5.0      | Profit net minimal avant de valider le signal de sortie RSI |
+| `ao_count`              | 5      | int    | 2 - 10         | Nombre maximum d'ordres de rattrapage (Averaging Orders) |
+| `ao_step`               | 1.3    | float  | 0.5 - 3.0      | Écart en % pour le premier ordre de rattrapage        |
+| `ao_step_mult`          | 1.3    | float  | 1.0 - 2.0      | Multiplicateur géométrique de l'écartement des paliers |
+| `ao_size_mult`          | 1.25   | float  | 1.0 - 2.0      | Multiplicateur de la taille (volume) des ordres de rattrapage |
+
+**Conseil** : La dynamique de la stratégie est dictée par les `rsi_len` et `rsi_level`. Le DCA repose sur `ao_step` (l'agressivité des rachats) et `ao_size_mult` (le poids du rattrapage pour ramener le prix moyen vers le bas). L'optimiseur utilise le pre-scan VectorBT massivement parallèle pour dégrossir les paramètres RSI très rapidement.
+
+---
+
 ## Recommandations Globales de Filtrage des Backtests
 
 Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas être identiques pour toutes les stratégies. L'horizon de temps et la logique de la stratégie imposent d'adapter ces critères.
@@ -279,6 +334,7 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 | :--- | :--- | :--- | :--- | :--- |
 | **`noise_boundary`** (Intraday) | 100+ | `return_vs_buy_hold_pct_points` | -15% à -25% | 1.25 |
 | **`commas_bot`** (DCA / Grid) | 80+ | `sortino_ratio` | -25% | 1.25 |
+| **`dual_rsi_dca_long`** (DCA / Grid) | 80+ | `sortino_ratio` ou `sharpe_ratio`| -25% à -35% | 1.25 |
 | **`hma_crossover`** (Tendance) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 | **`pmax_explorer`** (Tendance) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 | **`adaptive_volatility`** (Tendance)| 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
@@ -286,6 +342,7 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 | **`bjorgum_double_tap`** (Pattern/Swing)| 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 | **`cybernetic_hilbert`** (Retournement) | 30 - 50 | `return_vs_buy_hold_pct_points` | -20% à -25% | 1.25 |
 | **`smart_trader_geometric`** (Tendance) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
+| **`smart_trader_ep1`** (Action des prix)| 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 
 ---
 
@@ -302,7 +359,9 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 | Noise Boundary Intraday       | 9              | Moyenne-Elevee            |
 | 3Commas-Bot                   | 8              | Moyenne-Elevee            |
 | Smart Trader Geometric        | 4              | Moyenne                   |
+| Smart Trader EP1              | 7              | Moyenne-Elevee            |
+| Dual RSI DCA Long             | 5              | Moyenne                   |
 
 ---
 
-*Document mis à jour le 2026-06-06 suite au diagnostic de viabilité statistique et ajout de stratégies.*
+*Document mis à jour le 2026-06-08 suite à l'intégration de la stratégie Dual RSI DCA Long.*

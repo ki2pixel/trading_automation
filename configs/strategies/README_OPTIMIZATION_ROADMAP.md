@@ -122,5 +122,38 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *À optimiser* : Tester avec `signal_mode = "Live"` vs `"Close"`.
   - *Objectif* : Voir si l'exécution intra-barre (Live) améliore le rendement en réduisant le slippage implicite d'attente de clôture.
 
+### 10. Smart Trader Episode 1 | Unified Matrix
+*Note : Cette stratégie utilisant l'optimisation bayésienne continue, les TPE gérent bien les booléens et les choix.*
+
+> [!WARNING]
+> **Timeframe Critique (1 Minute Max) :** Cette stratégie est 100% basée sur la distribution du volume intra-barre (détection des *Highest Buyers*). Pour éviter de lisser et détruire les signaux d'anomalies de pression acheteuse, **il est impératif d'utiliser un dataset avec une résolution maximale de 1 minute** (le "sweet spot" entre précision et profondeur historique). L'utilisation d'un timeframe supérieur (5m, 15m...) écrasera la dynamique volumétrique et ruinera l'avantage mathématique de l'algorithme.
+
+- **Passe 1 : L'Anchor et les Puissances (Core)**
+  - *À bloquer* : Fixer `calc_method = "Geometry (Source File)"`, les buffers à `0.0`.
+  - *À optimiser* : `universal_len` (Int), `long_power_min` (Float), `short_power_max` (Float).
+  - *Objectif* : Trouver la longueur idéale de la fenêtre de volume et les bons seuils d'entrée pour identifier de véritables mouvements.
+- **Passe 2 : Filtrage de la décroissance**
+  - *À bloquer* : Le trio `universal_len` et les seuils de power trouvés en Passe 1.
+  - *À optimiser* : `opp_dom_threshold` (Float), `max_decay_angle` (Float).
+  - *Objectif* : Éliminer les faux signaux où la tendance s'essouffle en réglant finement le PathTracker.
+- **Passe 3 : Risk-Management & Buffers**
+  - *À bloquer* : Tous les paramètres de détection des Passes 1 et 2.
+  - *À optimiser* : `sl_buffer_pct` (Float), `tp_buffer_pct` (Float).
+  - *Objectif* : Ajuster la cible et le stop loss dynamiques générés par la stratégie pour coller parfaitement à la volatilité de l'actif.
+
+### 11. Dual RSI DCA Long
+- **Passe 1 : Le Moteur de Signal (Pre-Scan VectorBT)**
+  - *À optimiser* : `entry_rsi_len`, `entry_rsi_level`, `exit_rsi_len`, `exit_rsi_level`.
+  - *À bloquer* : Tous les paramètres de DCA géométrique (`ao_step`, `ao_size_mult`, `min_profit_pct`...) sur leurs valeurs par défaut.
+  - *Objectif* : Trouver la structure RSI parfaite qui capte les vrais retournements. L'optimiseur utilisera le pre-scan VectorBT multi-coeurs pour filtrer 95% de l'espace inutile instantanément.
+- **Passe 2 : La Grille de DCA (Rattrapage)**
+  - *À bloquer* : Les longueurs et seuils RSI trouvés en Passe 1.
+  - *À optimiser* : `ao_step`, `ao_step_mult`, `ao_size_mult`.
+  - *Objectif* : Configurer l'espacement et le poids des Average Orders pour résister aux forts drawdowns tout en abaissant le prix moyen d'achat.
+- **Passe 3 : Le Profit & La Sécurité**
+  - *À bloquer* : Les RSI (Passe 1) et la structure DCA (Passe 2).
+  - *À optimiser* : `min_profit_pct` et `ao_count` (nombre maximal d'ordres).
+  - *Objectif* : Ajuster le take-profit dynamique pour s'assurer que la sortie ne soit ni trop gourmande (blocage) ni trop courte (non couverte par le risque).
+
 ---
 *Si à une étape N, vous ne trouvez aucun résultat positif, cela signifie souvent que l'étape N-1 n'était pas assez robuste. Il faut alors revenir en arrière et tester un autre "sweet spot" issu de l'étape précédente.*

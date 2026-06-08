@@ -176,13 +176,13 @@ ALLOWED_SCORE_METRICS = tuple(
 
 
 def optimizable_parameters(strategy: str = "hma_crossover") -> dict[str, OptimizableParameter]:
-    if strategy not in ("hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric"):
+    if strategy not in ("hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric", "smart_trader_ep1", "dual_rsi_dca_long"):
         raise ValueError(f"Unsupported strategy for optimization: {strategy}")
     return _optimizer_metadata_from_schema(strategy)
 
 
 def allowed_score_metrics(strategy: str = "hma_crossover") -> tuple[str, ...]:
-    if strategy not in ("hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric"):
+    if strategy not in ("hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric", "smart_trader_ep1", "dual_rsi_dca_long"):
         raise ValueError(f"Unsupported strategy for optimization: {strategy}")
     return ALLOWED_SCORE_METRICS
 

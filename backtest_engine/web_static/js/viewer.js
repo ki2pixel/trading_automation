@@ -32,7 +32,7 @@ document.addEventListener('alpine:init', () => {
       'range_filter', 'hband', 'lband',
       'ma1', 'ma2', 'atr',
       'sLow', 'sHigh', 'pattern_tp', 'pattern_sl',
-      'sine_wave', 'lead_wave', 'phase_mode', 'dominant_cycle',
+      'sine_wave', 'lead_wave', 'phase_mode', 'dominant_cycle', 'entry_rsi', 'exit_rsi',
     ],
 
     _getStrategyIndicatorNames(strategy) {
@@ -44,6 +44,7 @@ document.addEventListener('alpine:init', () => {
         '3commas_bot': ['ma1', 'ma2', 'atr'],
         bjorgum_double_tap: ['sLow', 'sHigh', 'atr', 'pattern_tp', 'pattern_sl'],
         cybernetic_hilbert: ['sine_wave', 'lead_wave', 'phase_mode', 'dominant_cycle'],
+        dual_rsi_dca_long: ['entry_rsi', 'exit_rsi'],
       };
       return mapping[strategy] || [];
     },

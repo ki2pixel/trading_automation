@@ -1,0 +1,25 @@
+Cahier des charges : Conversion "Dual RSI DCA - Long Strategy"
+
+Objectif : Convertir la stratégie Pine Script en Python, l'intégrer au moteur de backtest et enregistrer dans strategy_registry.py.
+
+Structure de la stratégie autonome (pine_scripts_convert_to_python/strategy/Dual-RSI-DCA-Long-Strategy.py) :
+- Classe de configuration `@dataclass DualRsiDcaLongConfig` (tailles, multiplicateurs, seuils RSI, fenêtres temporelles).
+- Fonctions d'indicateurs helper (`_rma`, `_rsi`, `crossover`, `crossunder`).
+- Fonction `add_dual_rsi_dca_long_features(df, config)` : calcul des RSI d'entrée/sortie.
+- Classe de session `_DualRsiDcaLongBacktestSession` et fonction de backtest `run_dual_rsi_dca_long_strategy(df, config, compute_full_metrics=True)` émulant la logique d'accumulation DCA et de sortie momentum.
+- Contrainte d'ordre : Exécution instantanée sur clôture (`process_orders_on_close=True`), au plus une Safety Order par bougie.
+
+Wrapper d'intégration (backtest_engine/strategies/dual_rsi_dca_long.py) :
+- Modèle de configuration `DualRsiDcaLongConfigOverrides`.
+- Fonction `run_dual_rsi_dca_long(data, symbol, overrides, ...)` pour l'intégration au broker de backtest.
+
+Enregistrement (backtest_engine/strategy_registry.py) :
+- Nom d'enregistrement : "dual_rsi_dca_long".
+
+Tests :
+- Tests robustes (tests unitaires) dans le framework pytest.
+
+Contraintes Techniques :
+- Déviation cumulative : dev_1 = aoStep, step_k = step_{k-1} * aoStepMult, dev_k = dev_{k-1} + step_k.
+- Taille AO : size_k = aoSize * aoSizeMult^{k-1}.
+- Précision backtest : Utilisation stricte de float/np.float64 (pas de Decimal pour le backtest).

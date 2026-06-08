@@ -69,6 +69,20 @@ from .strategies.smart_trader_geometric import (
     smart_trader_geometric_overrides_from_mapping,
     vectorbt_prescan as stg_vectorbt_prescan,
 )
+from .strategies.smart_trader_ep1 import (
+    SmartTraderEP1ConfigOverrides,
+    run_smart_trader_ep1,
+    load_smart_trader_ep1_overrides_from_config,
+    smart_trader_ep1_overrides_from_mapping,
+    vectorbt_prescan as ep1_vectorbt_prescan,
+)
+from .strategies.dual_rsi_dca_long import (
+    DualRsiDcaLongConfigOverrides,
+    run_dual_rsi_dca_long,
+    load_dual_rsi_dca_long_overrides_from_config,
+    dual_rsi_dca_long_overrides_from_mapping,
+    vectorbt_prescan as dual_rsi_vectorbt_prescan,
+)
 
 @dataclass
 class StrategyInfo:
@@ -219,6 +233,32 @@ StrategyRegistry.register(
         overrides_from_mapping_function=smart_trader_geometric_overrides_from_mapping,
         indicators=["Ceil distance", "Ctr distance", "Flr distance", "PnU distance", "PnD distance"],
         vectorbt_prescan=stg_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="smart_trader_ep1",
+        config_override_class=SmartTraderEP1ConfigOverrides,
+        run_function=run_smart_trader_ep1,
+        load_overrides_function=load_smart_trader_ep1_overrides_from_config,
+        overrides_from_mapping_function=smart_trader_ep1_overrides_from_mapping,
+        indicators=["strat_hb_price", "strat_hs_price"],
+        vectorbt_prescan=ep1_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="dual_rsi_dca_long",
+        config_override_class=DualRsiDcaLongConfigOverrides,
+        run_function=run_dual_rsi_dca_long,
+        load_overrides_function=load_dual_rsi_dca_long_overrides_from_config,
+        overrides_from_mapping_function=dual_rsi_dca_long_overrides_from_mapping,
+        indicators=["entry_rsi", "exit_rsi"],
+        vectorbt_prescan=dual_rsi_vectorbt_prescan,
         clear_feature_cache=None,
     )
 )

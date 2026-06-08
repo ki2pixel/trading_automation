@@ -63,6 +63,10 @@
 - [x] [2026-06-07 23:17:00] - Analyse et audit de la Passe 1 de la stratégie Smart Trader Geometric terminés. Documentation d'optimisation (Passe 1 et Synthèse Stratégique) mise à jour.
 - [x] [2026-06-07 23:35:00] - Analyse et audit de la Passe 2 de la stratégie Smart Trader Geometric (Risk Management) terminés. Succès majeur sur ZEAL.CO et LOGI. Documentation mise à jour.
 - [x] [2026-06-07 23:51:00] - Analyse et audit de la Passe 3 de la stratégie Smart Trader Geometric (Signal Mode Live vs Close) terminés. Documentation d'optimisation clôturée. Les configurations sont prêtes pour le moteur live.
+- [x] [2026-06-08 00:35:00] - Intégration de la stratégie Pine Script 'Smart Trader EP1' (Unified Matrix) au moteur de backtest : implémentation Python (vectorisation Numba), paramétrage, UI, et documentation.
+- [x] [2026-06-08 13:30:00] - Analyse et audit de la Passe 1 de la stratégie Smart Trader EP1 terminés (L'Anchor et les Puissances). 0 itération éligible en raison de l'hyperactivité. Recommandation : Fusion des Passes 1 et 2.
+- [x] [2026-06-08 14:22:00] - Intégration de la stratégie Pine Script 'Dual RSI DCA - Long Strategy' au moteur de backtest : script autonome avec progression géométrique AO exacte, tests unitaires et intégration dans strategy_registry.py.
+
 
 ## Tâches en Cours
 - Aucune tâche active.
