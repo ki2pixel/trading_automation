@@ -72,6 +72,8 @@
 - Aucune tâche active.
 
 ## Tâches Futures
+
+- [x] [2026-06-09 16:49:00] - Phase 4 "Recherche Machine Learning" TERMINÉE : Lorentzian Classification KNN intégré au backtest_engine (Numba @njit, 5 features normalisées, distance de Lorentz, Kernel Nadaraya-Watson, StrategyRegistry, PARAMETER_DEFINITIONS). 18/18 tests passés.
 - [ ] Conception du moteur de backtest.
 - [x] [2026-06-09 12:25:00] - Nettoyage complet : suppression de 3 stratégies obsolètes (`smart_trader_ep1`, `dual_rsi_dca_long`, `nq_mnq_super_scalper`) pour alléger le moteur et les configs. Tests validés (279 passed).
 - [x] [2026-06-09 14:05:00] - Vectorisation complète (Phase 1) des indicateurs 'Trend Type' et 'MSL Friendly Trend' via Pandas et VectorBT. Zéro boucle Python, tests unitaires validés avec succès.

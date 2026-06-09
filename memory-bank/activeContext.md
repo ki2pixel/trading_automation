@@ -63,4 +63,5 @@
 - [2026-06-09 14:59:%00] - Implémentation de "Adaptive Trend Classification" terminée et testée (Numba, VectorBT, Pydantic). MAs en pur Numba sans talib. Perf <20ms.
 - [2026-06-09 15:16:00] - Implémentation de "Momentum-based ZigZag" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful anti-lookahead bias validée. Performance très rapide (~4ms/10k bars).
 - [2026-06-09 16:06:00] - Implémentation de "HMM Regime Filter" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful récursive validée sans lookahead bias.
+- [2026-06-09 16:49:00] - Phase 4 "Recherche Machine Learning" TERMINÉE : Lorentzian Classification KNN intégré au backtest_engine. Indicateur Numba @njit (KNN ANN + Lorentz distance + 5 features normalisées + Kernel Nadaraya-Watson), stratégie Pydantic, wrapper BrokerSimulator, StrategyRegistry, PARAMETER_DEFINITIONS. 18/18 tests passés (causality, distance, anti-lookahead, perf, registry).
 - [2026-06-09 00:06:47] - Audit de la Passe 1 de la stratégie Dual RSI DCA Long terminé. Échec des filtres sans DCA optimisé (0 itération éligible). Rapport et synthèse générés. Ouverture de la Passe 2.

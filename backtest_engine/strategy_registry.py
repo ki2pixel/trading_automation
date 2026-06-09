@@ -111,6 +111,13 @@ from .strategies.hmm_regime_filter import (
     hmm_regime_filter_overrides_from_mapping,
     vectorbt_prescan as hmm_regime_filter_vectorbt_prescan,
 )
+from .strategies.lorentzian_classification import (
+    LorentzianClassificationConfigOverrides,
+    run_lorentzian_classification,
+    load_lorentzian_classification_overrides_from_config,
+    lorentzian_classification_overrides_from_mapping,
+    vectorbt_prescan as lorentzian_classification_vectorbt_prescan,
+)
 
 @dataclass
 class StrategyInfo:
@@ -343,3 +350,17 @@ StrategyRegistry.register(
         clear_feature_cache=None,
     )
 )
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="lorentzian_classification",
+        config_override_class=LorentzianClassificationConfigOverrides,
+        run_function=run_lorentzian_classification,
+        load_overrides_function=load_lorentzian_classification_overrides_from_config,
+        overrides_from_mapping_function=lorentzian_classification_overrides_from_mapping,
+        indicators=["prediction", "signal", "start_long", "start_short", "end_long", "end_short"],
+        vectorbt_prescan=lorentzian_classification_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
