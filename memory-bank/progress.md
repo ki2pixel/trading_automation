@@ -78,4 +78,5 @@
 - [x] [2026-06-09 14:40:00] - Implémentation et validation de la Phase 3 "Pivot Breakout Retest Signals" avec accélération Numba (@njit) et tests unitaires "no lookahead bias" validés.
 - [x] [2026-06-09 14:59:%00] - Implémentation de "Adaptive Trend Classification" terminée et testée. MAs codées en pur Numba remplaçant talib. Boucle stateful O(T) très performante (<20ms/10k bars) sans lookahead bias.
 - [x] [2026-06-09 15:16:00] - Implémentation de "Momentum-based ZigZag" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful anti-lookahead bias validée. Performance très rapide (~4ms/10k bars).
+- [x] [2026-06-09 16:06:00] - Implémentation de "HMM Regime Filter" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful récursive validée sans lookahead bias.
 - [ ] Intégration des APIs courtiers.- [2026-06-09 00:06:47] - Audit de la Passe 1 de la stratégie Dual RSI DCA Long terminé. Échec des filtres sans DCA optimisé (0 itération éligible). Rapport et synthèse générés. Ouverture de la Passe 2.

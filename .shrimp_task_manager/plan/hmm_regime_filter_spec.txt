@@ -1,0 +1,28 @@
+# MISSION : Accélération Numba et Stateful de l'Indicateur "HMM Regime Filter"
+
+## Description
+Implémenter la Phase 3 "Accélération Numba et Stateful" pour l'indicateur HMM Regime Filter (Market State), basé sur le script Pine Script `HMM-Regime-Filter-Market-State.pine`. L'implémentation doit être optimisée sous Numba (`@njit`), intégrée nativement à VectorBT, packagée comme stratégie dans le moteur de backtest avec gestion fine du risque (BrokerSimulator), et vérifiée par des tests unitaires complets.
+
+## Composants à développer
+
+1.  **Indicateur JIT & VectorBT (`backtest_engine/indicators/hmm_regime_filter.py`)**
+    *   Observation: $ATR = \text{ATR}(14)$, $\text{Return} = (Close - Close[1]) / ATR$, $Obs = \text{EMA}(\text{Return}, obsLen)$, $Sigma = \text{StdDev}(Obs, statLen)$.
+    *   Fonction Numba (`_hmm_regime_filter_nb`): Modélisation de 3 états cachés (0=Trend Up, 1=Range, 2=Trend Down), matrice de transition avec collance (`stick`), calcul des vraisemblances gaussiennes (gpdf), mise à jour récursive des probabilités a posteriori (posteriors), application de la confirmation temporelle (`confirmBars`) et du filtre de dominance (`domThresh`).
+    *   Indicateur VectorBT exposant: `official_state`, `prob_up`, `prob_range`, `prob_down`.
+
+2.  **Stratégie de Conversion (`pine_scripts_convert_to_python/strategy/hmm_regime_filter_strategy.py`)**
+    *   Configuration Pydantic `HMMRegimeFilterStrategyConfig`.
+    *   Signaux d'entrée/sortie:
+        *   `long_entry`: official == 0 et official[1] != 0
+        *   `short_entry`: official == 2 et official[1] != 2
+        *   `long_exit`: official != 0 et official[1] == 0
+        *   `short_exit`: official != 2 et official[1] == 2
+
+3.  **Wrapper Engine Backtest (`backtest_engine/strategies/hmm_regime_filter.py`)**
+    *   Implémenter `run_hmm_regime_filter` avec BrokerSimulator.
+    *   Enregistrer la stratégie "hmm_regime_filter" dans `backtest_engine/strategy_registry.py`.
+
+4.  **Tests Unitaires (`tests/test_hmm_regime_filter.py`)**
+    *   Tester validité PDF gaussienne et transitions HMM.
+    *   Valider les signaux entrée/sortie.
+    *   Vérifier robustesse 1D/2D.

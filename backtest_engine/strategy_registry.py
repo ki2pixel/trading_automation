@@ -104,6 +104,13 @@ from .strategies.momentum_based_zigzag import (
     momentum_based_zigzag_overrides_from_mapping,
     vectorbt_prescan as momentum_based_zigzag_vectorbt_prescan,
 )
+from .strategies.hmm_regime_filter import (
+    HMMRegimeFilterConfigOverrides,
+    run_hmm_regime_filter,
+    load_hmm_regime_filter_overrides_from_config,
+    hmm_regime_filter_overrides_from_mapping,
+    vectorbt_prescan as hmm_regime_filter_vectorbt_prescan,
+)
 
 @dataclass
 class StrategyInfo:
@@ -320,6 +327,19 @@ StrategyRegistry.register(
         overrides_from_mapping_function=momentum_based_zigzag_overrides_from_mapping,
         indicators=["bullish_signal", "bearish_signal", "zigzag", "stoploss_long", "stoploss_short"],
         vectorbt_prescan=momentum_based_zigzag_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="hmm_regime_filter",
+        config_override_class=HMMRegimeFilterConfigOverrides,
+        run_function=run_hmm_regime_filter,
+        load_overrides_function=load_hmm_regime_filter_overrides_from_config,
+        overrides_from_mapping_function=hmm_regime_filter_overrides_from_mapping,
+        indicators=["official_state", "prob_up", "prob_range", "prob_down"],
+        vectorbt_prescan=hmm_regime_filter_vectorbt_prescan,
         clear_feature_cache=None,
     )
 )
