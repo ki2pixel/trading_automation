@@ -81,4 +81,10 @@
 - [x] [2026-06-09 14:59:%00] - Implémentation de "Adaptive Trend Classification" terminée et testée. MAs codées en pur Numba remplaçant talib. Boucle stateful O(T) très performante (<20ms/10k bars) sans lookahead bias.
 - [x] [2026-06-09 15:16:00] - Implémentation de "Momentum-based ZigZag" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful anti-lookahead bias validée. Performance très rapide (~4ms/10k bars).
 - [x] [2026-06-09 16:06:00] - Implémentation de "HMM Regime Filter" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful récursive validée sans lookahead bias.
-- [ ] Intégration des APIs courtiers.- [2026-06-09 00:06:47] - Audit de la Passe 1 de la stratégie Dual RSI DCA Long terminé. Échec des filtres sans DCA optimisé (0 itération éligible). Rapport et synthèse générés. Ouverture de la Passe 2.
+- [ ] Intégration des APIs courtiers.
+- [x] [2026-06-09 00:06:47] - Audit de la Passe 1 de la stratégie Dual RSI DCA Long terminé. Échec des filtres sans DCA optimisé (0 itération éligible). Rapport et synthèse générés. Ouverture de la Passe 2.
+- [x] [2026-06-09 17:40:00] - Documentation et catégorisation des 7 nouvelles stratégies Pine Script vectorisées terminées dans README_BACKTEST_PARAMS.md et README_OPTIMIZATION_ROADMAP.md.
+- [x] [2026-06-09 17:52:00] - Correction de l'anomalie signal_mode ('Live' non autorisé dans configuration.py) pour les stratégies trend_type, msl_trend, pivot_retest, adaptive_trend_classification et momentum_based_zigzag.
+- [x] [2026-06-09 18:06:00] - Implémentation du pré-scan VectorBT de la stratégie trend_type pour optimiser le calcul et la vitesse d'Optuna.
+- [x] [2026-06-09 18:06:00] - Correction d'un bug de sérialisation Pydantic (Type Error avec asdict()) pour les 7 nouvelles stratégies.
+- [x] [2026-06-09 18:15:00] - Implémentation et validation des pré-scans VectorBT pour les 6 stratégies restantes (msl_trend, pivot_retest, adaptive_trend_classification, momentum_based_zigzag, hmm_regime_filter, lorentzian_classification) pour Optuna.

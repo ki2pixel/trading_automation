@@ -480,13 +480,33 @@ def run_trend_type(
     return BacktestRunResult(
         strategy="trend_type",
         symbol=symbol,
-        config=asdict(config),
+        config=config.model_dump() if hasattr(config, "model_dump") else (config.dict() if hasattr(config, "dict") else asdict(config)),
         bars=bars,
         state=state,
         trades=trades,
         equity_curve=equity_curve,
         metrics=metrics,
     )
+
+def _write_prescan_report(
+    output_dir: Path | None,
+    status: str,
+    top_n: int | None,
+    parameters: dict[str, dict[str, Any]],
+) -> None:
+    if output_dir is None:
+        return
+    report = {
+        "status": status,
+        "top_n_configurations_found": top_n,
+        "parameters": parameters,
+    }
+    try:
+        path = output_dir / "vectorbt_prescan_report.json"
+        path.write_text(json.dumps(report, indent=4, default=str), encoding="utf-8")
+    except Exception:
+        pass
+
 
 def vectorbt_prescan(
     data: pd.DataFrame,
@@ -497,4 +517,316 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
+    de Trend Type (atr_len, atr_ma_len, adx_len, di_len, adx_lim, smooth) 
+    avec VectorBT pour restreindre les bornes d'exploration.
+    """
+    import logging
+    import numpy as np
+    from ..optimizer import ParameterGridSpec
+
+    logger = logging.getLogger(__name__)
+
+    if stop_requested is not None and stop_requested():
+        logger.warning("Pre-scan Trend Type annulé avant démarrage.")
+        _write_prescan_report(output_dir, "cancelled", None, {})
+        return parameter_specs
+
+    atr_specs = next((s for s in parameter_specs if s.name == "atr_len"), None)
+    atr_ma_specs = next((s for s in parameter_specs if s.name == "atr_ma_len"), None)
+    adx_specs = next((s for s in parameter_specs if s.name == "adx_len"), None)
+    di_specs = next((s for s in parameter_specs if s.name == "di_len"), None)
+    adx_lim_specs = next((s for s in parameter_specs if s.name == "adx_lim"), None)
+    smooth_specs = next((s for s in parameter_specs if s.name == "smooth"), None)
+
+    # Si certains paramètres clés manquent, on ignore le pre-scan
+    if not all([atr_specs, atr_ma_specs, adx_specs, di_specs, adx_lim_specs]):
+        _write_prescan_report(output_dir, "skipped", None, {})
+        return parameter_specs
+    if not all([s.values for s in [atr_specs, atr_ma_specs, adx_specs, di_specs, adx_lim_specs]]):
+        _write_prescan_report(output_dir, "skipped", None, {})
+        return parameter_specs
+
+    try:
+        import vectorbt as vbt
+        import gc
+        from ..indicators.trend_type import TrendType
+
+        # 1. Temporal Downsampling
+        prescan_timeframe = timeframe_minutes
+        if int(timeframe_minutes) == 1:
+            logger.info("Downsampling 1min bars to 5min bars for fast pre-scan processing.")
+            conversion = {
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }
+            for col in data.columns:
+                if col not in conversion:
+                    conversion[col] = 'first'
+            data = data.resample("5Min").agg(conversion).dropna()
+            prescan_timeframe = 5
+
+        # Slice limit (150k bars)
+        if len(data) > 150000:
+            logger.info(f"Slicing data from {len(data)} to 150000 bars for fast pre-scan processing.")
+            data = data.iloc[-150000:]
+
+        atr_lens = sorted({int(v) for v in atr_specs.values})
+        atr_ma_lens = sorted({int(v) for v in atr_ma_specs.values})
+        adx_lens = sorted({int(v) for v in adx_specs.values})
+        di_lens = sorted({int(v) for v in di_specs.values})
+        adx_lims = sorted({float(v) for v in adx_lim_specs.values})
+        smooths = sorted({int(v) for v in smooth_specs.values}) if smooth_specs and smooth_specs.values else [3]
+
+        from ..prescan_utils import downsample_parameter_grid
+        downsampled = downsample_parameter_grid(
+            {
+                "atr_len": atr_lens,
+                "atr_ma_len": atr_ma_lens,
+                "adx_len": adx_lens,
+                "di_len": di_lens,
+                "adx_lim": adx_lims,
+                "smooth": smooths,
+            },
+            max_combos=20000,
+            strategy_name="TrendType"
+        )
+        atr_lens = downsampled["atr_len"]
+        atr_ma_lens = downsampled["atr_ma_len"]
+        adx_lens = downsampled["adx_len"]
+        di_lens = downsampled["di_len"]
+        adx_lims = downsampled["adx_lim"]
+        smooths = downsampled["smooth"]
+
+        # Generate combinations (filtrées pour s'assurer que atr_ma_len >= atr_len)
+        combos = [
+            (atr_l, atr_ma_l, adx_l, di_l, adx_lim, sm)
+            for atr_l in atr_lens
+            for atr_ma_l in atr_ma_lens
+            if atr_ma_l >= atr_l
+            for adx_l in adx_lens
+            for di_l in di_lens
+            for adx_lim in adx_lims
+            for sm in smooths
+        ]
+
+        if not combos:
+            # Fallback en cas de grille vide suite au filtre
+            combos = [
+                (atr_l, atr_ma_l, adx_l, di_l, adx_lim, sm)
+                for atr_l in atr_lens
+                for atr_ma_l in atr_ma_lens
+                for adx_l in adx_lens
+                for di_l in di_lens
+                for adx_lim in adx_lims
+                for sm in smooths
+            ]
+
+        # Simulation par lots séquentielle (très rapide et mémoire-safe)
+        batch_size = 500
+        total_batches = (len(combos) + batch_size - 1) // batch_size if combos else 0
+        returns_batches: list[pd.Series] = []
+
+        high = data["high"]
+        low = data["low"]
+        close = data["close"]
+
+        logger.info(f"Lancement du Pre-Scan Trend Type en séquentiel ({len(combos)} combos, {total_batches} lots)...")
+
+        for batch_idx in range(total_batches):
+            if stop_requested is not None and stop_requested():
+                logger.warning("Pre-scan Trend Type annulé pendant le calcul des signaux.")
+                _write_prescan_report(output_dir, "cancelled", None, {})
+                return parameter_specs
+
+            start_i = batch_idx * batch_size
+            end_i = min(start_i + batch_size, len(combos))
+            batch_combos = combos[start_i:end_i]
+
+            batch_atr_len = [c[0] for c in batch_combos]
+            batch_atr_ma_len = [c[1] for c in batch_combos]
+            batch_adx_len = [c[2] for c in batch_combos]
+            batch_di_len = [c[3] for c in batch_combos]
+            batch_adx_lim = [c[4] for c in batch_combos]
+            batch_smooth = [c[5] for c in batch_combos]
+
+            tt = TrendType.run(
+                high, low, close,
+                use_atr=True,
+                atr_len=batch_atr_len,
+                atr_ma_len=batch_atr_ma_len,
+                use_adx=True,
+                adx_len=batch_adx_len,
+                di_len=batch_di_len,
+                adx_lim=batch_adx_lim,
+                smooth=batch_smooth,
+                param_product=False
+            )
+
+            state = tt.state
+            long_entries = (state == 2.0) & (state.shift(1) != 2.0)
+            long_exits = (state != 2.0) & (state.shift(1) == 2.0)
+            short_entries = (state == -2.0) & (state.shift(1) != -2.0)
+            short_exits = (state != -2.0) & (state.shift(1) == -2.0)
+
+            pf = vbt.Portfolio.from_signals(
+                close,
+                entries=long_entries,
+                exits=long_exits,
+                short_entries=short_entries,
+                short_exits=short_exits,
+                freq=f"{prescan_timeframe}min",
+            )
+            returns_batches.append(pf.total_return())
+
+            # Libérer la RAM
+            del tt
+            del state
+            del long_entries
+            del long_exits
+            del short_entries
+            del short_exits
+            del pf
+            gc.collect()
+
+            if progress_callback is not None:
+                try:
+                    progress_callback(batch_idx + 1, total_batches)
+                except Exception as cb_err:
+                    logger.warning(f"Error in prescan progress callback: {cb_err}")
+
+        if returns_batches:
+            returns = pd.concat(returns_batches)
+            returns = returns.sort_index()
+        else:
+            returns = pd.Series(dtype=float)
+
+        # Récupère le Top 5% des configurations
+        top_n = max(1, int(len(returns) * 0.05))
+        top_params = returns.nlargest(top_n).index.tolist()
+
+        if top_params:
+            # Récupérer les valeurs des paramètres via leurs noms préfixés par TT_
+            min_atr = min(p[1] for p in top_params)
+            max_atr = max(p[1] for p in top_params)
+            min_atr_ma = min(p[2] for p in top_params)
+            max_atr_ma = max(p[2] for p in top_params)
+            min_adx = min(p[4] for p in top_params)
+            max_adx = max(p[4] for p in top_params)
+            min_di = min(p[5] for p in top_params)
+            max_di = max(p[5] for p in top_params)
+            min_adx_lim = min(p[6] for p in top_params)
+            max_adx_lim = max(p[6] for p in top_params)
+
+            # Marge de sécurité (+/- 10%)
+            margin_atr = max(1, int((max_atr - min_atr) * 0.1))
+            margin_atr_ma = max(1, int((max_atr_ma - min_atr_ma) * 0.1))
+            margin_adx = max(1, int((max_adx - min_adx) * 0.1))
+            margin_di = max(1, int((max_di - min_di) * 0.1))
+            margin_adx_lim = max(1.0, (max_adx_lim - min_adx_lim) * 0.1)
+
+            min_atr = max(int(atr_specs.values[0]), min_atr - margin_atr)
+            max_atr = min(int(atr_specs.values[-1]), max_atr + margin_atr)
+
+            min_atr_ma = max(int(atr_ma_specs.values[0]), min_atr_ma - margin_atr_ma)
+            max_atr_ma = min(int(atr_ma_specs.values[-1]), max_atr_ma + margin_atr_ma)
+
+            min_adx = max(int(adx_specs.values[0]), min_adx - margin_adx)
+            max_adx = min(int(adx_specs.values[-1]), max_adx + margin_adx)
+
+            min_di = max(int(di_specs.values[0]), min_di - margin_di)
+            max_di = min(int(di_specs.values[-1]), max_di + margin_di)
+
+            min_adx_lim = max(float(adx_lim_specs.values[0]), min_adx_lim - margin_adx_lim)
+            max_adx_lim = min(float(adx_lim_specs.values[-1]), max_adx_lim + margin_adx_lim)
+
+            # Remplacement des spécifications pour Optuna
+            new_specs = []
+            atr_filtered = ()
+            atr_ma_filtered = ()
+            adx_filtered = ()
+            di_filtered = ()
+            adx_lim_filtered = ()
+
+            for s in parameter_specs:
+                if s.name == "atr_len":
+                    new_vals = tuple(v for v in s.values if min_atr <= int(v) <= max_atr)
+                    atr_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=atr_filtered))
+                elif s.name == "atr_ma_len":
+                    new_vals = tuple(v for v in s.values if min_atr_ma <= int(v) <= max_atr_ma)
+                    atr_ma_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=atr_ma_filtered))
+                elif s.name == "adx_len":
+                    new_vals = tuple(v for v in s.values if min_adx <= int(v) <= max_adx)
+                    adx_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=adx_filtered))
+                elif s.name == "di_len":
+                    new_vals = tuple(v for v in s.values if min_di <= int(v) <= max_di)
+                    di_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=di_filtered))
+                elif s.name == "adx_lim":
+                    new_vals = tuple(v for v in s.values if min_adx_lim <= float(v) <= max_adx_lim)
+                    adx_lim_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=adx_lim_filtered))
+                else:
+                    new_specs.append(s)
+
+            _write_prescan_report(
+                output_dir,
+                "success",
+                top_n,
+                {
+                    "atr_len": {
+                        "original_bounds": [int(atr_specs.values[0]), int(atr_specs.values[-1])],
+                        "new_bounds": [int(atr_filtered[0]), int(atr_filtered[-1])],
+                        "filtered_values": list(atr_filtered),
+                    },
+                    "atr_ma_len": {
+                        "original_bounds": [int(atr_ma_specs.values[0]), int(atr_ma_specs.values[-1])],
+                        "new_bounds": [int(atr_ma_filtered[0]), int(atr_ma_filtered[-1])],
+                        "filtered_values": list(atr_ma_filtered),
+                    },
+                    "adx_len": {
+                        "original_bounds": [int(adx_specs.values[0]), int(adx_specs.values[-1])],
+                        "new_bounds": [int(adx_filtered[0]), int(adx_filtered[-1])],
+                        "filtered_values": list(adx_filtered),
+                    },
+                    "di_len": {
+                        "original_bounds": [int(di_specs.values[0]), int(di_specs.values[-1])],
+                        "new_bounds": [int(di_filtered[0]), int(di_filtered[-1])],
+                        "filtered_values": list(di_filtered),
+                    },
+                    "adx_lim": {
+                        "original_bounds": [float(adx_lim_specs.values[0]), float(adx_lim_specs.values[-1])],
+                        "new_bounds": [float(adx_lim_filtered[0]), float(adx_lim_filtered[-1])],
+                        "filtered_values": list(adx_lim_filtered),
+                    },
+                },
+            )
+            logger.info(
+                f"Bornes Optuna réduites via VectorBT pour Trend Type : "
+                f"atr_len({min_atr}-{max_atr}), "
+                f"atr_ma_len({min_atr_ma}-{max_atr_ma}), "
+                f"adx_len({min_adx}-{max_adx}), "
+                f"di_len({min_di}-{max_di}), "
+                f"adx_lim({min_adx_lim:.1f}-{max_adx_lim:.1f})"
+            )
+            return new_specs
+        else:
+            _write_prescan_report(output_dir, "no_candidates", top_n, {})
+            return parameter_specs
+
+    except ImportError:
+        _write_prescan_report(output_dir, "skipped", None, {})
+        logger.warning("VectorBT n'est pas installé, impossible de lancer le pre-scan.")
+    except Exception as e:
+        _write_prescan_report(output_dir, "error", None, {})
+        logger.warning(f"Erreur Pre-Scan VectorBT Trend Type: {e}. Optuna utilisera les bornes globales.")
+
+    _write_prescan_report(output_dir, "skipped", None, {})
     return parameter_specs
+

@@ -176,13 +176,13 @@ ALLOWED_SCORE_METRICS = tuple(
 
 
 def optimizable_parameters(strategy: str = "hma_crossover") -> dict[str, OptimizableParameter]:
-    if strategy not in ("hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric"):
+    if strategy not in StrategyRegistry.list_strategies():
         raise ValueError(f"Unsupported strategy for optimization: {strategy}")
     return _optimizer_metadata_from_schema(strategy)
 
 
 def allowed_score_metrics(strategy: str = "hma_crossover") -> tuple[str, ...]:
-    if strategy not in ("hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric"):
+    if strategy not in StrategyRegistry.list_strategies():
         raise ValueError(f"Unsupported strategy for optimization: {strategy}")
     return ALLOWED_SCORE_METRICS
 
@@ -850,7 +850,7 @@ def run_grid_optimization(
 ) -> OptimizationSummary:
     if output_root is None:
         output_root = get_reports_dir() / "local_optimizer"
-    if strategy not in ("hma_crossover", "adaptive_volatility_trend", "range_filter", "pmax_explorer", "3commas_bot", "bjorgum_double_tap", "noise_boundary_intraday"):
+    if strategy not in StrategyRegistry.list_strategies():
         raise ValueError(f"Unsupported strategy for optimization: {strategy}")
     score_metric = validate_score_metric(score_metric, strategy=strategy)
     minutes = validate_timeframe_minutes(timeframe_minutes)

@@ -33,6 +33,7 @@ document.addEventListener('alpine:init', () => {
       'ma1', 'ma2', 'atr',
       'sLow', 'sHigh', 'pattern_tp', 'pattern_sl',
       'sine_wave', 'lead_wave', 'phase_mode', 'dominant_cycle',
+      'trend', 'trend_dir', 'msl', 'msl_state', 'pivot', 'pivot_state', 'adaptive_trend', 'momentum_regime', 'regime', 'lorentzian_dist',
     ],
 
     _getStrategyIndicatorNames(strategy) {
@@ -44,6 +45,14 @@ document.addEventListener('alpine:init', () => {
         '3commas_bot': ['ma1', 'ma2', 'atr'],
         bjorgum_double_tap: ['sLow', 'sHigh', 'atr', 'pattern_tp', 'pattern_sl'],
         cybernetic_hilbert: ['sine_wave', 'lead_wave', 'phase_mode', 'dominant_cycle'],
+        smart_trader_geometric: [],
+        trend_type: ['trend', 'trend_dir'],
+        msl_trend: ['msl', 'msl_state'],
+        pivot_retest: ['pivot', 'pivot_state'],
+        adaptive_trend_classification: ['adaptive_trend'],
+        momentum_based_zigzag: ['momentum_regime'],
+        hmm_regime_filter: ['regime'],
+        lorentzian_classification: ['lorentzian_dist', 'regime'],
       };
       return mapping[strategy] || [];
     },

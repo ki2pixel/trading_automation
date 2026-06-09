@@ -25,6 +25,11 @@ ALL_STRATEGY_NAMES = [
     "smart_trader_geometric",
     "trend_type",
     "msl_trend",
+    "adaptive_trend_classification",
+    "pivot_retest",
+    "momentum_based_zigzag",
+    "hmm_regime_filter",
+    "lorentzian_classification",
 ]
 
 
@@ -134,7 +139,7 @@ class TestCacheClearing:
     """Verify strategies that have cache clearing functions registered."""
 
     STRATEGIES_WITH_CACHE = ["hma_crossover", "pmax_explorer", "range_filter", "bjorgum_double_tap"]
-    STRATEGIES_WITHOUT_CACHE = ["adaptive_volatility_trend", "3commas_bot", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric", "trend_type", "msl_trend"]
+    STRATEGIES_WITHOUT_CACHE = ["adaptive_volatility_trend", "3commas_bot", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric", "trend_type", "msl_trend", "adaptive_trend_classification", "pivot_retest", "momentum_based_zigzag", "hmm_regime_filter", "lorentzian_classification"]
 
     @pytest.mark.parametrize("name", STRATEGIES_WITH_CACHE)
     def test_cache_clearing_callable(self, name: str) -> None:
@@ -154,7 +159,9 @@ class TestPrescan:
 
     STRATEGIES_WITH_PRESCAN = ["hma_crossover", "pmax_explorer", "adaptive_volatility_trend",
                                 "range_filter", "3commas_bot", "bjorgum_double_tap", "noise_boundary_intraday", 
-                                "cybernetic_hilbert", "smart_trader_geometric", "trend_type", "msl_trend"]
+                                "cybernetic_hilbert", "smart_trader_geometric", "trend_type", "msl_trend",
+                                "adaptive_trend_classification", "pivot_retest", "momentum_based_zigzag",
+                                "hmm_regime_filter", "lorentzian_classification"]
     STRATEGIES_WITHOUT_PRESCAN = []
 
     @pytest.mark.parametrize("name", STRATEGIES_WITH_PRESCAN)
@@ -229,7 +236,48 @@ class TestPrescanExecution:
                 ParameterGridSpec(name="volatility_multiplier_enter", kind="numeric", values=(1.5, 2.0)),
                 ParameterGridSpec(name="volatility_multiplier_exit", kind="numeric", values=(1.0, 1.2)),
             ]
-        elif name in ("cybernetic_hilbert", "smart_trader_geometric", "trend_type", "msl_trend"):
+        elif name == "trend_type":
+            specs = [
+                ParameterGridSpec(name="atr_len", kind="numeric", values=(10, 11)),
+                ParameterGridSpec(name="atr_ma_len", kind="numeric", values=(12, 13)),
+                ParameterGridSpec(name="adx_len", kind="numeric", values=(14, 15)),
+                ParameterGridSpec(name="di_len", kind="numeric", values=(14, 15)),
+                ParameterGridSpec(name="adx_lim", kind="numeric", values=(20.0, 25.0)),
+                ParameterGridSpec(name="smooth", kind="numeric", values=(3,)),
+            ]
+        elif name == "msl_trend":
+            specs = [
+                ParameterGridSpec(name="length", kind="numeric", values=(10, 11)),
+                ParameterGridSpec(name="mult", kind="numeric", values=(1.5, 2.0)),
+            ]
+        elif name == "pivot_retest":
+            specs = [
+                ParameterGridSpec(name="pivot_timeframe", kind="choice", values=("D", "W")),
+                ParameterGridSpec(name="retest_bars", kind="numeric", values=(5, 6)),
+            ]
+        elif name == "adaptive_trend_classification":
+            specs = [
+                ParameterGridSpec(name="La", kind="numeric", values=(0.02, 0.03)),
+                ParameterGridSpec(name="De", kind="numeric", values=(0.02, 0.03)),
+                ParameterGridSpec(name="Long_threshold", kind="numeric", values=(0.1, 0.2)),
+                ParameterGridSpec(name="Short_threshold", kind="numeric", values=(-0.1, -0.2)),
+            ]
+        elif name == "momentum_based_zigzag":
+            specs = [
+                ParameterGridSpec(name="rsi_period", kind="numeric", values=(10, 11)),
+                ParameterGridSpec(name="qqe_factor", kind="numeric", values=(4.0, 4.5)),
+            ]
+        elif name == "hmm_regime_filter":
+            specs = [
+                ParameterGridSpec(name="obs_len", kind="numeric", values=(10, 11)),
+                ParameterGridSpec(name="stat_len", kind="numeric", values=(20, 21)),
+            ]
+        elif name == "lorentzian_classification":
+            specs = [
+                ParameterGridSpec(name="neighbors_count", kind="numeric", values=(5, 6)),
+                ParameterGridSpec(name="max_bars_back", kind="numeric", values=(1000, 1500)),
+            ]
+        elif name in ("cybernetic_hilbert", "smart_trader_geometric"):
             specs = []
         else:
             pytest.fail(f"Unknown strategy with pre-scan: {name}")

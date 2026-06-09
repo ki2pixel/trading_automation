@@ -474,13 +474,33 @@ def run_msl_trend(
     return BacktestRunResult(
         strategy="msl_trend",
         symbol=symbol,
-        config=asdict(config),
+        config=config.model_dump() if hasattr(config, "model_dump") else (config.dict() if hasattr(config, "dict") else asdict(config)),
         bars=bars,
         state=state,
         trades=trades,
         equity_curve=equity_curve,
         metrics=metrics,
     )
+
+def _write_prescan_report(
+    output_dir: Path | None,
+    status: str,
+    top_n: int | None,
+    parameters: dict[str, dict[str, Any]],
+) -> None:
+    if output_dir is None:
+        return
+    report = {
+        "status": status,
+        "top_n_configurations_found": top_n,
+        "parameters": parameters,
+    }
+    try:
+        path = output_dir / "vectorbt_prescan_report.json"
+        path.write_text(json.dumps(report, indent=4, default=str), encoding="utf-8")
+    except Exception:
+        pass
+
 
 def vectorbt_prescan(
     data: pd.DataFrame,
@@ -491,4 +511,205 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
+    de MSL Trend (length, mult) avec VectorBT pour restreindre les bornes d'exploration.
+    """
+    import logging
+    import numpy as np
+    from ..optimizer import ParameterGridSpec
+
+    logger = logging.getLogger(__name__)
+
+    if stop_requested is not None and stop_requested():
+        logger.warning("Pre-scan MSL Trend annulé avant démarrage.")
+        _write_prescan_report(output_dir, "cancelled", None, {})
+        return parameter_specs
+
+    length_specs = next((s for s in parameter_specs if s.name == "length"), None)
+    mult_specs = next((s for s in parameter_specs if s.name == "mult"), None)
+
+    if not length_specs or not mult_specs:
+        _write_prescan_report(output_dir, "skipped", None, {})
+        return parameter_specs
+    if not length_specs.values or not mult_specs.values:
+        _write_prescan_report(output_dir, "skipped", None, {})
+        return parameter_specs
+
+    try:
+        import vectorbt as vbt
+        import gc
+        from ..indicators.msl_trend import MSLTrend
+
+        # 1. Temporal Downsampling
+        prescan_timeframe = timeframe_minutes
+        if int(timeframe_minutes) == 1:
+            logger.info("Downsampling 1min bars to 5min bars for fast pre-scan processing.")
+            conversion = {
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }
+            for col in data.columns:
+                if col not in conversion:
+                    conversion[col] = 'first'
+            data = data.resample("5Min").agg(conversion).dropna()
+            prescan_timeframe = 5
+
+        # Slice limit (150k bars)
+        if len(data) > 150000:
+            logger.info(f"Slicing data from {len(data)} to 150000 bars for fast pre-scan processing.")
+            data = data.iloc[-150000:]
+
+        lengths = sorted({int(v) for v in length_specs.values})
+        mults = sorted({float(v) for v in mult_specs.values})
+
+        from ..prescan_utils import downsample_parameter_grid
+        downsampled = downsample_parameter_grid(
+            {
+                "length": lengths,
+                "mult": mults,
+            },
+            max_combos=10000,
+            strategy_name="MSLTrend"
+        )
+        lengths = downsampled["length"]
+        mults = downsampled["mult"]
+
+        # Generate combinations
+        combos = [
+            (l, m)
+            for l in lengths
+            for m in mults
+        ]
+
+        # Simulation par lots
+        batch_size = 500
+        total_batches = (len(combos) + batch_size - 1) // batch_size if combos else 0
+        returns_batches: list[pd.Series] = []
+
+        high = data["high"]
+        low = data["low"]
+        close = data["close"]
+
+        logger.info(f"Lancement du Pre-Scan MSL Trend ({len(combos)} combos, {total_batches} lots)...")
+
+        for batch_idx in range(total_batches):
+            if stop_requested is not None and stop_requested():
+                logger.warning("Pre-scan MSL Trend annulé pendant le calcul.")
+                _write_prescan_report(output_dir, "cancelled", None, {})
+                return parameter_specs
+
+            start_i = batch_idx * batch_size
+            end_i = min(start_i + batch_size, len(combos))
+            batch_combos = combos[start_i:end_i]
+
+            batch_lengths = [c[0] for c in batch_combos]
+            batch_mults = [c[1] for c in batch_combos]
+
+            msl = MSLTrend.run(
+                high, low, close,
+                length=batch_lengths,
+                mult=batch_mults,
+                param_product=False
+            )
+
+            state = msl.state
+            long_entries = (state == 1.0) & (state.shift(1) != 1.0)
+            long_exits = (state != 1.0) & (state.shift(1) == 1.0)
+            short_entries = (state == -1.0) & (state.shift(1) != -1.0)
+            short_exits = (state != -1.0) & (state.shift(1) == -1.0)
+
+            pf = vbt.Portfolio.from_signals(
+                close,
+                entries=long_entries,
+                exits=long_exits,
+                short_entries=short_entries,
+                short_exits=short_exits,
+                freq=f"{prescan_timeframe}min",
+            )
+            returns_batches.append(pf.total_return())
+
+            del msl
+            del state
+            del long_entries
+            del long_exits
+            del short_entries
+            del short_exits
+            del pf
+            gc.collect()
+
+            if progress_callback is not None:
+                try:
+                    progress_callback(batch_idx + 1, total_batches)
+                except Exception as cb_err:
+                    logger.warning(f"Error in prescan progress callback: {cb_err}")
+
+        if returns_batches:
+            returns = pd.concat(returns_batches)
+            returns = returns.sort_index()
+        else:
+            returns = pd.Series(dtype=float)
+
+        top_n = max(1, int(len(returns) * 0.05))
+        top_params = returns.nlargest(top_n).index.tolist()
+
+        if top_params:
+            min_len = min(p[0] for p in top_params)
+            max_len = max(p[0] for p in top_params)
+            min_mult = min(p[1] for p in top_params)
+            max_mult = max(p[1] for p in top_params)
+
+            # Marges de sécurité
+            margin_len = max(1, int((max_len - min_len) * 0.1))
+            margin_mult = max(0.1, (max_mult - min_mult) * 0.1)
+
+            min_len = max(int(length_specs.values[0]), min_len - margin_len)
+            max_len = min(int(length_specs.values[-1]), max_len + margin_len)
+
+            min_mult = max(float(mult_specs.values[0]), min_mult - margin_mult)
+            max_mult = min(float(mult_specs.values[-1]), max_mult + margin_mult)
+
+            # Reconstruct specs
+            new_specs = []
+            len_filtered = ()
+            mult_filtered = ()
+
+            for s in parameter_specs:
+                if s.name == "length":
+                    new_vals = tuple(v for v in s.values if min_len <= int(v) <= max_len)
+                    len_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=len_filtered))
+                elif s.name == "mult":
+                    new_vals = tuple(v for v in s.values if min_mult <= float(v) <= max_mult)
+                    mult_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=mult_filtered))
+                else:
+                    new_specs.append(s)
+
+            _write_prescan_report(
+                output_dir,
+                "success",
+                top_n,
+                {
+                    "length": {
+                        "original_bounds": [int(length_specs.values[0]), int(length_specs.values[-1])],
+                        "new_bounds": [int(len_filtered[0]), int(len_filtered[-1])],
+                        "filtered_values": list(len_filtered),
+                    },
+                    "mult": {
+                        "original_bounds": [float(mult_specs.values[0]), float(mult_specs.values[-1])],
+                        "new_bounds": [float(mult_filtered[0]), float(mult_filtered[-1])],
+                        "filtered_values": list(mult_filtered),
+                    },
+                }
+            )
+            logger.info(f"Bornes Optuna réduites via VectorBT: length({min_len}-{max_len}), mult({min_mult:.2f}-{max_mult:.2f})")
+            return new_specs
+
+    except Exception as e:
+        logger.warning(f"Erreur Pre-Scan VectorBT MSL Trend: {e}")
+
+    _write_prescan_report(output_dir, "skipped", None, {})
     return parameter_specs

@@ -65,3 +65,8 @@
 - [2026-06-09 16:06:00] - Implémentation de "HMM Regime Filter" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful récursive validée sans lookahead bias.
 - [2026-06-09 16:49:00] - Phase 4 "Recherche Machine Learning" TERMINÉE : Lorentzian Classification KNN intégré au backtest_engine. Indicateur Numba @njit (KNN ANN + Lorentz distance + 5 features normalisées + Kernel Nadaraya-Watson), stratégie Pydantic, wrapper BrokerSimulator, StrategyRegistry, PARAMETER_DEFINITIONS. 18/18 tests passés (causality, distance, anti-lookahead, perf, registry).
 - [2026-06-09 00:06:47] - Audit de la Passe 1 de la stratégie Dual RSI DCA Long terminé. Échec des filtres sans DCA optimisé (0 itération éligible). Rapport et synthèse générés. Ouverture de la Passe 2.
+- [2026-06-09 17:40:00] - Documentation et catégorisation des 7 nouvelles stratégies Pine Script vectorisées terminées dans README_BACKTEST_PARAMS.md et README_OPTIMIZATION_ROADMAP.md.
+- [2026-06-09 17:52:00] - Correction de l'anomalie signal_mode ('Live' non autorisé dans configuration.py) pour les stratégies trend_type, msl_trend, pivot_retest, adaptive_trend_classification et momentum_based_zigzag.
+- [2026-06-09 18:06:00] - Implémentation du pré-scan VectorBT de la stratégie trend_type pour optimiser le calcul et la vitesse d'Optuna.
+- [2026-06-09 18:06:00] - Correction d'un bug de sérialisation Pydantic (Type Error avec asdict()) pour les 7 nouvelles stratégies.
+- [2026-06-09 18:15:00] - Implémentation et validation des pré-scans VectorBT pour les 6 stratégies restantes (msl_trend, pivot_retest, adaptive_trend_classification, momentum_based_zigzag, hmm_regime_filter, lorentzian_classification).

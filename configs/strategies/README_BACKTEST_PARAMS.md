@@ -255,6 +255,193 @@ Stratégie basée sur le framework géométrique isotrope (ICS), mesurant les di
 **Conseil** : Le `lookback_period` définit la taille de la boîte géométrique (anchor). Un lookback court réagira très vite au bruit, un lookback long captera de vastes tendances. Ajuster les `slots` permet de durcir ou assouplir les conditions d'entrée (quorum).
 ⚠️ **Attention** : Si vous configurez le comportement global sur `trade_direction_mode: "Long only"`, excluez absolument `min_short_entry_slots` (et les `estimated_commission/slippage_per_side_short`) de votre grille d'optimisation pour éviter les calculs redondants. Faites l'inverse en mode *Short only*.
 
+## 9. Trend Type Indicator
+
+Filtre de tendance et de régime macroscopique combinant de multiples mesures de volatilité (ATR) et de force directionnelle (ADX/DMI).
+
+### Paramètres core (haute priorité)
+
+| Paramètre      | Défaut | Type  | Plage suggérée | Description                                          |
+|----------------|--------|-------|----------------|------------------------------------------------------|
+| `use_atr`      | true   | bool  | true/false     | Activer le filtre ATR                                |
+| `atr_len`      | 14     | int   | 5 - 30         | Période de calcul de l'ATR                           |
+| `atr_ma_len`   | 20     | int   | 10 - 50        | Période de calcul de la moyenne mobile de l'ATR      |
+| `use_adx`      | true   | bool  | true/false     | Activer le filtre ADX                                |
+| `adx_len`      | 14     | int   | 5 - 30         | Période de calcul de l'ADX                           |
+| `di_len`       | 14     | int   | 5 - 30         | Période de calcul des indicateurs de direction (+DI/-DI)|
+| `adx_lim`      | 25.0   | float | 15.0 - 35.0    | Seuil d'ADX au-dessus duquel le marché est considéré en tendance |
+| `smooth`       | 3      | int   | 1 - 10         | Facteur de lissage des signaux                       |
+| `signal_mode`  | Close  | str   | Close / Live   | Confirmation à la clôture ou en temps réel           |
+
+**Conseil** : Le paramètre `adx_lim` est le pivot principal du filtre de régime. Une valeur élevée de `adx_lim` (ex: 30) filtre plus agressivement les périodes de consolidation (ranges) mais peut retarder les entrées de tendance.
+
+---
+
+## 10. MSL Friendly Trend
+
+Stratégie de suivi de tendance alignée sur l'identification des cassures de structures de marché (Market Structure Levels) et de pullbacks.
+
+### Paramètres core (haute priorité)
+
+| Paramètre     | Défaut | Type  | Plage suggérée | Description                                            |
+|---------------|--------|-------|----------------|--------------------------------------------------------|
+| `length`      | 70     | int   | 10 - 150       | Fenêtre de calcul du lookback des plus hauts / plus bas|
+| `mult`        | 1.2    | float | 0.5 - 3.0      | Multiplicateur ATR pour ajuster l'épaisseur de la bande|
+| `signal_mode` | Close  | str   | Close / Live   | Confirmation à la clôture ou en temps réel             |
+
+**Conseil** : Le `length` définit le recul macro-structurel pour définir les niveaux clés de pivot. Un `mult` plus large permet d'éviter les faux signaux (whipsaws) lors des phases de forte volatilité mais augmente la distance du Stop Loss initial.
+
+---
+
+## 11. Pivot Breakout Retest Signals
+
+Identification automatique des cassures de zones de liquidité (pivots locaux) avec validation de l'entrée lors du retest.
+
+### Paramètres core (haute priorité)
+
+| Paramètre         | Défaut | Type | Plage suggérée | Description                                             |
+|-------------------|--------|------|----------------|---------------------------------------------------------|
+| `pivot_timeframe` | D      | str  | D, W, M, 4H... | Timeframe de calcul des pivots (supérieur à l'exécuté)  |
+| `retest_bars`     | 5      | int  | 2 - 15         | Nombre maximal de bougies autorisées pour valider un retest|
+| `signal_mode`     | Close  | str  | Close / Live   | Confirmation à la clôture ou en temps réel              |
+
+**Conseil** : Le `pivot_timeframe` doit impérativement être supérieur ou égal au timeframe du graphique exécuté. `retest_bars` permet de calibrer la tolérance temporelle de retest après une cassure (breakout).
+
+---
+
+## 12. Adaptive Trend Classification
+
+Classification dynamique des tendances et du régime du marché grâce à une pondération adaptative de plusieurs filtres de moyennes mobiles.
+
+### Paramètres core (haute priorité)
+
+| Paramètre         | Défaut | Type  | Plage suggérée | Description                                             |
+|-------------------|--------|-------|----------------|---------------------------------------------------------|
+| `La`              | 0.02   | float | 0.005 - 0.1    | Taux de mise à jour de la tendance adaptative           |
+| `De`              | 0.03   | float | 0.005 - 0.1    | Taux de décroissance de l'adaptation                    |
+| `cutout`          | 0      | int   | 0 - 5          | Seuil de coupure des petites fluctuations de volatilité |
+| `robustness`      | Medium | str   | Low/Medium/High| Niveau de robustesse de la classification               |
+| `Long_threshold`  | 0.1    | float | 0.0 - 0.5      | Seuil du signal pour déclencher un achat                |
+| `Short_threshold` | -0.1   | float | -0.5 - 0.0     | Seuil du signal pour déclencher une vente               |
+| `signal_mode`     | Close  | str   | Close / Live   | Confirmation à la clôture ou en temps réel              |
+
+### Paramètres de Moyennes Mobiles (Poids et Périodes)
+
+| Paramètre   | Défaut | Type  | Plage suggérée | Description                                            |
+|-------------|--------|-------|----------------|--------------------------------------------------------|
+| `ema_len`   | 28     | int   | 10 - 100       | Période pour l'EMA                                     |
+| `ema_w`     | 1.0    | float | 0.0 - 2.0      | Coefficient d'importance de l'EMA                      |
+| `hull_len`  | 28     | int   | 10 - 100       | Période pour la HMA                                    |
+| `hma_w`     | 1.0    | float | 0.0 - 2.0      | Coefficient d'importance de la HMA                     |
+| `wma_len`   | 28     | int   | 10 - 100       | Période pour la WMA                                    |
+| `wma_w`     | 1.0    | float | 0.0 - 2.0      | Coefficient d'importance de la WMA                     |
+| `dema_len`  | 28     | int   | 10 - 100       | Période pour la DEMA                                   |
+| `dema_w`    | 1.0    | float | 0.0 - 2.0      | Coefficient d'importance de la DEMA                    |
+| `lsma_len`  | 28     | int   | 10 - 100       | Période pour la LSMA                                   |
+| `lsma_w`    | 1.0    | float | 0.0 - 2.0      | Coefficient d'importance de la LSMA                    |
+| `kama_len`  | 28     | int   | 10 - 100       | Période pour la KAMA                                   |
+| `kama_w`    | 1.0    | float | 0.0 - 2.0      | Coefficient d'importance de la KAMA                    |
+
+**Conseil** : Optimiser d'abord les paramètres de réactivité macro (`La`, `De`, `cutout`) en laissant les poids des MA à `1.0`. Dans un deuxième temps, ajuster les poids (`_w`) pour donner la priorité aux moyennes mobiles les plus adaptées au comportement de l'actif.
+
+---
+
+## 13. Momentum-based ZigZag (avec QQE)
+
+Détection de swings de marché basée sur un oscillateur QQE (Quantitative Qualitative Estimation) lissé couplé à une logique ZigZag stateful anti-lookahead.
+
+### Paramètres core (haute priorité)
+
+| Paramètre        | Défaut | Type  | Plage suggérée | Description                                             |
+|------------------|--------|-------|----------------|---------------------------------------------------------|
+| `rsi_period`     | 14     | int   | 7 - 30         | Période de calcul du RSI sous-jacent                    |
+| `qqe_factor`     | 4.238  | float | 1.5 - 6.0      | Multiplicateur ATR pour la ligne de stop QQE            |
+| `rsi_smoothing`  | 5      | int   | 2 - 15         | Facteur de lissage du RSI                               |
+| `ob`             | 80.0   | float | 65.0 - 90.0    | Seuil de surachat QQE (Overbought)                      |
+| `os`             | 20.0   | float | 10.0 - 35.0    | Seuil de survente QQE (Oversold)                        |
+| `signal_mode`    | Close  | str   | Close / Live   | Confirmation à la clôture ou en temps réel              |
+
+### Paramètres de sorties et pyramidage spécifiques
+
+| Paramètre              | Défaut | Type  | Plage suggérée | Description                                             |
+|------------------------|--------|-------|----------------|---------------------------------------------------------|
+| `enable_stop_loss`     | false  | bool  | true/false     | Activer le stop loss en pourcentage fixe                |
+| `stop_loss_pct`        | 0.0    | float | 0.5 - 5.0      | Pourcentage de stop loss                                |
+| `enable_take_profit`   | false  | bool  | true/false     | Activer le take profit en pourcentage fixe              |
+| `take_profit_pct`      | 0.0    | float | 1.0 - 15.0     | Pourcentage de take profit                              |
+| `enable_trailing_stop` | false  | bool  | true/false     | Activer le trailing stop basé sur le pourcentage        |
+| `trail_profit_pct`     | 0.0    | float | 0.5 - 5.0      | Seuil de profit pour armer le trailing stop             |
+| `trail_loss_pct`       | 0.0    | float | 0.5 - 5.0      | Distance de recul du trailing stop                      |
+| `enable_pyramiding`    | false  | bool  | true/false     | Autoriser le cumul de positions                         |
+| `max_pyramid_layers`   | 1      | int   | 1 - 5          | Nombre maximal d'accumulations autorisées               |
+
+**Conseil** : Le QQE est très sensible à la combinaison de `rsi_period` et `qqe_factor`. Un `qqe_factor` bas (ex: 2.0) augmentera la réactivité mais aussi les faux signaux. Utilisez en priorité la confirmation `signal_mode = Close` pour éviter d'entrer sur des mèches instables.
+
+---
+
+## 14. HMM Regime Filter
+
+Modèle de Markov Caché (HMM) probabiliste bayésien estimant l'état dominant du marché (Bull, Bear, Range) pour ajuster dynamiquement l'exposition.
+
+### Paramètres core (haute priorité)
+
+| Paramètre      | Défaut | Type  | Plage suggérée | Description                                             |
+|----------------|--------|-------|----------------|---------------------------------------------------------|
+| `obs_len`      | 14     | int   | 5 - 30         | Fenêtre d'observation pour estimer la volatilité        |
+| `stat_len`     | 28     | int   | 10 - 100       | Période d'estimation de la moyenne statistique          |
+| `mu_k`         | 1.5    | float | 0.5 - 3.0      | Facteur multiplicateur pour la dispersion du signal     |
+| `stick`        | 0.9    | float | 0.5 - 0.99     | Inertie de l'état (persistance de l'état précédent)     |
+| `confirm_bars` | 2      | int   | 1 - 5          | Nombre de barres confirmant la transition d'état        |
+| `dom_thresh`   | 0.5    | float | 0.3 - 0.8      | Seuil de probabilité pour valider l'état majoritaire    |
+
+**Conseil** : Le paramètre `stick` est crucial pour éviter que le modèle ne change d'état à chaque bougie (oscillations saccadées). Une valeur proche de `0.9` ou `0.95` garantit des régimes lisses et exploitables pour la macro-tendance.
+
+---
+
+## 15. Lorentzian Classification (KNN)
+
+Machine Learning non-paramétrique classant les signaux d'achat/vente par similarité de caractéristiques historiques dans un espace de Lorentz à multi-dimensions.
+
+### Paramètres de Classification & Voisins
+
+| Paramètre         | Défaut | Type | Plage suggérée | Description                                             |
+|-------------------|--------|------|----------------|---------------------------------------------------------|
+| `neighbors_count` | 8      | int  | 3 - 20         | Nombre de plus proches voisins à évaluer (k du KNN)     |
+| `max_bars_back`   | 2000   | int  | 500 - 3000     | Nombre de barres historiques chargées dans la mémoire   |
+| `feature_count`   | 5      | int  | 3 - 5          | Nombre de features de base utilisées (doit rester à 5)  |
+
+### Paramètres des Features (Indicateurs d'Entrée)
+*Chaque feature possède une période de calcul (paramètre a) et un poids ou type de lissage (paramètre b).*
+
+| Paramètre    | Défaut | Type  | Plage suggérée | Description                                      |
+|--------------|--------|-------|----------------|--------------------------------------------------|
+| `f1_param_a` | 14     | int   | 7 - 30         | Feature 1 : Période RSI 1                        |
+| `f1_param_b` | 1      | int   | 1 - 5          | Feature 1 : Lissage RSI 1                        |
+| `f2_param_a` | 10     | int   | 5 - 25         | Feature 2 : Période WaveTrend WT Channel         |
+| `f2_param_b` | 11     | int   | 5 - 25         | Feature 2 : Période WT Average                   |
+| `f3_param_a` | 20     | int   | 10 - 40        | Feature 3 : Période CCI                          |
+| `f3_param_b` | 1      | int   | 1 - 5          | Feature 3 : Lissage CCI                          |
+| `f4_param_a` | 20     | int   | 10 - 40        | Feature 4 : Période ADX                          |
+| `f4_param_b` | 2      | int   | 1 - 5          | Feature 4 : Type lissage ADX                     |
+| `f5_param_a` | 9      | int   | 5 - 20         | Feature 5 : Période RSI 2                        |
+| `f5_param_b` | 1      | int   | 1 - 5          | Feature 5 : Lissage RSI 2                        |
+
+### Filtres Optionnels & Lissage Nadaraya-Watson
+
+| Paramètre               | Défaut | Type  | Plage suggérée | Description                                            |
+|-------------------------|--------|-------|----------------|--------------------------------------------------------|
+| `use_volatility_filter` | true   | bool  | true/false     | Bloquer les signaux en période de volatilité nulle     |
+| `use_regime_filter`     | true   | bool  | true/false     | Activer le filtrage par régime de tendance macro       |
+| `regime_threshold`      | -0.1   | float | -0.5 - 0.5     | Seuil du filtre de régime macro                        |
+| `use_kernel_filter`     | true   | bool  | true/false     | Activer la validation par régression Nadaraya-Watson  |
+| `kernel_h`              | 8      | int   | 3 - 20         | Largeur de bande (lookback) Nadaraya-Watson            |
+| `kernel_r`              | 8.0    | float | 1.0 - 15.0     | Coefficient de régularisation du Kernel                |
+| `kernel_x`              | 25     | int   | 10 - 50        | Facteur d'échelle du Kernel                            |
+| `kernel_lag`            | 2      | int   | 1 - 5          | Lag temporel toléré pour le Kernel                     |
+| `use_dynamic_exits`     | false  | bool  | true/false     | Activer les sorties anticipées lors du déclin du signal|
+
+**Conseil** : Cette stratégie de classification par Machine Learning est très gourmande. Il est vivement conseillé de conserver les 5 features de base (RSI1, WaveTrend, CCI, ADX, RSI2). Optimisez d'abord les paramètres du classifieur KNN (`neighbors_count`) puis activez le lissage de Nadaraya-Watson (`use_kernel_filter = true`) pour lisser l'alpha directionnel.
+
 ---
 
 ## Recommandations Globales de Filtrage Des Backtests
@@ -286,6 +473,13 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 | **`bjorgum_double_tap`** (Pattern/Swing)| 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
 | **`cybernetic_hilbert`** (Retournement) | 30 - 50 | `return_vs_buy_hold_pct_points` | -20% à -25% | 1.25 |
 | **`smart_trader_geometric`** (Tendance) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
+| **`trend_type`** (Tendance) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
+| **`msl_trend`** (Tendance) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
+| **`pivot_retest`** (Structure) | 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
+| **`adaptive_trend_classification`** (Tendance)| 30 - 50 | `return_vs_buy_hold_pct_points` | -25% à -30% | 1.25 |
+| **`momentum_based_zigzag`** (Momentum) | 30 - 50 | `return_vs_buy_hold_pct_points` | -20% à -25% | 1.25 |
+| **`hmm_regime_filter`** (Régime ML) | 30 - 50 | `return_vs_buy_hold_pct_points` | -20% à -25% | 1.25 |
+| **`lorentzian_classification`** (KNN ML) | 50+ | `return_vs_buy_hold_pct_points` | -20% à -25% | 1.25 |
 
 ---
 
@@ -294,15 +488,20 @@ Les paramètres de filtrage des backtests (score, drawdown, etc.) ne doivent pas
 | Strategie                     | Nb params core | Complexite d'optimisation |
 |-------------------------------|----------------|---------------------------|
 | Range Filter                  | 2              | Faible                    |
+| MSL Friendly Trend            | 2              | Faible                    |
 | HMA Crossover                 | 4              | Faible                    |
 | Cybernetic Trading            | 3              | Faible                    |
+| Trend Type Indicator          | 8              | Faible-Moyenne            |
+| Pivot Breakout Retest         | 2              | Moyenne                   |
+| Smart Trader Geometric        | 4              | Moyenne                   |
 | PMax Explorer                 | 6              | Faible-Moyenne            |
 | Adaptive Volatility Trend     | 6-7            | Moyenne                   |
+| Momentum-based ZigZag         | 5              | Moyenne-Elevée            |
+| HMM Regime Filter             | 6              | Moyenne-Elevée            |
 | Bjorgum Double Tap            | 7              | Moyenne-Elevee            |
 | Noise Boundary Intraday       | 9              | Moyenne-Elevee            |
 | 3Commas-Bot                   | 8              | Moyenne-Elevee            |
-| Smart Trader Geometric        | 4              | Moyenne                   |
+| Adaptive Trend Classification | 18             | Moyenne-Elevée            |
+| Lorentzian Classification     | 15+            | Elevée                    |
 
----
-
-*Document mis à jour le 2026-06-09 suite à l'intégration de la stratégie NQ/MNQ Super Scalper.*
+*Document mis à jour le 2026-06-09 suite à l'intégration des 7 nouvelles stratégies Pine Script vectorisées.*

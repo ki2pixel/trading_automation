@@ -474,13 +474,33 @@ def run_pivot_retest(
     return BacktestRunResult(
         strategy="pivot_retest",
         symbol=symbol,
-        config=asdict(config),
+        config=config.model_dump() if hasattr(config, "model_dump") else (config.dict() if hasattr(config, "dict") else asdict(config)),
         bars=bars,
         state=state,
         trades=trades,
         equity_curve=equity_curve,
         metrics=metrics,
     )
+
+def _write_prescan_report(
+    output_dir: Path | None,
+    status: str,
+    top_n: int | None,
+    parameters: dict[str, dict[str, Any]],
+) -> None:
+    if output_dir is None:
+        return
+    report = {
+        "status": status,
+        "top_n_configurations_found": top_n,
+        "parameters": parameters,
+    }
+    try:
+        path = output_dir / "vectorbt_prescan_report.json"
+        path.write_text(json.dumps(report, indent=4, default=str), encoding="utf-8")
+    except Exception:
+        pass
+
 
 def vectorbt_prescan(
     data: pd.DataFrame,
@@ -491,4 +511,197 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
+    de Pivot Retest (pivot_timeframe, retest_bars) avec VectorBT pour restreindre les bornes d'exploration.
+    """
+    import logging
+    import numpy as np
+    from ..optimizer import ParameterGridSpec
+
+    logger = logging.getLogger(__name__)
+
+    if stop_requested is not None and stop_requested():
+        logger.warning("Pre-scan Pivot Retest annulé avant démarrage.")
+        _write_prescan_report(output_dir, "cancelled", None, {})
+        return parameter_specs
+
+    tf_specs = next((s for s in parameter_specs if s.name == "pivot_timeframe"), None)
+    bars_specs = next((s for s in parameter_specs if s.name == "retest_bars"), None)
+
+    if not tf_specs or not bars_specs:
+        _write_prescan_report(output_dir, "skipped", None, {})
+        return parameter_specs
+    if not tf_specs.values or not bars_specs.values:
+        _write_prescan_report(output_dir, "skipped", None, {})
+        return parameter_specs
+
+    try:
+        import vectorbt as vbt
+        import gc
+        from ..indicators.pivot_retest import PivotRetest
+
+        # 1. Temporal Downsampling
+        prescan_timeframe = timeframe_minutes
+        if int(timeframe_minutes) == 1:
+            logger.info("Downsampling 1min bars to 5min bars for fast pre-scan processing.")
+            conversion = {
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }
+            for col in data.columns:
+                if col not in conversion:
+                    conversion[col] = 'first'
+            data = data.resample("5Min").agg(conversion).dropna()
+            prescan_timeframe = 5
+
+        # Slice limit (150k bars)
+        if len(data) > 150000:
+            logger.info(f"Slicing data from {len(data)} to 150000 bars for fast pre-scan processing.")
+            data = data.iloc[-150000:]
+
+        tfs = sorted({str(v) for v in tf_specs.values})
+        retest_bars = sorted({int(v) for v in bars_specs.values})
+
+        from ..prescan_utils import downsample_parameter_grid
+        downsampled = downsample_parameter_grid(
+            {
+                "retest_bars": retest_bars,
+            },
+            max_combos=10000,
+            strategy_name="PivotRetest"
+        )
+        retest_bars = downsampled["retest_bars"]
+
+        # Loop over unique timeframes in Python, sweep retest_bars in VectorBT
+        batch_size = 500
+        total_batches = (len(retest_bars) + batch_size - 1) // batch_size if retest_bars else 0
+        returns_batches: list[pd.Series] = []
+
+        high = data["high"]
+        low = data["low"]
+        close = data["close"]
+
+        logger.info(f"Lancement du Pre-Scan Pivot Retest (TFs={tfs}, bars={len(retest_bars)})...")
+
+        total_runs = len(tfs) * total_batches
+        run_count = 0
+
+        for tf_val in tfs:
+            for batch_idx in range(total_batches):
+                if stop_requested is not None and stop_requested():
+                    logger.warning("Pre-scan Pivot Retest annulé pendant le calcul.")
+                    _write_prescan_report(output_dir, "cancelled", None, {})
+                    return parameter_specs
+
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(retest_bars))
+                batch_bars = retest_bars[start_i:end_i]
+
+                pr = PivotRetest.run(
+                    high, low, close,
+                    pivot_timeframe=tf_val,
+                    retest_bars=batch_bars,
+                    param_product=False
+                )
+
+                long_entries = pr.bullish_signal
+                short_entries = pr.bearish_signal
+                long_exits = short_entries
+                short_exits = long_entries
+
+                pf = vbt.Portfolio.from_signals(
+                    close,
+                    entries=long_entries,
+                    exits=long_exits,
+                    short_entries=short_entries,
+                    short_exits=short_exits,
+                    freq=f"{prescan_timeframe}min",
+                )
+                
+                ret_series = pf.total_return()
+                if not isinstance(ret_series, pd.Series):
+                    ret_series = pd.Series([ret_series], index=[batch_bars[0]])
+                else:
+                    ret_series.index = [int(x) if not isinstance(x, tuple) else int(x[1]) for x in ret_series.index]
+
+                ret_series.index = pd.MultiIndex.from_tuples([(tf_val, b) for b in ret_series.index])
+                returns_batches.append(ret_series)
+
+                del pr
+                del long_entries
+                del short_entries
+                del long_exits
+                del short_exits
+                del pf
+                gc.collect()
+
+                run_count += 1
+                if progress_callback is not None:
+                    try:
+                        progress_callback(run_count, total_runs)
+                    except Exception as cb_err:
+                        logger.warning(f"Error in prescan progress callback: {cb_err}")
+
+        if returns_batches:
+            returns = pd.concat(returns_batches)
+            returns = returns.sort_index()
+        else:
+            returns = pd.Series(dtype=float)
+
+        top_n = max(1, int(len(returns) * 0.05))
+        top_params = returns.nlargest(top_n).index.tolist()
+
+        if top_params:
+            filtered_tfs = sorted(list({p[0] for p in top_params}))
+            min_bars = min(p[1] for p in top_params)
+            max_bars = max(p[1] for p in top_params)
+
+            # Marge de sécurité
+            margin_bars = max(1, int((max_bars - min_bars) * 0.1))
+            min_bars = max(int(bars_specs.values[0]), min_bars - margin_bars)
+            max_bars = min(int(bars_specs.values[-1]), max_bars + margin_bars)
+
+            # Reconstruct specs
+            new_specs = []
+            tf_filtered = ()
+            bars_filtered = ()
+
+            for s in parameter_specs:
+                if s.name == "pivot_timeframe":
+                    new_vals = tuple(v for v in s.values if v in filtered_tfs)
+                    tf_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=tf_filtered))
+                elif s.name == "retest_bars":
+                    new_vals = tuple(v for v in s.values if min_bars <= int(v) <= max_bars)
+                    bars_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=bars_filtered))
+                else:
+                    new_specs.append(s)
+
+            _write_prescan_report(
+                output_dir,
+                "success",
+                top_n,
+                {
+                    "pivot_timeframe": {
+                        "original_values": list(tf_specs.values),
+                        "filtered_values": list(tf_filtered),
+                    },
+                    "retest_bars": {
+                        "original_bounds": [int(bars_specs.values[0]), int(bars_specs.values[-1])],
+                        "new_bounds": [int(bars_filtered[0]), int(bars_filtered[-1])],
+                        "filtered_values": list(bars_filtered),
+                    },
+                }
+            )
+            logger.info(f"Bornes Optuna réduites via VectorBT: pivot_timeframe({tf_filtered}), retest_bars({min_bars}-{max_bars})")
+            return new_specs
+
+    except Exception as e:
+        logger.warning(f"Erreur Pre-Scan VectorBT Pivot Retest: {e}")
+
+    _write_prescan_report(output_dir, "skipped", None, {})
     return parameter_specs

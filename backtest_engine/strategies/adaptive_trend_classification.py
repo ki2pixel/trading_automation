@@ -31,8 +31,24 @@ _MODULE_LOCK = threading.Lock()
 
 @dataclass
 class AdaptiveTrendClassificationConfigOverrides:
-    pivot_timeframe: str | None = None
-    retest_bars: int | None = None
+    La: float | None = None
+    De: float | None = None
+    cutout: int | None = None
+    robustness: str | None = None
+    Long_threshold: float | None = None
+    Short_threshold: float | None = None
+    ema_len: int | None = None
+    ema_w: float | None = None
+    hull_len: int | None = None
+    hma_w: float | None = None
+    wma_len: int | None = None
+    wma_w: float | None = None
+    dema_len: int | None = None
+    dema_w: float | None = None
+    lsma_len: int | None = None
+    lsma_w: float | None = None
+    kama_len: int | None = None
+    kama_w: float | None = None
     signal_mode: str | None = None
     
     max_entry_price: float | None = None
@@ -474,13 +490,33 @@ def run_adaptive_trend_classification(
     return BacktestRunResult(
         strategy="adaptive_trend_classification",
         symbol=symbol,
-        config=asdict(config),
+        config=config.model_dump() if hasattr(config, "model_dump") else (config.dict() if hasattr(config, "dict") else asdict(config)),
         bars=bars,
         state=state,
         trades=trades,
         equity_curve=equity_curve,
         metrics=metrics,
     )
+
+def _write_prescan_report(
+    output_dir: Path | None,
+    status: str,
+    top_n: int | None,
+    parameters: dict[str, dict[str, Any]],
+) -> None:
+    if output_dir is None:
+        return
+    report = {
+        "status": status,
+        "top_n_configurations_found": top_n,
+        "parameters": parameters,
+    }
+    try:
+        path = output_dir / "vectorbt_prescan_report.json"
+        path.write_text(json.dumps(report, indent=4, default=str), encoding="utf-8")
+    except Exception:
+        pass
+
 
 def vectorbt_prescan(
     data: pd.DataFrame,
@@ -491,4 +527,243 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
+    de Adaptive Trend Classification avec VectorBT pour restreindre les bornes d'exploration.
+    """
+    import logging
+    import itertools
+    import numpy as np
+    from ..optimizer import ParameterGridSpec
+
+    logger = logging.getLogger(__name__)
+
+    if stop_requested is not None and stop_requested():
+        logger.warning("Pre-scan Adaptive Trend annulé avant démarrage.")
+        _write_prescan_report(output_dir, "cancelled", None, {})
+        return parameter_specs
+
+    param_defaults = {
+        "La": 0.02,
+        "De": 0.03,
+        "cutout": 0,
+        "robustness": "Medium",
+        "Long_threshold": 0.1,
+        "Short_threshold": -0.1,
+        "ema_len": 28,
+        "ema_w": 1.0,
+        "hull_len": 28,
+        "hma_w": 1.0,
+        "wma_len": 28,
+        "wma_w": 1.0,
+        "dema_len": 28,
+        "dema_w": 1.0,
+        "lsma_len": 28,
+        "lsma_w": 1.0,
+        "kama_len": 28,
+        "kama_w": 1.0,
+    }
+
+    # Vérifier s'il y a des paramètres spécifiés
+    has_active = False
+    for spec in parameter_specs:
+        if spec.name in param_defaults and spec.values:
+            has_active = True
+            break
+
+    if not has_active:
+        _write_prescan_report(output_dir, "skipped", None, {})
+        return parameter_specs
+
+    try:
+        import vectorbt as vbt
+        import gc
+        from ..indicators.adaptive_trend_classification import AdaptiveTrend
+
+        # 1. Temporal Downsampling
+        prescan_timeframe = timeframe_minutes
+        if int(timeframe_minutes) == 1:
+            logger.info("Downsampling 1min bars to 5min bars for fast pre-scan processing.")
+            conversion = {
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }
+            for col in data.columns:
+                if col not in conversion:
+                    conversion[col] = 'first'
+            data = data.resample("5Min").agg(conversion).dropna()
+            prescan_timeframe = 5
+
+        # Slice limit (150k bars)
+        if len(data) > 150000:
+            logger.info(f"Slicing data from {len(data)} to 150000 bars for fast pre-scan processing.")
+            data = data.iloc[-150000:]
+
+        active_params = {}
+        for name, default in param_defaults.items():
+            spec = next((s for s in parameter_specs if s.name == name), None)
+            if spec and spec.values:
+                if isinstance(default, int):
+                    active_params[name] = sorted({int(v) for v in spec.values})
+                elif isinstance(default, float):
+                    active_params[name] = sorted({float(v) for v in spec.values})
+                else:
+                    active_params[name] = sorted({str(v) for v in spec.values})
+            else:
+                active_params[name] = [default]
+
+        robs = active_params.pop("robustness")
+
+        from ..prescan_utils import downsample_parameter_grid
+        downsampled = downsample_parameter_grid(
+            active_params,
+            max_combos=10000,
+            strategy_name="AdaptiveTrend"
+        )
+        for name, values in downsampled.items():
+            active_params[name] = values
+
+        keys = list(active_params.keys())
+        vals_lists = [active_params[k] for k in keys]
+        combos_numeric = list(itertools.product(*vals_lists))
+
+        # Simulation par lots
+        batch_size = 500
+        total_batches = (len(combos_numeric) + batch_size - 1) // batch_size if combos_numeric else 0
+        returns_batches: list[pd.Series] = []
+
+        close = data["close"]
+
+        logger.info(f"Lancement du Pre-Scan Adaptive Trend (Robs={robs}, combos={len(combos_numeric)})...")
+
+        total_runs = len(robs) * total_batches
+        run_count = 0
+
+        for rob_val in robs:
+            for batch_idx in range(total_batches):
+                if stop_requested is not None and stop_requested():
+                    logger.warning("Pre-scan Adaptive Trend Classification annulé.")
+                    _write_prescan_report(output_dir, "cancelled", None, {})
+                    return parameter_specs
+
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(combos_numeric))
+                batch_combos = combos_numeric[start_i:end_i]
+
+                batch_vals = list(zip(*batch_combos))
+                run_kwargs = {keys[i]: list(batch_vals[i]) for i in range(len(keys))}
+                run_kwargs["robustness"] = [rob_val] * len(batch_combos)
+                run_kwargs["param_product"] = False
+
+                at = AdaptiveTrend.run(close, **run_kwargs)
+                direction = at.direction
+                long_entries = (direction == 1.0) & (direction.shift(1) != 1.0)
+                short_entries = (direction == -1.0) & (direction.shift(1) != -1.0)
+                long_exits = short_entries
+                short_exits = long_entries
+
+                pf = vbt.Portfolio.from_signals(
+                    close,
+                    entries=long_entries,
+                    exits=long_exits,
+                    short_entries=short_entries,
+                    short_exits=short_exits,
+                    freq=f"{prescan_timeframe}min",
+                )
+                
+                ret_series = pf.total_return()
+                if not isinstance(ret_series, pd.Series):
+                    ret_series = pd.Series([ret_series], index=[0])
+                else:
+                    ret_series.index = list(range(len(ret_series)))
+
+                ret_series.index = [(rob_val,) + combo for combo in batch_combos]
+                returns_batches.append(pd.Series(ret_series.values, index=ret_series.index))
+
+                del at
+                del direction
+                del long_entries
+                del short_entries
+                del long_exits
+                del short_exits
+                del pf
+                gc.collect()
+
+                run_count += 1
+                if progress_callback is not None:
+                    try:
+                        progress_callback(run_count, total_runs)
+                    except Exception as cb_err:
+                        logger.warning(f"Error in prescan progress callback: {cb_err}")
+
+        if returns_batches:
+            returns = pd.concat(returns_batches)
+            returns = returns.sort_index()
+        else:
+            returns = pd.Series(dtype=float)
+
+        top_n = max(1, int(len(returns) * 0.05))
+        top_params = returns.nlargest(top_n).index.tolist()
+
+        if top_params:
+            filtered_by_param = {"robustness": set()}
+            for k in keys:
+                filtered_by_param[k] = set()
+
+            for p in top_params:
+                filtered_by_param["robustness"].add(p[0])
+                for i, k in enumerate(keys):
+                    filtered_by_param[k].add(p[i+1])
+
+            # Apply margins and reconstruct specs
+            new_specs = []
+            report_params = {}
+
+            # Restauration de robustness dans keys pour reconstruire le rapport
+            all_keys_with_rob = ["robustness"] + keys
+            for s in parameter_specs:
+                if s.name == "robustness":
+                    new_vals = tuple(v for v in s.values if v in filtered_by_param["robustness"])
+                    tf_filtered = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=tf_filtered))
+                    report_params["robustness"] = {
+                        "original_values": list(s.values),
+                        "filtered_values": list(tf_filtered),
+                    }
+                elif s.name in keys:
+                    vals = sorted(list(filtered_by_param[s.name]))
+                    min_v = vals[0]
+                    max_v = vals[-1]
+                    default_def = param_defaults[s.name]
+                    if isinstance(default_def, int):
+                        margin = max(1, int((max_v - min_v) * 0.1))
+                        min_v = max(int(s.values[0]), int(min_v) - margin)
+                        max_v = min(int(s.values[-1]), int(max_v) + margin)
+                        new_vals = tuple(v for v in s.values if min_v <= int(v) <= max_v)
+                    else:
+                        margin = max(0.001, (max_v - min_v) * 0.1)
+                        min_v = max(float(s.values[0]), float(min_v) - margin)
+                        max_v = min(float(s.values[-1]), float(max_v) + margin)
+                        new_vals = tuple(v for v in s.values if min_v <= float(v) <= max_v)
+                    
+                    filtered_res = new_vals or s.values
+                    new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=filtered_res))
+                    report_params[s.name] = {
+                        "original_bounds": [s.values[0], s.values[-1]],
+                        "new_bounds": [filtered_res[0], filtered_res[-1]],
+                        "filtered_values": list(filtered_res),
+                    }
+                else:
+                    new_specs.append(s)
+
+            _write_prescan_report(output_dir, "success", top_n, report_params)
+            logger.info(f"Bornes Optuna réduites via VectorBT pour Adaptive Trend Classification.")
+            return new_specs
+
+    except Exception as e:
+        logger.warning(f"Erreur Pre-Scan VectorBT Adaptive Trend: {e}")
+
+    _write_prescan_report(output_dir, "skipped", None, {})
     return parameter_specs

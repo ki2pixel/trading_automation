@@ -40,7 +40,7 @@ from .paths import get_reports_dir
 
 ParameterKindPayload = Literal["numeric", "choice", "bool"]
 ScoreDirectionPayload = Literal["max", "min"]
-StrategyPayload = Literal["hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric"]
+StrategyPayload = str
 
 
 class ParameterSpecPayload(BaseModel):
@@ -144,6 +144,14 @@ class OptimizerRequestPayload(BaseModel):
     wfo_windows: int = Field(default=1, ge=1)
     use_vectorbt_prescan: bool = False
     run_post_validation: bool = False
+
+    @field_validator("strategy")
+    @classmethod
+    def _validate_strategy_dynamic(cls, value: str) -> str:
+        allowed = set(StrategyRegistry.list_strategies())
+        if value not in allowed:
+            raise ValueError(f"Invalid strategy {value!r}; expected one of {sorted(allowed)}")
+        return value
 
     @field_validator("symbol", "processed_dir", "output_dir", "config")
     @classmethod
@@ -885,60 +893,12 @@ def create_optimizer_app(
         return {
             "strategies": [
                 {
-                    "name": "hma_crossover",
-                    "parameters": [asdict(param) for param in optimizable_parameters("hma_crossover").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("hma_crossover").values()],
-                    "score_metrics": list(allowed_score_metrics("hma_crossover")),
-                },
-                {
-                    "name": "adaptive_volatility_trend",
-                    "parameters": [asdict(param) for param in optimizable_parameters("adaptive_volatility_trend").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("adaptive_volatility_trend").values()],
-                    "score_metrics": list(allowed_score_metrics("adaptive_volatility_trend")),
-                },
-                {
-                    "name": "range_filter",
-                    "parameters": [asdict(param) for param in optimizable_parameters("range_filter").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("range_filter").values()],
-                    "score_metrics": list(allowed_score_metrics("range_filter")),
-                },
-                {
-                    "name": "3commas_bot",
-                    "parameters": [asdict(param) for param in optimizable_parameters("3commas_bot").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("3commas_bot").values()],
-                    "score_metrics": list(allowed_score_metrics("3commas_bot")),
-                },
-                {
-                    "name": "pmax_explorer",
-                    "parameters": [asdict(param) for param in optimizable_parameters("pmax_explorer").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("pmax_explorer").values()],
-                    "score_metrics": list(allowed_score_metrics("pmax_explorer")),
-                },
-                {
-                    "name": "bjorgum_double_tap",
-                    "parameters": [asdict(param) for param in optimizable_parameters("bjorgum_double_tap").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("bjorgum_double_tap").values()],
-                    "score_metrics": list(allowed_score_metrics("bjorgum_double_tap")),
-                },
-                {
-                    "name": "noise_boundary_intraday",
-                    "parameters": [asdict(param) for param in optimizable_parameters("noise_boundary_intraday").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("noise_boundary_intraday").values()],
-                    "score_metrics": list(allowed_score_metrics("noise_boundary_intraday")),
-                },
-                {
-                    "name": "cybernetic_hilbert",
-                    "parameters": [asdict(param) for param in optimizable_parameters("cybernetic_hilbert").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("cybernetic_hilbert").values()],
-                    "score_metrics": list(allowed_score_metrics("cybernetic_hilbert")),
-                },
-                {
-                    "name": "smart_trader_geometric",
-                    "parameters": [asdict(param) for param in optimizable_parameters("smart_trader_geometric").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("smart_trader_geometric").values()],
-                    "score_metrics": list(allowed_score_metrics("smart_trader_geometric")),
-                },
-
+                    "name": strategy_name,
+                    "parameters": [asdict(param) for param in optimizable_parameters(strategy_name).values()],
+                    "schema": [asdict(param) for param in parameter_definitions(strategy_name).values()],
+                    "score_metrics": list(allowed_score_metrics(strategy_name)),
+                }
+                for strategy_name in StrategyRegistry.list_strategies()
             ]
         }
 
