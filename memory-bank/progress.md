@@ -75,4 +75,7 @@
 - [ ] Conception du moteur de backtest.
 - [x] [2026-06-09 12:25:00] - Nettoyage complet : suppression de 3 stratégies obsolètes (`smart_trader_ep1`, `dual_rsi_dca_long`, `nq_mnq_super_scalper`) pour alléger le moteur et les configs. Tests validés (279 passed).
 - [x] [2026-06-09 14:05:00] - Vectorisation complète (Phase 1) des indicateurs 'Trend Type' et 'MSL Friendly Trend' via Pandas et VectorBT. Zéro boucle Python, tests unitaires validés avec succès.
+- [x] [2026-06-09 14:40:00] - Implémentation et validation de la Phase 3 "Pivot Breakout Retest Signals" avec accélération Numba (@njit) et tests unitaires "no lookahead bias" validés.
+- [x] [2026-06-09 14:59:%00] - Implémentation de "Adaptive Trend Classification" terminée et testée. MAs codées en pur Numba remplaçant talib. Boucle stateful O(T) très performante (<20ms/10k bars) sans lookahead bias.
+- [x] [2026-06-09 15:16:00] - Implémentation de "Momentum-based ZigZag" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful anti-lookahead bias validée. Performance très rapide (~4ms/10k bars).
 - [ ] Intégration des APIs courtiers.- [2026-06-09 00:06:47] - Audit de la Passe 1 de la stratégie Dual RSI DCA Long terminé. Échec des filtres sans DCA optimisé (0 itération éligible). Rapport et synthèse générés. Ouverture de la Passe 2.

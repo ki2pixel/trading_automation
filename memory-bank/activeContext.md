@@ -59,4 +59,7 @@
 - [2026-06-08 14:22:00] - Intégration de la stratégie Pine Script 'Dual RSI DCA - Long Strategy' au moteur de backtest : script autonome avec progression géométrique AO exacte, tests unitaires et intégration dans strategy_registry.py.
 - [2026-06-09 12:25:00] - Suppression complète et propre des stratégies obsolètes (`smart_trader_ep1`, `dual_rsi_dca_long`, `nq_mnq_super_scalper`) du moteur de backtest. Code source, registres, interfaces UI et documentation nettoyés. Aucun impact sur les stratégies actives.
 - [2026-06-09 14:05:00] - Vectorisation de 'Trend Type Indicator' et 'MSL Friendly Trend' terminée (Phase 1).
+- [2026-06-09 14:40:00] - Implémentation de la Phase 3 "Pivot Breakout Retest Signals" terminée et testée (Numba, VectorBT).
+- [2026-06-09 14:59:%00] - Implémentation de "Adaptive Trend Classification" terminée et testée (Numba, VectorBT, Pydantic). MAs en pur Numba sans talib. Perf <20ms.
+- [2026-06-09 15:16:00] - Implémentation de "Momentum-based ZigZag" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful anti-lookahead bias validée. Performance très rapide (~4ms/10k bars).
 - [2026-06-09 00:06:47] - Audit de la Passe 1 de la stratégie Dual RSI DCA Long terminé. Échec des filtres sans DCA optimisé (0 itération éligible). Rapport et synthèse générés. Ouverture de la Passe 2.

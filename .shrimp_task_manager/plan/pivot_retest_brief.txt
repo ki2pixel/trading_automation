@@ -1,0 +1,22 @@
+# Brief Stratégie: Pivot Breakout Retest Signals
+
+## Objectif
+Convertir l'indicateur Pine Script Pivot-Breakout-Retest-Signals-algo-aakash.pine en une stratégie de backtest ultra-performante basée sur Numba pour le framework VectorBT.
+
+## Exigences Techniques
+1. Indicateur Core Numba (backtest_engine/indicators/pivot_retest.py) :
+   - Calcul des niveaux classiques (Pivot, R1, R2, S1, S2) à partir d'un timeframe supérieur ("D", "W", "M") resamplé sans lookahead bias (utilisation d'un shift(1)).
+   - Logique Stateful en Numba (@njit(cache=True)) pour détecter les crossovers (breakouts) et les retests dans une fenêtre de N barres (retestBars).
+   - Réinitialisation des états (BreakBars) à chaque nouvelle session (changement de timestamp du timeframe supérieur).
+
+2. Stratégie Logique (pine_scripts_convert_to_python/strategy/pivot_retest_strategy.py) :
+   - Implémentation via une configuration Pydantic (PivotRetestStrategyConfig).
+   - Génération des signaux long_entry, short_entry, long_exit, short_exit.
+
+3. Stratégie d'Exécution (backtest_engine/strategies/pivot_retest.py) :
+   - Enrobage de la stratégie avec le BrokerSimulator pour l'application des SL, TP/TS, commissions et slippage.
+
+4. Intégration et Déploiement :
+   - Enregistrement dans backtest_engine/strategy_registry.py.
+   - Création des configs par défaut (configs/strategies/pivot_retest.default.json).
+   - Tests unitaires (tests/test_pivot_retest_strategy.py) avec validation stricte du "no lookahead" et des performances.

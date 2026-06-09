@@ -101,10 +101,10 @@ Suite au succès de l'intégration des "Quick Wins", l'architecture standardisé
   - ✅ **Trend Type Indicator** : Totalement implémenté en tant que stratégie (`trend_type`). Indicateur 100% natif Pandas (RMA/ATR).
   - ✅ **MSL Friendly Trend** : Totalement implémenté en tant que stratégie (`msl_trend`). Vectorisation des trailing stops par forward filling.
   
-- **[A FAIRE] Phase 3 : "Accélération Numba et Stateful"**
-  - ⏳ Pivot Breakout Retest Signals
-  - ⏳ Adaptive Trend Classification
-  - ⏳ Momentum-based ZigZag
+- **[EN COURS] Phase 3 : "Accélération Numba et Stateful"**
+  - ✅ Pivot Breakout Retest Signals
+  - ✅ Adaptive Trend Classification
+  - ✅ Momentum-based ZigZag
   - ⏳ HMM Regime Filter
 
 - **[A FAIRE] Phase 4 : "Recherche Machine Learning"**

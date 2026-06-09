@@ -80,4 +80,6 @@ fix_*.py
 refactor_*.py
 scratch_*.py
 update_sonar.py
+scratch/
+
 

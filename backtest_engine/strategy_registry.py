@@ -83,6 +83,27 @@ from .strategies.msl_trend import (
     msl_trend_overrides_from_mapping,
     vectorbt_prescan as msl_trend_vectorbt_prescan,
 )
+from .strategies.adaptive_trend_classification import (
+    run_adaptive_trend_classification,
+    AdaptiveTrendClassificationConfigOverrides,
+    load_adaptive_trend_classification_overrides_from_config,
+    adaptive_trend_classification_overrides_from_mapping,
+    vectorbt_prescan as adaptive_trend_classification_vectorbt_prescan,
+)
+from .strategies.pivot_retest import (
+    PivotRetestConfigOverrides,
+    run_pivot_retest,
+    load_pivot_retest_overrides_from_config,
+    pivot_retest_overrides_from_mapping,
+    vectorbt_prescan as pivot_retest_vectorbt_prescan,
+)
+from .strategies.momentum_based_zigzag import (
+    MomentumBasedZigZagConfigOverrides,
+    run_momentum_based_zigzag,
+    load_momentum_based_zigzag_overrides_from_config,
+    momentum_based_zigzag_overrides_from_mapping,
+    vectorbt_prescan as momentum_based_zigzag_vectorbt_prescan,
+)
 
 @dataclass
 class StrategyInfo:
@@ -263,3 +284,42 @@ StrategyRegistry.register(
     )
 )
 
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="pivot_retest",
+        config_override_class=PivotRetestConfigOverrides,
+        run_function=run_pivot_retest,
+        load_overrides_function=load_pivot_retest_overrides_from_config,
+        overrides_from_mapping_function=pivot_retest_overrides_from_mapping,
+        indicators=["bullish_signal", "bearish_signal"],
+        vectorbt_prescan=pivot_retest_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="adaptive_trend_classification",
+        config_override_class=AdaptiveTrendClassificationConfigOverrides,
+        run_function=run_adaptive_trend_classification,
+        load_overrides_function=load_adaptive_trend_classification_overrides_from_config,
+        overrides_from_mapping_function=adaptive_trend_classification_overrides_from_mapping,
+        indicators=["average_signal", "direction"],
+        vectorbt_prescan=adaptive_trend_classification_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="momentum_based_zigzag",
+        config_override_class=MomentumBasedZigZagConfigOverrides,
+        run_function=run_momentum_based_zigzag,
+        load_overrides_function=load_momentum_based_zigzag_overrides_from_config,
+        overrides_from_mapping_function=momentum_based_zigzag_overrides_from_mapping,
+        indicators=["bullish_signal", "bearish_signal", "zigzag", "stoploss_long", "stoploss_short"],
+        vectorbt_prescan=momentum_based_zigzag_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
