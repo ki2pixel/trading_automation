@@ -1,0 +1,29 @@
+# Spécifications de Conversion : Quick Wins Vectorisés
+
+## Objectif
+Convertir deux indicateurs Pine Script en code Python vectorisé (VectorBT/Pandas/Numpy) pour intégration dans le moteur de trading.
+1. Trend Type Indicator by BobRivera990
+2. MSL Friendly Trend
+
+## Contraintes Techniques
+1. **Zéro boucle Python** : Toutes les itérations doivent être évitées au profit d'opérations vectorielles (Numpy, Pandas) ou via `vbt.IndicatorFactory`.
+2. **Aucun Repaint / Data Leakage** : S'assurer qu'aucun calcul ne regarde dans le futur (lookahead bias). Les comparaisons et signaux doivent n'utiliser que les données passées ou clôturées.
+3. **Respect de l'architecture** : S'intégrer avec le framework VectorBT existant (types de données, gestion de la mémoire, compatibilité avec l'existant).
+4. **Précision financière** : Utiliser des `float` (np.float64) pour les backtests pour assurer de bonnes performances, conformément à `codingstandards.md`.
+
+## Détails des Indicateurs
+### 1. Trend Type Indicator
+- Basé sur l'ATR, l'ADX, et le DMI.
+- Fournit un état de marché macroscopique (Tendance Haussière, Baisse, ou Range).
+- Calcul matriciel natif avec `vbt.ATR` et `vbt.ADX`.
+
+### 2. MSL Friendly Trend
+- Basé sur un EMA "Zero-Lag" (ZLEMA) et des bandes de volatilité (ATR).
+- Détecte les retournements de tendance selon les cassures de niveaux de structure de marché.
+- Nécessite des conditions conditionnelles simples sur le prix de clôture vis-à-vis des bandes pour changer d'état (Bullish / Bearish).
+
+## Étapes de réalisation prévues
+1. Traduction mathématique des formules Pine Script en équations vectorielles.
+2. Création des classes via `vbt.IndicatorFactory`.
+3. Écriture de tests unitaires pour valider les calculs avec des données simulées (Given/When/Then).
+4. Intégration et validation des temps de calculs (sans boucle).

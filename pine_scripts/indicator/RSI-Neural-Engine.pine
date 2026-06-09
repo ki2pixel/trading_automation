@@ -1,0 +1,464 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TheRealDrip2Rip
+
+//@version=6
+// =============================================================================
+//  RSI Neural Engine  —  Online MLP with Live Backpropagation
+//
+//  WHAT THIS ACTUALLY IS (no marketing):
+//    A real feed-forward neural network trained ONLINE on your chart by
+//    stochastic gradient descent with the Adam optimizer.
+//
+//      Architecture:  [NF inputs] -> [hidden layer, tanh] -> [softmax, 3 class]
+//      Forward pass:  z1 = W1·x + b1 ; a1 = tanh(z1)
+//                     z2 = W2·a1 + b2 ; p = softmax(z2)
+//      Loss:          categorical cross-entropy
+//      Backward pass: d2 = p - y_onehot
+//                     dW2 = d2·a1ᵀ , db2 = d2
+//                     d1 = (W2ᵀ·d2) ⊙ (1 - a1²)        (tanh derivative)
+//                     dW1 = d1·xᵀ , db1 = d1
+//      Optimizer:     Adam (bias-corrected 1st/2nd moments) + L2 weight decay
+//
+//    Every confirmed bar it (1) standardizes features, (2) banks PAST features
+//    paired with the realized forward move (no lookahead), and (3) replays a
+//    batch of recent samples through full forward+backprop+Adam updates.
+//
+//    Features are RSI-native (value, slope, acceleration, fast/slow spread,
+//    percentile, volatility) plus trend context (price vs trend EMA, ADX) and a
+//    higher-timeframe RSI, so the hidden layer can learn interactions such as
+//    "RSI overbought BUT strong uptrend => continuation, not reversal."
+//
+//  HONEST LIMITS:
+//    - RSI is a price-derived momentum transform: a bigger model does not raise
+//      the information ceiling. Judge it by Live Accuracy vs the majority-class
+//      baseline, NOT by how the candles look.
+//    - It re-learns from scratch each load (Pine cannot persist weights).
+//    - One hidden layer, bounded replay, to respect Pine execution limits.
+// =============================================================================
+
+indicator('RSI Neural Engine', overlay = false, max_bars_back = 600, precision = 2)
+
+// ~~ CONSTANTS ================================================================
+const int NF = 10   // input features
+const int NC = 3    // output classes: 0=down, 1=neutral, 2=up
+
+// ~~ INPUTS ===================================================================
+// ~~ RSI / source
+src     = input.source(close, 'Price Source', group = 'RSI')
+rsiLen  = input.int(14, 'RSI Length', minval = 2, group = 'RSI')
+atrLen  = input.int(14, 'ATR Length', minval = 1, group = 'RSI',
+     tooltip = 'Used to normalize trend-context and label the forward move in volatility units.')
+htfTf   = input.timeframe('60', 'Higher Timeframe', group = 'RSI',
+     tooltip = 'A second RSI read from this timeframe is fed in as a feature, so the network sees both the wiggle and the swing.')
+
+// ~~ Trend context
+trendLen = input.int(50, 'Trend EMA Length', minval = 2, group = 'Trend Context',
+     tooltip = 'Long EMA. Price distance from it (in ATR) tells the net WHERE in a trend it is.')
+adxLen   = input.int(14, 'ADX Length', minval = 2, group = 'Trend Context',
+     tooltip = 'Trend-strength reading. Lets the net distinguish "overbought in a trend" from "overbought at a top".')
+
+// ~~ Network
+nh = input.int(8, 'Hidden Units', minval = 3, maxval = 16, group = 'Network',
+     tooltip = 'Neurons in the hidden layer. More = more capacity to learn interactions, but slower and easier to overfit.')
+
+// ~~ Learning
+horizon    = input.int(12, 'Forecast Horizon (bars)', minval = 1, group = 'Learning',
+     tooltip = 'How far ahead the network predicts. Match it to how long you actually hold. Longer = tracks swings, shorter = tracks wiggles.')
+lblFactor  = input.float(0.8, 'Move Threshold (×ATR)', minval = 0.0, step = 0.1, group = 'Learning',
+     tooltip = 'Forward move must exceed this many ATR to be labeled up/down; smaller moves are the neutral class.')
+lr         = input.float(0.01, 'Learning Rate', minval = 0.0001, maxval = 0.5, step = 0.001, group = 'Learning')
+l2         = input.float(0.0005, 'L2 Regularization', minval = 0.0, maxval = 0.05, step = 0.0005, group = 'Learning')
+beta1      = input.float(0.9,   'Adam Beta1', minval = 0.5, maxval = 0.999, step = 0.001, group = 'Learning')
+beta2      = input.float(0.999, 'Adam Beta2', minval = 0.9, maxval = 0.9999, step = 0.0001, group = 'Learning')
+epochs     = input.int(1,  'Epochs / bar', minval = 1, maxval = 10, group = 'Learning',
+     tooltip = 'Replay passes per bar. Raise for faster learning; lower if you hit calculation-time limits.')
+batchSize  = input.int(24, 'Replay Batch', minval = 4, maxval = 200, group = 'Learning',
+     tooltip = 'Recent samples revisited each bar. Raise for faster learning; lower if you hit calculation-time limits.')
+bufCap     = input.int(800, 'Memory Capacity', minval = 100, maxval = 5000, group = 'Learning')
+statLen    = input.int(200, 'Normalization Window', minval = 20, group = 'Learning')
+warmSamples = input.int(120, 'Warm-up Samples', minval = 20, group = 'Learning',
+     tooltip = 'Candles stay uncolored until the network has trained on this many labeled bars.')
+
+// ~~ Candle Coloring (the main output)
+colorStyle  = input.string('Gradient', 'Style', options = ['Gradient', 'Discrete'], group = 'Candle Coloring',
+     tooltip = 'GRADIENT: intensity scales with conviction. DISCRETE: flat colors.')
+neutralZone = input.float(6, 'Neutral Zone (%)', minval = 0, maxval = 40, step = 0.5, group = 'Candle Coloring',
+     tooltip = 'Dead band around the center: weak/uncertain reads stay neutral so only real conviction shows color.')
+gradeSpan   = input.float(35, 'Gradient Span (%)', minval = 5, maxval = 50, step = 1, group = 'Candle Coloring')
+useAdaptive = input.bool(false, 'Adaptive Center', group = 'Candle Coloring',
+     tooltip = 'Center the coloring on the networks running-average conviction instead of a flat midpoint.')
+paintBars   = input.bool(true, 'Enable Candle Coloring', group = 'Candle Coloring')
+bandW       = input.int(20, 'Pane Band Width', minval = 1, maxval = 50, group = 'Candle Coloring',
+     tooltip = 'Visual reference band half-width in the pane.')
+
+// ~~ Display
+sigSmooth = input.int(3, 'Conviction Smoothing', minval = 1, group = 'Display')
+showTable = input.bool(true, 'Show Network Dashboard', group = 'Display')
+bgTint    = input.bool(true, 'Pane Background Tint', group = 'Display',
+     tooltip = 'Very faint regime wash behind the pane (green when bullish, red when bearish).')
+showGlow  = input.bool(true, 'Conviction Line Glow', group = 'Display')
+neutralCandleCol = input.color(color.new(color.gray, 35), 'Neutral', group = 'Display')
+upCol = input.color(#26a69a, 'Bullish (Up)',   inline = 'c', group = 'Display')
+dnCol = input.color(#ef5350, 'Bearish (Down)', inline = 'c', group = 'Display')
+
+// ~~ TYPES ====================================================================
+type Net
+    matrix<float> W1
+    array<float>  b1
+    matrix<float> W2
+    array<float>  b2
+    // Adam first/second moments (mirror the weights)
+    matrix<float> mW1
+    matrix<float> vW1
+    array<float>  mb1
+    array<float>  vb1
+    matrix<float> mW2
+    matrix<float> vW2
+    array<float>  mb2
+    array<float>  vb2
+    int t
+    // feature standardization
+    array<float> mu
+    array<float> vr
+    // metrics
+    float acc
+    int n
+
+// ~~ MATH HELPERS =============================================================
+f_tanh(float x) =>
+    xx = math.max(-20.0, math.min(20.0, x))
+    e  = math.exp(2.0 * xx)
+    (e - 1.0) / (e + 1.0)
+
+allFinite(array<float> a) =>
+    bool ok = true
+    for j = 0 to a.size() - 1
+        if na(array.get(a, j))
+            ok := false
+    ok
+
+subN(array<float> r, int n) =>
+    o = array.new<float>(n, 0.0)
+    for j = 0 to n - 1
+        array.set(o, j, array.get(r, j))
+    o
+
+argmaxArr(array<float> p) =>
+    int bi = 0
+    float bv = array.get(p, 0)
+    for c = 1 to p.size() - 1
+        if array.get(p, c) > bv
+            bv := array.get(p, c)
+            bi := c
+    bi
+
+// ~~ NETWORK METHODS ==========================================================
+// Glorot-style random init with per-weight seeds (reproducible, breaks symmetry).
+method initWeights(Net net) =>
+    s1 = math.sqrt(1.0 / NF)
+    s2 = math.sqrt(1.0 / nh)
+    for h = 0 to nh - 1
+        for j = 0 to NF - 1
+            matrix.set(net.W1, h, j, (math.random(0.0, 1.0, h * NF + j + 1) * 2.0 - 1.0) * s1)
+    for c = 0 to NC - 1
+        for h = 0 to nh - 1
+            matrix.set(net.W2, c, h, (math.random(0.0, 1.0, 9000 + c * nh + h) * 2.0 - 1.0) * s2)
+
+// Standardize a raw feature vector with running stats.
+method znorm(Net net, array<float> raw) =>
+    out = array.new<float>(raw.size(), 0.0)
+    for j = 0 to raw.size() - 1
+        s = math.sqrt(array.get(net.vr, j) + 1e-9)
+        array.set(out, j, (array.get(raw, j) - array.get(net.mu, j)) / s)
+    out
+
+// Update running mean/variance (skip na so warm-up never poisons stats).
+method observe(Net net, array<float> raw, float a) =>
+    for j = 0 to raw.size() - 1
+        v = array.get(raw, j)
+        if not na(v)
+            d = v - array.get(net.mu, j)
+            array.set(net.mu, j, array.get(net.mu, j) + a * d)
+            array.set(net.vr, j, (1.0 - a) * (array.get(net.vr, j) + a * d * d))
+
+// Forward pass -> [probabilities, hidden activations].
+method forward(Net net, array<float> x) =>
+    a1 = array.new<float>(nh, 0.0)
+    for h = 0 to nh - 1
+        z = array.get(net.b1, h)
+        for j = 0 to NF - 1
+            z := z + matrix.get(net.W1, h, j) * array.get(x, j)
+        array.set(a1, h, f_tanh(z))
+    z2 = array.new<float>(NC, 0.0)
+    mx = -1e18
+    for c = 0 to NC - 1
+        z = array.get(net.b2, c)
+        for h = 0 to nh - 1
+            z := z + matrix.get(net.W2, c, h) * array.get(a1, h)
+        array.set(z2, c, z)
+        mx := math.max(mx, z)
+    p  = array.new<float>(NC, 0.0)
+    sm = 0.0
+    for c = 0 to NC - 1
+        e = math.exp(array.get(z2, c) - mx)
+        array.set(p, c, e)
+        sm := sm + e
+    for c = 0 to NC - 1
+        array.set(p, c, array.get(p, c) / sm)
+    [p, a1]
+
+// One full backprop + Adam step on a standardized sample with integer label.
+method trainOne(Net net, array<float> x, int cls) =>
+    [p, a1] = net.forward(x)
+    net.t := net.t + 1
+    bc1 = 1.0 - math.pow(beta1, net.t)
+    bc2 = 1.0 - math.pow(beta2, net.t)
+
+    // output-layer error: softmax + cross-entropy -> (p - y)
+    d2 = array.new<float>(NC, 0.0)
+    for c = 0 to NC - 1
+        y = c == cls ? 1.0 : 0.0
+        array.set(d2, c, array.get(p, c) - y)
+
+    // hidden-layer error: (W2ᵀ d2) ⊙ tanh'
+    d1 = array.new<float>(nh, 0.0)
+    for h = 0 to nh - 1
+        s = 0.0
+        for c = 0 to NC - 1
+            s := s + array.get(d2, c) * matrix.get(net.W2, c, h)
+        ah = array.get(a1, h)
+        array.set(d1, h, s * (1.0 - ah * ah))
+
+    // --- Adam update: output layer W2, b2 ---
+    for c = 0 to NC - 1
+        for h = 0 to nh - 1
+            g  = array.get(d2, c) * array.get(a1, h) + l2 * matrix.get(net.W2, c, h)
+            m  = beta1 * matrix.get(net.mW2, c, h) + (1.0 - beta1) * g
+            v  = beta2 * matrix.get(net.vW2, c, h) + (1.0 - beta2) * g * g
+            matrix.set(net.mW2, c, h, m)
+            matrix.set(net.vW2, c, h, v)
+            matrix.set(net.W2, c, h, matrix.get(net.W2, c, h) - lr * (m / bc1) / (math.sqrt(v / bc2) + 1e-8))
+        gb = array.get(d2, c)
+        mb = beta1 * array.get(net.mb2, c) + (1.0 - beta1) * gb
+        vb = beta2 * array.get(net.vb2, c) + (1.0 - beta2) * gb * gb
+        array.set(net.mb2, c, mb)
+        array.set(net.vb2, c, vb)
+        array.set(net.b2, c, array.get(net.b2, c) - lr * (mb / bc1) / (math.sqrt(vb / bc2) + 1e-8))
+
+    // --- Adam update: hidden layer W1, b1 ---
+    for h = 0 to nh - 1
+        for j = 0 to NF - 1
+            g  = array.get(d1, h) * array.get(x, j) + l2 * matrix.get(net.W1, h, j)
+            m  = beta1 * matrix.get(net.mW1, h, j) + (1.0 - beta1) * g
+            v  = beta2 * matrix.get(net.vW1, h, j) + (1.0 - beta2) * g * g
+            matrix.set(net.mW1, h, j, m)
+            matrix.set(net.vW1, h, j, v)
+            matrix.set(net.W1, h, j, matrix.get(net.W1, h, j) - lr * (m / bc1) / (math.sqrt(v / bc2) + 1e-8))
+        gb = array.get(d1, h)
+        mb = beta1 * array.get(net.mb1, h) + (1.0 - beta1) * gb
+        vb = beta2 * array.get(net.vb1, h) + (1.0 - beta2) * gb * gb
+        array.set(net.mb1, h, mb)
+        array.set(net.vb1, h, vb)
+        array.set(net.b1, h, array.get(net.b1, h) - lr * (mb / bc1) / (math.sqrt(vb / bc2) + 1e-8))
+
+// ~~ FEATURE ENGINE (RSI-native + context) ====================================
+rsi     = ta.rsi(src, rsiLen)
+rsiFast = ta.rsi(src, math.max(2, math.round(rsiLen / 2)))
+rsiSlow = ta.rsi(src, rsiLen * 2)
+atr     = ta.atr(atrLen)
+inv     = atr > 0 ? 1.0 / atr : 0.0
+step    = 3
+winLen  = 100
+
+// Higher-timeframe RSI (non-repaint on confirmed HTF bars).
+htfRsiFn() => ta.rsi(close, rsiLen)
+hRsi = request.security(syminfo.tickerid, htfTf, htfRsiFn(), lookahead = barmerge.lookahead_off)
+
+// Trend context.
+longEma = ta.ema(src, trendLen)
+[diP, diM, adxV] = ta.dmi(adxLen, adxLen)
+
+f0 = (rsi - 50.0) / 50.0                                                      // RSI level (centered)
+f1 = (rsi - rsi[step]) / 10.0                                                 // RSI slope
+f2 = ((rsi - rsi[step]) - (rsi[step] - rsi[2 * step])) / 10.0                 // RSI acceleration
+f3 = (rsiFast - rsiSlow) / 50.0                                              // fast/slow spread
+f4 = ta.percentrank(rsi, winLen) / 100.0 - 0.5                               // RSI percentile
+f5 = ta.stdev(rsi, 14) / 20.0                                                // RSI volatility
+f6 = (hRsi - 50.0) / 50.0                                                     // HTF RSI level
+f7 = (src - longEma) * inv                                                   // price vs trend EMA (TREND CONTEXT)
+f8 = adxV                                                                     // trend strength
+f9 = ta.percentrank(atr, 100) / 100.0 - 0.5                                  // volatility regime
+
+liveRaw = array.from(f0, f1, f2, f3, f4, f5, f6, f7, f8, f9)
+pastRaw = array.from(f0[horizon], f1[horizon], f2[horizon], f3[horizon], f4[horizon],
+     f5[horizon], f6[horizon], f7[horizon], f8[horizon], f9[horizon])
+
+// Forward move -> 3-class label (0 down, 1 neutral, 2 up).
+fwd = src - src[horizon]
+thr = lblFactor * atr[horizon]
+int cls = fwd > thr ? 2 : fwd < -thr ? 0 : 1
+
+validPast = bar_index > horizon + 130 and allFinite(pastRaw)
+
+// ~~ STATE & INIT =============================================================
+var Net net = Net.new(
+     matrix.new<float>(nh, NF, 0.0), array.new<float>(nh, 0.0),
+     matrix.new<float>(NC, nh, 0.0), array.new<float>(NC, 0.0),
+     matrix.new<float>(nh, NF, 0.0), matrix.new<float>(nh, NF, 0.0),
+     array.new<float>(nh, 0.0), array.new<float>(nh, 0.0),
+     matrix.new<float>(NC, nh, 0.0), matrix.new<float>(NC, nh, 0.0),
+     array.new<float>(NC, 0.0), array.new<float>(NC, 0.0),
+     0,
+     array.new<float>(NF, 0.0), array.new<float>(NF, 1.0),
+     0.0, 0)
+var matrix<float> bank = matrix.new<float>(0, NF + 1)
+
+if barstate.isfirst
+    net.initWeights()
+
+aStat    = 2.0 / (statLen + 1)
+accAlpha = 0.01
+
+// ~~ ONLINE TRAINING ==========================================================
+if barstate.isconfirmed
+    net.observe(liveRaw, aStat)
+
+    if validPast
+        net.n := net.n + 1
+        // prequential (out-of-sample) accuracy: test BEFORE learning
+        zEval = net.znorm(pastRaw)
+        [pe, _a] = net.forward(zEval)
+        hit = argmaxArr(pe) == cls ? 1.0 : 0.0
+        net.acc := net.acc + accAlpha * (hit - net.acc)
+
+        row = array.from(array.get(pastRaw, 0), array.get(pastRaw, 1), array.get(pastRaw, 2),
+             array.get(pastRaw, 3), array.get(pastRaw, 4), array.get(pastRaw, 5), array.get(pastRaw, 6),
+             array.get(pastRaw, 7), array.get(pastRaw, 8), array.get(pastRaw, 9), float(cls))
+        bank.add_row(0, row)
+        if bank.rows() > bufCap
+            bank.remove_row(bank.rows() - 1)
+
+    rows = bank.rows()
+    if rows >= 40
+        take = math.min(batchSize, rows)
+        for e = 1 to epochs
+            for i = 0 to take - 1
+                r  = bank.row(i)
+                zx = net.znorm(subN(r, NF))
+                net.trainOne(zx, int(r.get(NF)))
+
+// ~~ LIVE PREDICTION ==========================================================
+zLive = net.znorm(liveRaw)
+[pNow, _aNow] = net.forward(zLive)
+pDown = array.get(pNow, 0)
+pNeut = array.get(pNow, 1)
+pUp   = array.get(pNow, 2)
+
+// Signed conviction mapped to 0..100 (50 = neutral). Neutral class pulls to 50.
+score   = pUp - pDown
+probPct = 50.0 + 50.0 * score
+probSmooth = ta.ema(probPct, sigSmooth)
+
+// ~~ CANDLE COLORING ENGINE ===================================================
+var float probMean = 50.0
+if barstate.isconfirmed and not na(probPct)
+    probMean := probMean + 0.01 * (probPct - probMean)
+center = useAdaptive ? probMean : 50.0
+
+warmed    = net.n >= warmSamples and not na(probPct)
+dev       = probPct - center
+inNeutral = math.abs(dev) < neutralZone
+candleDir = inNeutral ? 0 : dev > 0 ? 1 : -1
+
+color candleCol = na
+if warmed and paintBars
+    if colorStyle == 'Discrete'
+        candleCol := candleDir == 1 ? upCol : candleDir == -1 ? dnCol : neutralCandleCol
+    else if inNeutral
+        candleCol := neutralCandleCol
+    else if dev > 0
+        candleCol := color.from_gradient(probPct, center + neutralZone, center + gradeSpan, neutralCandleCol, upCol)
+    else
+        candleCol := color.from_gradient(probPct, center - gradeSpan, center - neutralZone, dnCol, neutralCandleCol)
+
+plotcandle(open, high, low, close, 'ML Candles', color = candleCol, wickcolor = candleCol, bordercolor = candleCol, force_overlay = true)
+
+// ~~ VISUALIZATION (oscillator pane) ==========================================
+// Line color stays neutral near the center and saturates toward up/down,
+// so it never goes muddy in the middle.
+probCol = probPct >= center ? color.from_gradient(probPct, center, center + bandW, neutralCandleCol, upCol) : color.from_gradient(probPct, center - bandW, center, dnCol, neutralCandleCol)
+
+// Faint regime wash behind everything.
+bgcolor(bgTint and warmed and candleDir != 0 ? color.new(candleDir == 1 ? upCol : dnCol, 93) : na, title = 'Regime Tint')
+
+// Fixed baseline + soft strong-conviction guides.
+hline(50, 'Baseline', color = color.new(color.gray, 45), linestyle = hline.style_solid)
+
+basePlot = plot(50, 'Mid', display = display.none, editable = false)
+
+// Neutral-zone shading (follows the active center) — mirrors where candles go gray.
+nzUp = plot(center + neutralZone, 'NZ Up', color = na, display = display.none, editable = false)
+nzDn = plot(center - neutralZone, 'NZ Dn', color = na, display = display.none, editable = false)
+fill(nzUp, nzDn, color = color.new(color.gray, 88), title = 'Neutral Zone')
+
+// Reference band edges (follow center) — subtle.
+plot(center + bandW, 'Upper Guide', color = color.new(color.gray, 82), linewidth = 1)
+plot(center - bandW, 'Lower Guide', color = color.new(color.gray, 82), linewidth = 1)
+plot(useAdaptive ? center : na, 'Center', color = color.new(color.gray, 55), linewidth = 1)
+
+// Smooth gradient fills from the conviction line down to the baseline.
+convGlow = plot(showGlow ? probPct : na, 'Glow', color = color.new(probCol, 80), linewidth = 6, editable = false)
+convP    = plot(probPct, 'Conviction', color = probCol, linewidth = 2)
+plot(probSmooth, 'Smoothed', color = color.new(color.gray, 35), linewidth = 1)
+
+fill(convP, basePlot, 100, 50, top_color = color.new(upCol, 38), bottom_color = color.new(upCol, 100), title = 'Bull Fill')
+fill(convP, basePlot, 50, 0,  top_color = color.new(dnCol, 100), bottom_color = color.new(dnCol, 38), title = 'Bear Fill')
+
+// ~~ NETWORK DASHBOARD ========================================================
+var table dash = table.new(position.top_right, 2, 19, frame_color = color.new(color.gray, 50), frame_width = 1)
+if showTable and barstate.islast
+    fname = array.from('RSI', 'RSI slope', 'RSI accel', 'Fast/Slow', 'RSI %ile',
+         'RSI vol', 'HTF RSI', 'Px vs EMA', 'Trend (ADX)', 'Vol %ile')
+
+    table.cell(dash, 0, 0, 'RSI Neural Engine', text_color = color.white, bgcolor = color.new(color.blue, 30), text_size = size.small)
+    table.cell(dash, 1, 0, str.tostring(NF) + '-' + str.tostring(nh) + '-' + str.tostring(NC), text_color = color.white, bgcolor = color.new(color.blue, 30), text_size = size.small)
+
+    table.cell(dash, 0, 1, 'P(up)',      text_color = color.gray, text_size = size.tiny)
+    table.cell(dash, 1, 1, str.tostring(pUp * 100, '#.0') + '%',   text_color = upCol, text_size = size.tiny)
+    table.cell(dash, 0, 2, 'P(neutral)', text_color = color.gray, text_size = size.tiny)
+    table.cell(dash, 1, 2, str.tostring(pNeut * 100, '#.0') + '%', text_color = color.gray, text_size = size.tiny)
+    table.cell(dash, 0, 3, 'P(down)',    text_color = color.gray, text_size = size.tiny)
+    table.cell(dash, 1, 3, str.tostring(pDown * 100, '#.0') + '%', text_color = dnCol, text_size = size.tiny)
+    table.cell(dash, 0, 4, 'Conviction', text_color = color.gray, text_size = size.tiny)
+    table.cell(dash, 1, 4, str.tostring(math.abs(score) * 100, '#') + '%', text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 0, 5, 'Live accuracy', text_color = color.gray, text_size = size.tiny)
+    table.cell(dash, 1, 5, str.tostring(net.acc * 100, '#.0') + '%', text_color = net.acc >= 0.5 ? upCol : color.gray, text_size = size.tiny)
+    table.cell(dash, 0, 6, 'Samples', text_color = color.gray, text_size = size.tiny)
+    table.cell(dash, 1, 6, str.tostring(net.n), text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 0, 7, '— input influence —', text_color = color.new(color.gray, 30), text_size = size.tiny)
+    table.cell(dash, 1, 7, '', text_size = size.tiny)
+
+    // Input influence ≈ sum over hidden units of |W1[h][j]| (saliency proxy).
+    float maxInf = 0.0
+    influence = array.new<float>(NF, 0.0)
+    for j = 0 to NF - 1
+        s = 0.0
+        for h = 0 to nh - 1
+            s := s + math.abs(matrix.get(net.W1, h, j))
+        array.set(influence, j, s)
+        maxInf := math.max(maxInf, s)
+    for j = 0 to NF - 1
+        rel = maxInf > 0 ? array.get(influence, j) / maxInf : 0.0
+        table.cell(dash, 0, 8 + j, array.get(fname, j), text_color = color.gray, text_size = size.tiny)
+        table.cell(dash, 1, 8 + j, str.tostring(rel * 100, '#') + '%', text_color = color.from_gradient(rel, 0, 1, color.gray, color.white), text_size = size.tiny)
+
+// ~~ ALERTS (conviction flips) ===============================================
+flipGreen = candleDir == 1  and candleDir[1] != 1
+flipRed   = candleDir == -1 and candleDir[1] != -1
+alertcondition(flipGreen, 'Turned Bullish', 'RSI Neural Engine: turned bullish.')
+alertcondition(flipRed,   'Turned Bearish', 'RSI Neural Engine: turned bearish.')
+
+if barstate.isconfirmed and flipGreen
+    alert('▲ Bullish | ' + syminfo.ticker + ' (' + timeframe.period + ') conv ' + str.tostring(math.abs(score) * 100, '#') + '% acc ' + str.tostring(net.acc * 100, '#') + '%', alert.freq_once_per_bar_close)
+if barstate.isconfirmed and flipRed
+    alert('▼ Bearish | ' + syminfo.ticker + ' (' + timeframe.period + ') conv ' + str.tostring(math.abs(score) * 100, '#') + '% acc ' + str.tostring(net.acc * 100, '#') + '%', alert.freq_once_per_bar_close)

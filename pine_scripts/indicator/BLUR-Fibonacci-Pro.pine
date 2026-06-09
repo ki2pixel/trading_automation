@@ -1,0 +1,224 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © zakariasafri47
+//@version=6
+indicator(title='BLUR Fibonacci Pro', shorttitle='BLUR Fib', overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ========================================
+// SETTINGS
+// ========================================
+showPivotFib = input.bool(true, "Show Pivot Fib Levels", group="Pivot Fibonacci Settings")
+pivotLookback = input.int(20, "Pivot Lookback Length", minval=5, maxval=100, group="Pivot Fibonacci Settings")
+showFibLabels = input.bool(true, "Show Fib Labels", group="Pivot Fibonacci Settings")
+extendLines = input.bool(true, "Extend Lines", group="Pivot Fibonacci Settings")
+labelOffset = input.int(10, "Label Offset", minval=1, maxval=50, group="Pivot Fibonacci Settings")
+
+showMinorLevels = input.bool(true, "Show Minor Levels", group="Pivot Fibonacci Settings")
+showExtensionLevels = input.bool(true, "Show Extension Levels", group="Pivot Fibonacci Settings")
+showNegativeLevels = input.bool(true, "Show Negative Levels", group="Pivot Fibonacci Settings")
+showPivotMarkers = input.bool(true, "Show Pivot Markers", group="Pivot Fibonacci Settings")
+
+// Theme Settings
+theme = input.string("Night", "Color Theme", options=["Day", "Night"], group="General Settings")
+isDay = theme == "Day"
+
+// ========================================
+// COLORS BY THEME
+// ========================================
+fib0Color        = isDay ? color.rgb(80, 80, 80)     : color.rgb(128, 128, 128)
+fib236Color      = isDay ? color.rgb(255, 120, 0)    : color.rgb(255, 140, 0)
+fib382Color      = isDay ? color.rgb(230, 200, 0)    : color.rgb(255, 215, 0)
+fib500Color      = isDay ? color.rgb(0, 100, 0)      : color.rgb(0, 128, 0)
+fib618Color      = isDay ? color.rgb(220, 0, 0)      : color.rgb(255, 0, 0)
+fib786Color      = isDay ? color.rgb(100, 0, 100)    : color.rgb(128, 0, 128)
+fib1000Color     = isDay ? color.rgb(0, 0, 220)      : color.rgb(0, 0, 255)
+
+fib114Color      = isDay ? color.rgb(120, 120, 120)  : color.rgb(169, 169, 169)
+fib272Color      = isDay ? color.rgb(230, 140, 50)   : color.rgb(255, 165, 79)
+fib414Color      = isDay ? color.rgb(230, 200, 80)   : color.rgb(255, 228, 122)
+fib707Color      = isDay ? color.rgb(110, 80, 190)   : color.rgb(147, 112, 219)
+fib886Color      = isDay ? color.rgb(150, 60, 180)   : color.rgb(186, 85, 211)
+
+fib1618Color     = isDay ? color.rgb(220, 50, 0)     : color.rgb(255, 69, 0)
+fib2000Color     = isDay ? color.rgb(190, 10, 40)    : color.rgb(220, 20, 60)
+fib2618Color     = isDay ? color.rgb(120, 0, 0)      : color.rgb(139, 0, 0)
+
+fibNeg272Color   = isDay ? color.rgb(0, 160, 220)    : color.rgb(0, 191, 255)
+fibNeg618Color   = isDay ? color.rgb(20, 110, 220)   : color.rgb(30, 144, 255)
+fibNeg1000Color  = isDay ? color.rgb(0, 0, 110)      : color.rgb(0, 0, 139)
+fibNeg1618Color  = isDay ? color.rgb(20, 20, 90)     : color.rgb(25, 25, 112)
+
+// ========================================
+// PIVOT DETECTION
+// ========================================
+pivotHigh = ta.pivothigh(high, pivotLookback, pivotLookback)
+pivotLow = ta.pivotlow(low, pivotLookback, pivotLookback)
+
+var float lastPivotHigh = na
+var float lastPivotLow = na
+var int lastPivotHighBar = na
+var int lastPivotLowBar = na
+
+// ========================================
+// LINE & LABEL VARIABLES
+// ========================================
+var line line0 = na, var line line236 = na, var line line382 = na, var line line500 = na, var line line618 = na, var line line786 = na, var line line1000 = na
+var label label0 = na, var label label236 = na, var label label382 = na, var label label500 = na, var label label618 = na, var label label786 = na, var label label1000 = na
+
+var line line114 = na, var line line272 = na, var line line414 = na, var line line707 = na, var line line886 = na
+var label label114 = na, var label label272 = na, var label label414 = na, var label label707 = na, var label label886 = na
+
+var line line1618 = na, var line line2000 = na, var line line2618 = na
+var label label1618 = na, var label label2000 = na, var label label2618 = na
+
+var line lineNeg272 = na, var line lineNeg618 = na, var line lineNeg1000 = na, var line lineNeg1618 = na
+var label labelNeg272 = na, var label labelNeg618 = na, var label labelNeg1000 = na, var label labelNeg1618 = na
+
+// ========================================
+// UPDATE PIVOTS
+// ========================================
+if not na(pivotHigh)
+    lastPivotHigh := pivotHigh
+    lastPivotHighBar := bar_index - pivotLookback
+if not na(pivotLow)
+    lastPivotLow := pivotLow
+    lastPivotLowBar := bar_index - pivotLookback
+
+// ========================================
+// FIBONACCI CALCULATIONS
+// ========================================
+fibRange = lastPivotHigh - lastPivotLow
+
+fib0 = lastPivotLow
+fib114 = lastPivotLow + fibRange * 0.114
+fib236 = lastPivotLow + fibRange * 0.236
+fib272 = lastPivotLow + fibRange * 0.272
+fib382 = lastPivotLow + fibRange * 0.382
+fib414 = lastPivotLow + fibRange * 0.414
+fib500 = lastPivotLow + fibRange * 0.500
+fib618 = lastPivotLow + fibRange * 0.618
+fib707 = lastPivotLow + fibRange * 0.707
+fib786 = lastPivotLow + fibRange * 0.786
+fib886 = lastPivotLow + fibRange * 0.886
+fib1000 = lastPivotHigh
+fib1618 = lastPivotLow + fibRange * 1.618
+fib2000 = lastPivotLow + fibRange * 2.000
+fib2618 = lastPivotLow + fibRange * 2.618
+
+fibNeg272 = lastPivotLow - fibRange * 0.272
+fibNeg618 = lastPivotLow - fibRange * 0.618
+fibNeg1000 = lastPivotLow - fibRange * 1.000
+fibNeg1618 = lastPivotLow - fibRange * 1.618
+
+// ========================================
+// DELETE OLD LINES & LABELS
+// ========================================
+if not na(line0)
+    line.delete(line0), line.delete(line236), line.delete(line382), line.delete(line500), line.delete(line618), line.delete(line786), line.delete(line1000)
+
+if not na(label0)
+    label.delete(label0), label.delete(label236), label.delete(label382), label.delete(label500), label.delete(label618), label.delete(label786), label.delete(label1000)
+
+if not na(line114)
+    line.delete(line114), line.delete(line272), line.delete(line414), line.delete(line707), line.delete(line886)
+
+if not na(label114)
+    label.delete(label114), label.delete(label272), label.delete(label414), label.delete(label707), label.delete(label886)
+
+if not na(line1618)
+    line.delete(line1618), line.delete(line2000), line.delete(line2618)
+
+if not na(label1618)
+    label.delete(label1618), label.delete(label2000), label.delete(label2618)
+
+if not na(lineNeg272)
+    line.delete(lineNeg272), line.delete(lineNeg618), line.delete(lineNeg1000), line.delete(lineNeg1618)
+
+if not na(labelNeg272)
+    label.delete(labelNeg272), label.delete(labelNeg618), label.delete(labelNeg1000), label.delete(labelNeg1618)
+
+// ========================================
+// DRAW FIBONACCI LEVELS
+// ========================================
+if showPivotFib and not na(lastPivotHigh) and not na(lastPivotLow)
+    lineExtend = extendLines ? extend.right : extend.none
+    startBar = math.min(lastPivotLowBar, lastPivotHighBar)
+    
+    // Main Fibonacci Levels
+    line0 := line.new(startBar, fib0, bar_index, fib0, color=fib0Color, style=line.style_solid, width=2, extend=lineExtend)
+    line236 := line.new(startBar, fib236, bar_index, fib236, color=fib236Color, style=line.style_dotted, width=1, extend=lineExtend)
+    line382 := line.new(startBar, fib382, bar_index, fib382, color=fib382Color, style=line.style_dotted, width=1, extend=lineExtend)
+    line500 := line.new(startBar, fib500, bar_index, fib500, color=fib500Color, style=line.style_solid, width=2, extend=lineExtend)
+    line618 := line.new(startBar, fib618, bar_index, fib618, color=fib618Color, style=line.style_dotted, width=1, extend=lineExtend)
+    line786 := line.new(startBar, fib786, bar_index, fib786, color=fib786Color, style=line.style_dotted, width=1, extend=lineExtend)
+    line1000 := line.new(startBar, fib1000, bar_index, fib1000, color=fib1000Color, style=line.style_solid, width=2, extend=lineExtend)
+    
+    // Minor Levels
+    if showMinorLevels
+        line114 := line.new(startBar, fib114, bar_index, fib114, color=fib114Color, style=line.style_dashed, width=1, extend=lineExtend)
+        line272 := line.new(startBar, fib272, bar_index, fib272, color=fib272Color, style=line.style_dashed, width=1, extend=lineExtend)
+        line414 := line.new(startBar, fib414, bar_index, fib414, color=fib414Color, style=line.style_dashed, width=1, extend=lineExtend)
+        line707 := line.new(startBar, fib707, bar_index, fib707, color=fib707Color, style=line.style_dashed, width=1, extend=lineExtend)
+        line886 := line.new(startBar, fib886, bar_index, fib886, color=fib886Color, style=line.style_dashed, width=1, extend=lineExtend)
+    
+    // Extension Levels
+    if showExtensionLevels
+        line1618 := line.new(startBar, fib1618, bar_index, fib1618, color=fib1618Color, style=line.style_solid, width=2, extend=lineExtend)
+        line2000 := line.new(startBar, fib2000, bar_index, fib2000, color=fib2000Color, style=line.style_dotted, width=2, extend=lineExtend)
+        line2618 := line.new(startBar, fib2618, bar_index, fib2618, color=fib2618Color, style=line.style_dotted, width=2, extend=lineExtend)
+    
+    // Negative Extension Levels
+    if showNegativeLevels
+        lineNeg272 := line.new(startBar, fibNeg272, bar_index, fibNeg272, color=fibNeg272Color, style=line.style_solid, width=1, extend=lineExtend)
+        lineNeg618 := line.new(startBar, fibNeg618, bar_index, fibNeg618, color=fibNeg618Color, style=line.style_dotted, width=2, extend=lineExtend)
+        lineNeg1000 := line.new(startBar, fibNeg1000, bar_index, fibNeg1000, color=fibNeg1000Color, style=line.style_solid, width=2, extend=lineExtend)
+        lineNeg1618 := line.new(startBar, fibNeg1618, bar_index, fibNeg1618, color=fibNeg1618Color, style=line.style_dotted, width=2, extend=lineExtend)
+    
+    // Labels
+    if showFibLabels
+        labelPos = bar_index + labelOffset
+        
+        // Main Labels
+        label0 := label.new(labelPos, fib0, "0%\n" + str.tostring(fib0, format.mintick), color=color.new(fib0Color, 100), textcolor=fib0Color, style=label.style_label_left, size=size.small)
+        label236 := label.new(labelPos, fib236, "23.6%\n" + str.tostring(fib236, format.mintick), color=color.new(fib236Color, 100), textcolor=fib236Color, style=label.style_label_left, size=size.small)
+        label382 := label.new(labelPos, fib382, "38.2%\n" + str.tostring(fib382, format.mintick), color=color.new(fib382Color, 100), textcolor=fib382Color, style=label.style_label_left, size=size.small)
+        label500 := label.new(labelPos, fib500, "50%\n" + str.tostring(fib500, format.mintick), color=color.new(fib500Color, 100), textcolor=fib500Color, style=label.style_label_left, size=size.small)
+        label618 := label.new(labelPos, fib618, "61.8%\n" + str.tostring(fib618, format.mintick), color=color.new(fib618Color, 100), textcolor=fib618Color, style=label.style_label_left, size=size.small)
+        label786 := label.new(labelPos, fib786, "78.6%\n" + str.tostring(fib786, format.mintick), color=color.new(fib786Color, 100), textcolor=fib786Color, style=label.style_label_left, size=size.small)
+        label1000 := label.new(labelPos, fib1000, "100%\n" + str.tostring(fib1000, format.mintick), color=color.new(fib1000Color, 100), textcolor=fib1000Color, style=label.style_label_left, size=size.small)
+        
+        // Minor Labels
+        if showMinorLevels
+            label114 := label.new(labelPos, fib114, "11.4%\n" + str.tostring(fib114, format.mintick), color=color.new(fib114Color, 100), textcolor=fib114Color, style=label.style_label_left, size=size.tiny)
+            label272 := label.new(labelPos, fib272, "27.2%\n" + str.tostring(fib272, format.mintick), color=color.new(fib272Color, 100), textcolor=fib272Color, style=label.style_label_left, size=size.tiny)
+            label414 := label.new(labelPos, fib414, "41.4%\n" + str.tostring(fib414, format.mintick), color=color.new(fib414Color, 100), textcolor=fib414Color, style=label.style_label_left, size=size.tiny)
+            label707 := label.new(labelPos, fib707, "70.7%\n" + str.tostring(fib707, format.mintick), color=color.new(fib707Color, 100), textcolor=fib707Color, style=label.style_label_left, size=size.tiny)
+            label886 := label.new(labelPos, fib886, "88.6%\n" + str.tostring(fib886, format.mintick), color=color.new(fib886Color, 100), textcolor=fib886Color, style=label.style_label_left, size=size.tiny)
+        
+        // Extension Labels
+        if showExtensionLevels
+            label1618 := label.new(labelPos, fib1618, "161.8%\n" + str.tostring(fib1618, format.mintick), color=color.new(fib1618Color, 100), textcolor=fib1618Color, style=label.style_label_left, size=size.small)
+            label2000 := label.new(labelPos, fib2000, "200%\n" + str.tostring(fib2000, format.mintick), color=color.new(fib2000Color, 100), textcolor=fib2000Color, style=label.style_label_left, size=size.small)
+            label2618 := label.new(labelPos, fib2618, "261.8%\n" + str.tostring(fib2618, format.mintick), color=color.new(fib2618Color, 100), textcolor=fib2618Color, style=label.style_label_left, size=size.small)
+        
+        // Negative Labels
+        if showNegativeLevels
+            labelNeg272 := label.new(labelPos, fibNeg272, "-27.2%\n" + str.tostring(fibNeg272, format.mintick), color=color.new(fibNeg272Color, 100), textcolor=fibNeg272Color, style=label.style_label_left, size=size.small)
+            labelNeg618 := label.new(labelPos, fibNeg618, "-61.8%\n" + str.tostring(fibNeg618, format.mintick), color=color.new(fibNeg618Color, 100), textcolor=fibNeg618Color, style=label.style_label_left, size=size.small)
+            labelNeg1000 := label.new(labelPos, fibNeg1000, "-100%\n" + str.tostring(fibNeg1000, format.mintick), color=color.new(fibNeg1000Color, 100), textcolor=fibNeg1000Color, style=label.style_label_left, size=size.small)
+            labelNeg1618 := label.new(labelPos, fibNeg1618, "-161.8%\n" + str.tostring(fibNeg1618, format.mintick), color=color.new(fibNeg1618Color, 100), textcolor=fibNeg1618Color, style=label.style_label_left, size=size.small)
+
+// ========================================
+// PIVOT MARKERS
+// ========================================
+plotshape(showPivotMarkers ? pivotHigh : na, title="Pivot High", style=shape.triangledown, location=location.abovebar, color=color.rgb(255, 0, 0), size=size.tiny, offset=-pivotLookback)
+plotshape(showPivotMarkers ? pivotLow : na, title="Pivot Low", style=shape.triangleup, location=location.belowbar, color=color.rgb(0, 255, 0), size=size.tiny, offset=-pivotLookback)
+
+// ========================================
+// ALERTS
+// ========================================
+alertcondition(ta.crossover(close, fib500), title="Cross Above 50%", message="Price crossed above 50% Fibonacci level")
+alertcondition(ta.crossunder(close, fib500), title="Cross Below 50%", message="Price crossed below 50% Fibonacci level")
+alertcondition(ta.crossover(close, fib618), title="Cross Above 61.8%", message="Price crossed above 61.8% Fibonacci level")
+alertcondition(ta.crossunder(close, fib618), title="Cross Below 61.8%", message="Price crossed below 61.8% Fibonacci level")
+alertcondition(ta.crossover(close, fib1000), title="Cross Above 100%", message="Price broke above 100% level (Pivot High)")
+alertcondition(ta.crossunder(close, fib0), title="Cross Below 0%", message="Price broke below 0% level (Pivot Low)")

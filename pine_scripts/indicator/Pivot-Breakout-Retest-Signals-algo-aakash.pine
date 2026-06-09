@@ -1,0 +1,188 @@
+//@version=6
+indicator("Pivot Breakout Retest Signals", overlay=true)
+
+// =====================================================
+// USER SETTINGS
+// =====================================================
+pivotTimeframe = input.string("D", "Pivot Timeframe", options=["D", "W", "M"])
+retestBars     = input.int(5, "Retest Window (Candles)", minval=1)
+
+// =====================================================
+// CLASSIC PIVOT POINT CALCULATION
+// =====================================================
+
+// Previous timeframe OHLC
+prevHigh  = request.security(syminfo.tickerid, pivotTimeframe, high[1], lookahead=barmerge.lookahead_off)
+prevLow   = request.security(syminfo.tickerid, pivotTimeframe, low[1], lookahead=barmerge.lookahead_off)
+prevClose = request.security(syminfo.tickerid, pivotTimeframe, close[1], lookahead=barmerge.lookahead_off)
+
+// Classic Pivot Formula
+pivot = (prevHigh + prevLow + prevClose) / 3
+r1 = (2 * pivot) - prevLow
+s1 = (2 * pivot) - prevHigh
+r2 = pivot + (prevHigh - prevLow)
+s2 = pivot - (prevHigh - prevLow)
+
+// =====================================================
+// PLOT PIVOT LEVELS
+// =====================================================
+
+plot(pivot, title="Pivot", color=color.yellow, linewidth=2)
+plot(r1, title="R1", color=color.green, linewidth=2)
+plot(r2, title="R2", color=color.lime, linewidth=2)
+
+plot(s1, title="S1", color=color.red, linewidth=2)
+plot(s2, title="S2", color=color.maroon, linewidth=2)
+
+// =====================================================
+// BREAKOUT + RETEST LOGIC
+// =====================================================
+
+// Detect new pivot session (v6-safe)
+bool newSession = ta.change(time(pivotTimeframe)) != 0
+
+// =====================================================
+// BULLISH SIDE
+// =====================================================
+
+breakPivotBullish = ta.crossover(close, pivot)
+breakR1Bullish    = ta.crossover(close, r1)
+breakR2Bullish    = ta.crossover(close, r2)
+
+var int pivotBreakBarBullish = na
+var int r1BreakBarBullish    = na
+var int r2BreakBarBullish    = na
+
+if newSession
+    pivotBreakBarBullish := na
+    r1BreakBarBullish := na
+    r2BreakBarBullish := na
+
+if breakPivotBullish
+    pivotBreakBarBullish := bar_index
+
+if breakR1Bullish
+    r1BreakBarBullish := bar_index
+
+if breakR2Bullish
+    r2BreakBarBullish := bar_index
+
+pivotBullishRetest =
+     not na(pivotBreakBarBullish) and
+     (bar_index - pivotBreakBarBullish <= retestBars) and
+     low <= pivot and
+     close > pivot
+
+r1BullishRetest =
+     not na(r1BreakBarBullish) and
+     (bar_index - r1BreakBarBullish <= retestBars) and
+     low <= r1 and
+     close > r1
+
+r2BullishRetest =
+     not na(r2BreakBarBullish) and
+     (bar_index - r2BreakBarBullish <= retestBars) and
+     low <= r2 and
+     close > r2
+
+bullishSignal =
+     pivotBullishRetest or
+     r1BullishRetest or
+     r2BullishRetest
+
+if bullishSignal
+    pivotBreakBarBullish := na
+    r1BreakBarBullish := na
+    r2BreakBarBullish := na
+
+// =====================================================
+// BEARISH SIDE
+// =====================================================
+
+breakPivotBearish = ta.crossunder(close, pivot)
+breakS1Bearish    = ta.crossunder(close, s1)
+breakS2Bearish    = ta.crossunder(close, s2)
+
+var int pivotBreakBarBearish = na
+var int s1BreakBarBearish    = na
+var int s2BreakBarBearish    = na
+
+if newSession
+    pivotBreakBarBearish := na
+    s1BreakBarBearish := na
+    s2BreakBarBearish := na
+
+if breakPivotBearish
+    pivotBreakBarBearish := bar_index
+
+if breakS1Bearish
+    s1BreakBarBearish := bar_index
+
+if breakS2Bearish
+    s2BreakBarBearish := bar_index
+
+pivotBearishRetest =
+     not na(pivotBreakBarBearish) and
+     (bar_index - pivotBreakBarBearish <= retestBars) and
+     high >= pivot and
+     close < pivot
+
+s1BearishRetest =
+     not na(s1BreakBarBearish) and
+     (bar_index - s1BreakBarBearish <= retestBars) and
+     high >= s1 and
+     close < s1
+
+s2BearishRetest =
+     not na(s2BreakBarBearish) and
+     (bar_index - s2BreakBarBearish <= retestBars) and
+     high >= s2 and
+     close < s2
+
+bearishSignal =
+     pivotBearishRetest or
+     s1BearishRetest or
+     s2BearishRetest
+
+if bearishSignal
+    pivotBreakBarBearish := na
+    s1BreakBarBearish := na
+    s2BreakBarBearish := na
+
+// =====================================================
+// SIGNAL PLOTS
+// =====================================================
+
+plotshape(
+     bullishSignal,
+     title="Bullish Signal",
+     location=location.belowbar,
+     color=color.green,
+     style=shape.labelup,
+     text="BULLISH",
+     textcolor=color.white,
+     size=size.small)
+
+plotshape(
+     bearishSignal,
+     title="Bearish Signal",
+     location=location.abovebar,
+     color=color.red,
+     style=shape.labeldown,
+     text="BEARISH",
+     textcolor=color.white,
+     size=size.small)
+
+// =====================================================
+// ALERT CONDITIONS
+// =====================================================
+
+alertcondition(
+     bullishSignal,
+     title="Bullish Alert",
+     message="Pivot Retest Bullish Signal")
+
+alertcondition(
+     bearishSignal,
+     title="Bearish Alert",
+     message="Pivot Retest Bearish Signal")

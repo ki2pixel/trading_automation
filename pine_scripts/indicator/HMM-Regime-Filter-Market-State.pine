@@ -1,0 +1,189 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TheRealDrip2Rip
+
+//@version=6
+// =============================================================================
+//  HMM REGIME FILTER  |  3-State Market State (Trend Up / Range / Trend Down)
+//
+//  A genuine Hidden Markov Model. It assumes the market is always in one of
+//  three hidden states and infers, every bar, the probability of each by
+//  Bayesian forward filtering:
+//      prior_j = sum_i  posterior_prev[i] * A[i][j]      (transition)
+//      post_j  ∝ prior_j * Gaussian(obs | mean_j, std_j) (evidence)
+//  The transition matrix A is the key to stability. Its diagonal (the
+//  "stickiness") is the probability of STAYING in the current state, so a high
+//  value forces the model to demand consistent evidence before it switches.
+//  That, plus a confirmation rule and a dominance threshold, is what keeps it
+//  from flickering bar to bar on fast timeframes.
+//
+//  HONEST NOTE: regimes are DESCRIPTIVE, not predictive. This tells you what
+//  state you are most likely in, not what happens next. Use it as a context
+//  layer (when to trust a trend tool vs a mean-reversion tool), not a trigger.
+//  Calmer settings look more trustworthy but report changes later; that lag is
+//  the honest cost of stability, not a bug.
+// =============================================================================
+
+indicator("HMM Regime Filter | Market State", overlay = false, precision = 0, max_labels_count = 20)
+
+// ~~ INPUTS ===================================================================
+obsLen    = input.int(4, "Observation smoothing", minval=1, group="Model",
+     tooltip="EMA length on the normalized return fed to the model. Higher = calmer on noisy timeframes.")
+statLen   = input.int(150, "Scaling window", minval=20, group="Model",
+     tooltip="Window used to scale the model to the instrument (makes it volatility-adaptive).")
+muK       = input.float(1.0, "Regime separation", minval=0.3, maxval=2.5, step=0.1, group="Model",
+     tooltip="How far apart the up/down state means sit, in standard deviations of the observation.")
+
+stick     = input.float(0.97, "Stickiness (stay probability)", minval=0.80, maxval=0.999, step=0.001, group="Stability",
+     tooltip="Diagonal of the transition matrix. Higher = regimes persist and the ribbon stops flickering.")
+confirmBars = input.int(3, "Confirmation bars", minval=1, maxval=20, group="Stability",
+     tooltip="A new regime must lead for this many consecutive bars before it becomes official.")
+domThresh = input.float(0.50, "Dominance threshold", minval=0.34, maxval=0.90, step=0.01, group="Stability",
+     tooltip="The leading probability must exceed this to count as confident; otherwise the bar is 'uncertain'.")
+
+showRibbon = input.bool(true,  "Probability ribbon", group="Display")
+dispLen    = input.int(3, "Ribbon smoothing", minval=1, maxval=10, group="Display",
+     tooltip="Visual smoothing of the ribbon only. Does not change the regime logic.")
+darkBg     = input.bool(true,  "Dark pane background", group="Display")
+tintPane   = input.bool(true,  "Tint pane by regime", group="Display")
+colorBars  = input.bool(true,  "Color price bars by regime", group="Display")
+showTable  = input.bool(true,  "Show dashboard", group="Display")
+upC  = input.color(color.rgb(47, 230, 194), "Trend up", group="Display")
+rgC  = input.color(color.rgb(150, 140, 185), "Range", group="Display")
+dnC  = input.color(color.rgb(236, 72, 153), "Trend down", group="Display")
+
+// ~~ OBSERVATION ==============================================================
+atrv  = ta.atr(14)
+ret   = atrv > 0 ? (close - close[1]) / atrv : 0.0
+obs   = ta.ema(ret, obsLen)
+sigma = ta.stdev(obs, statLen)
+ready = not na(obs) and not na(sigma) and sigma > 0
+
+gpdf(float x, float m, float s) => s <= 0 ? 0.0 : math.exp(-0.5 * math.pow((x - m) / s, 2)) / s
+
+// ~~ FORWARD FILTER ===========================================================
+// states: 0 = Trend Up, 1 = Range, 2 = Trend Down
+var array<float> al = array.new<float>(3, 1.0/3.0)
+if ready and barstate.isconfirmed
+    a0 = array.get(al, 0)
+    a1 = array.get(al, 1)
+    a2 = array.get(al, 2)
+    off = 1.0 - stick
+    // transition A[i][j]: trends prefer to decay through Range, not flip directly
+    pr0 = a0*stick + a1*(off*0.5) + a2*(off*0.25)
+    pr1 = a0*(off*0.75) + a1*stick + a2*(off*0.75)
+    pr2 = a0*(off*0.25) + a1*(off*0.5) + a2*stick
+    mU = muK * sigma
+    e0 = gpdf(obs,  mU, sigma)
+    e1 = gpdf(obs, 0.0, sigma * 0.8)
+    e2 = gpdf(obs, -mU, sigma)
+    u0 = pr0 * e0
+    u1 = pr1 * e1
+    u2 = pr2 * e2
+    tot = u0 + u1 + u2
+    if tot > 0
+        array.set(al, 0, u0/tot)
+        array.set(al, 1, u1/tot)
+        array.set(al, 2, u2/tot)
+
+p0 = array.get(al, 0)
+p1 = array.get(al, 1)
+p2 = array.get(al, 2)
+raw = p0 >= p1 and p0 >= p2 ? 0 : p1 >= p2 ? 1 : 2
+pmax = array.get(al, raw)
+cand = pmax >= domThresh ? raw : -1
+
+// ~~ CONFIRMATION (official regime + time held) ===============================
+var int candPrev = -1
+var int streak   = 0
+var int official = -1
+var int tIn      = 0
+if barstate.isconfirmed
+    streak := (cand == candPrev and cand != -1) ? streak + 1 : (cand == -1 ? 0 : 1)
+    candPrev := cand
+    changed = false
+    if cand != -1 and cand != official and streak >= confirmBars
+        official := cand
+        changed := true
+    tIn := changed ? 0 : tIn + 1
+
+regCol(int s) => s == 0 ? upC : s == 2 ? dnC : s == 1 ? rgC : color.gray
+regTxt(int s) => s == 0 ? "TREND UP" : s == 2 ? "TREND DOWN" : s == 1 ? "RANGE" : "uncertain"
+
+// ~~ RIBBON (premium) =========================================================
+// raw probabilities (used by the dashboard)
+up100 = p0 * 100.0
+rg100 = p1 * 100.0
+dn100 = p2 * 100.0
+
+// display-only smoothing for a liquid look (does NOT affect regime logic)
+sp0 = ta.ema(p0, dispLen)
+sp1 = ta.ema(p1, dispLen)
+sp2 = ta.ema(p2, dispLen)
+sden = sp0 + sp1 + sp2
+q0 = sden > 0 ? sp0 / sden : p0
+q1 = sden > 0 ? sp1 / sden : p1
+q2 = sden > 0 ? sp2 / sden : p2
+c1 = q0 * 100.0
+c2 = (q0 + q1) * 100.0
+
+// deep dark pane so the streams glow, with a faint regime wash on top
+bgcolor(darkBg ? color.new(color.rgb(10, 12, 18), 0) : na, title="Pane")
+bgcolor(tintPane and official >= 0 ? color.new(regCol(official), 88) : na, title="Regime tint")
+hline(25, "q1",  color=color.new(color.gray, 88))
+hline(50, "mid", color=color.new(color.gray, 82))
+hline(75, "q3",  color=color.new(color.gray, 88))
+
+// brightness of each stream scales with its probability (the dominant one glows)
+tUp = math.max(8,  math.round(82 - 54 * q0))
+tRg = math.max(12, math.round(84 - 50 * q1))
+tDn = math.max(8,  math.round(82 - 54 * q2))
+
+b0 = plot(showRibbon ? 0.0   : na, "b0", color=na, editable=false)
+bU = plot(showRibbon ? c1    : na, "bU", color=na, editable=false)
+bR = plot(showRibbon ? c2    : na, "bR", color=na, editable=false)
+bT = plot(showRibbon ? 100.0 : na, "bT", color=na, editable=false)
+fill(b0, bU, color=showRibbon ? color.new(upC, tUp) : na, title="P(up)")
+fill(bU, bR, color=showRibbon ? color.new(rgC, tRg) : na, title="P(range)")
+fill(bR, bT, color=showRibbon ? color.new(dnC, tDn) : na, title="P(down)")
+
+// luminous seams between the streams (wide glow + thin bright core)
+plot(showRibbon ? c1 : na, "seam up glow", color=color.new(upC, 72), linewidth=6, editable=false)
+plot(showRibbon ? c1 : na, "seam up",      color=color.new(upC, 18), linewidth=1, editable=false)
+plot(showRibbon ? c2 : na, "seam dn glow", color=color.new(dnC, 72), linewidth=6, editable=false)
+plot(showRibbon ? c2 : na, "seam dn",      color=color.new(dnC, 18), linewidth=1, editable=false)
+
+barcolor(colorBars and official >= 0 ? regCol(official) : na)
+
+// ~~ STATE CHIP ===============================================================
+var label hud = na
+if barstate.islast
+    label.delete(hud)
+    poff = official == 0 ? p0 : official == 1 ? p1 : official == 2 ? p2 : pmax
+    chip = "  " + regTxt(official) + (official >= 0 ? "   " + str.tostring(poff * 100, '#') + "%   held " + str.tostring(tIn) + "b  " : "  ")
+    hud := label.new(bar_index + 2, 50, chip, style=label.style_label_left, color=color.new(color.rgb(13, 16, 23), 6), textcolor=regCol(official), size=size.normal)
+
+// ~~ DASHBOARD ================================================================
+var table dash = table.new(position.top_right, 2, 7, frame_color=color.new(color.gray,50), frame_width=1)
+if showTable and barstate.islast
+    table.cell(dash, 0, 0, "HMM Regime Filter", text_color=color.white, bgcolor=color.new(color.rgb(60,50,90), 10), text_size=size.small)
+    table.cell(dash, 1, 0, "3-state", text_color=color.white, bgcolor=color.new(color.rgb(60,50,90), 10), text_size=size.small)
+    table.cell(dash, 0, 1, "Regime", text_color=color.gray, text_size=size.tiny)
+    table.cell(dash, 1, 1, regTxt(official), text_color=regCol(official), text_size=size.tiny)
+    table.cell(dash, 0, 2, "Held for", text_color=color.gray, text_size=size.tiny)
+    table.cell(dash, 1, 2, official >= 0 ? str.tostring(tIn) + " bars" : "-", text_color=color.white, text_size=size.tiny)
+    table.cell(dash, 0, 3, "P(up)", text_color=color.gray, text_size=size.tiny)
+    table.cell(dash, 1, 3, str.tostring(up100, '#') + "%", text_color=upC, text_size=size.tiny)
+    table.cell(dash, 0, 4, "P(range)", text_color=color.gray, text_size=size.tiny)
+    table.cell(dash, 1, 4, str.tostring(rg100, '#') + "%", text_color=rgC, text_size=size.tiny)
+    table.cell(dash, 0, 5, "P(down)", text_color=color.gray, text_size=size.tiny)
+    table.cell(dash, 1, 5, str.tostring(dn100, '#') + "%", text_color=dnC, text_size=size.tiny)
+    table.cell(dash, 0, 6, "Stickiness", text_color=color.gray, text_size=size.tiny)
+    table.cell(dash, 1, 6, str.tostring(stick, '#.###'), text_color=color.white, text_size=size.tiny)
+
+// ~~ ALERTS ===================================================================
+turnedUp    = official == 0 and official[1] != 0
+turnedDown  = official == 2 and official[1] != 2
+turnedRange = official == 1 and official[1] != 1
+alertcondition(turnedUp,    "Regime: Trend Up",   "HMM Regime Filter: confirmed TREND UP.")
+alertcondition(turnedDown,  "Regime: Trend Down", "HMM Regime Filter: confirmed TREND DOWN.")
+alertcondition(turnedRange, "Regime: Range",      "HMM Regime Filter: confirmed RANGE.")

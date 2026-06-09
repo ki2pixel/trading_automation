@@ -1,0 +1,164 @@
+// This work is licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+// https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © MarketStructureLab
+// MSL Friendly Trend — developed by MarketStructureLab.
+// May your trades be green and your stops never hit. Good luck out there.
+//@version=6
+indicator("MSL Friendly Trend", shorttitle="Friendly", overlay=true)
+//==== INPUTS ===========================================================
+groupCalc   = "Main Calculations"
+groupTF     = "Extra Timeframes"
+groupVisual = "Appearance"
+length = input.int(70, "Length", minval=1, group=groupCalc,
+     tooltip="Look-back window for the Zero-Lag EMA basis. Higher values give a smoother, slower trend that ignores minor swings. Lower values react faster but produce more noise.")
+mult   = input.float(1.2, "Band Multiplier", minval=0.0, step=0.1, group=groupCalc,
+     tooltip="Width of the deviation band around the basis. Higher values widen the band, so a trend flip needs a larger move (fewer, later signals). Lower values tighten the band for more frequent flips.")
+t1 = input.timeframe("15",  "Time frame 1", group=groupTF,
+     tooltip="Lowest timeframe row in the dashboard. Use a faster timeframe here for an early read on the trend.")
+t2 = input.timeframe("60",  "Time frame 2", group=groupTF,
+     tooltip="Second dashboard row. A mid timeframe that confirms the lower one.")
+t3 = input.timeframe("240", "Time frame 3", group=groupTF,
+     tooltip="Third dashboard row. A higher timeframe for the broader trend.")
+t4 = input.timeframe("1D",  "Time frame 4", group=groupTF,
+     tooltip="Fourth dashboard row. The slowest timeframe, used as the macro backdrop.")
+bullColor = input.color(#00ffbb, "Bullish / Bearish", inline="cols", group=groupVisual,
+     tooltip="Color for the bullish basis, the lower deviation band and the Bullish label.")
+bearColor = input.color(#ff1100, "", inline="cols", group=groupVisual,
+     tooltip="Color for the bearish basis, the upper deviation band and the Bearish label.")
+showDashboard   = input.bool(true, "Show Dashboard", group=groupVisual,
+     tooltip="Show the multi-timeframe trend table in the top right corner of the chart.")
+showTrendLabels = input.bool(true, "Show Bullish / Bearish Labels", group=groupVisual,
+     tooltip="Show the Bullish / Bearish text labels printed on each trend flip.")
+labelAtrLen = input.int(14, "Label ATR Length", minval=1, group=groupVisual, active=showTrendLabels,
+     tooltip="ATR length used only for vertical spacing of the Bullish / Bearish labels. It does not affect the trend itself.")
+bullLabelOffsetAtr = input.float(0.90, "Bull / Bear Label Offset (ATR)", minval=0.0, step=0.05, inline="lbloff", group=groupVisual, active=showTrendLabels,
+     tooltip="Extra vertical gap below the lower band for the Bullish label, in ATR units. Higher values push the label further from price.")
+bearLabelOffsetAtr = input.float(0.90, "", minval=0.0, step=0.05, inline="lbloff", group=groupVisual, active=showTrendLabels,
+     tooltip="Extra vertical gap above the upper band for the Bearish label, in ATR units. Higher values push the label further from price.")
+//==== COLORS ===========================================================
+// Band and basis tints (derived from the bull / bear inputs)
+bullBasis    = color.new(bullColor, 70)
+bearBasis    = color.new(bearColor, 70)
+bullBandLine = color.new(bullColor, 90)
+bearBandLine = color.new(bearColor, 90)
+// Dashboard structural palette (fixed, independent of the bull / bear inputs)
+tableBg     = color.new(#0F131A, 5)
+headerBg    = color.new(#1A1F2B, 0)
+leftColBg   = color.new(#11161D, 0)
+borderColor = color.new(color.white, 65)
+frameColor  = color.new(color.white, 55)
+//==== HELPERS ==========================================================
+f_tfLabel(string tf) =>
+    tf == "15" ? "15m" : tf == "60" ? "1H" : tf == "240" ? "4H" : tf == "1D" ? "1D" : tf
+f_signalColor(string signal) =>
+    signal == "Bullish" ? color.new(#00C896, 15) : signal == "Bearish" ? color.new(#E04B52, 15) : color.new(#6B7280, 25)
+f_signalColorOverall(string signal) =>
+    signal == "Bullish" ? color.new(#00C896, 5) : signal == "Bearish" ? color.new(#E04B52, 5) : color.new(#6B7280, 15)
+f_textColor(string signal) =>
+    color.white
+//==== CALCULATIONS =====================================================
+src = close
+lag = math.floor((length - 1) / 2)
+zlema      = ta.ema(src + (src - src[lag]), length)
+volatility = ta.highest(ta.atr(length), length * 3) * mult
+//==== SIGNAL ENGINE ====================================================
+var int trendState = 0
+if ta.crossover(close, zlema + volatility)
+    trendState := 1
+if ta.crossunder(close, zlema - volatility)
+    trendState := -1
+isBullishChange = ta.crossover(trendState, 0)
+isBearishChange = ta.crossunder(trendState, 0)
+//==== SIGNAL STATS =====================================================
+// Multi-timeframe trend read (same ZLEMA logic, evaluated per timeframe)
+s1 = request.security(syminfo.tickerid, t1, trendState)
+s2 = request.security(syminfo.tickerid, t2, trendState)
+s3 = request.security(syminfo.tickerid, t3, trendState)
+s4 = request.security(syminfo.tickerid, t4, trendState)
+s1a = s1 == 1 ? "Bullish" : "Bearish"
+s2a = s2 == 1 ? "Bullish" : "Bearish"
+s3a = s3 == 1 ? "Bullish" : "Bearish"
+s4a = s4 == 1 ? "Bullish" : "Bearish"
+bullCount = (s1 == 1 ? 1 : 0) + (s2 == 1 ? 1 : 0) + (s3 == 1 ? 1 : 0) + (s4 == 1 ? 1 : 0)
+bearCount = 4 - bullCount
+overall   = bullCount >= 3 ? "Bullish" : bearCount >= 3 ? "Bearish" : "Mixed"
+//==== VISUAL STATE =====================================================
+zlemaColor = trendState == 1 ? bullBasis : bearBasis
+atrForLabels  = ta.atr(labelAtrLen)
+bullishLabelY = zlema - volatility - atrForLabels * bullLabelOffsetAtr
+bearishLabelY = zlema + volatility + atrForLabels * bearLabelOffsetAtr
+//==== PLOTS ============================================================
+m = plot(zlema, "Zero Lag Basis", linewidth=2, color=zlemaColor)
+upper = plot(trendState == -1 ? zlema + volatility : na, "Upper Deviation Band", style=plot.style_linebr, color=bearBandLine)
+lower = plot(trendState ==  1 ? zlema - volatility : na, "Lower Deviation Band", style=plot.style_linebr, color=bullBandLine)
+fill(m, upper, (open + close) / 2, zlema + volatility, bearBandLine, bearBasis)
+fill(m, lower, (open + close) / 2, zlema - volatility, bullBandLine, bullBasis)
+plotshape(showTrendLabels and isBearishChange ? bearishLabelY : na, "Bearish Trend", style=shape.labeldown, location=location.absolute, color=bearColor, text="Bearish", textcolor=color.white, size=size.tiny)
+plotshape(showTrendLabels and isBullishChange ? bullishLabelY : na, "Bullish Trend", style=shape.labelup,   location=location.absolute, color=bullColor, text="Bullish", textcolor=color.black, size=size.tiny)
+//==== ALERTS ===========================================================
+alertcondition(isBullishChange, "Bullish Trend", message="Bullish trend detected.")
+alertcondition(isBearishChange, "Bearish Trend", message="Bearish trend detected.")
+alertcondition(ta.cross(trendState, 0), "Trend Change", message="Trend direction changed.")
+alertcondition(ta.crossover(s1, 0),  "Bullish Trend Time Frame 1", message="Bullish trend detected on Time Frame 1.")
+alertcondition(ta.crossunder(s1, 0), "Bearish Trend Time Frame 1", message="Bearish trend detected on Time Frame 1.")
+alertcondition(ta.crossover(s2, 0),  "Bullish Trend Time Frame 2", message="Bullish trend detected on Time Frame 2.")
+alertcondition(ta.crossunder(s2, 0), "Bearish Trend Time Frame 2", message="Bearish trend detected on Time Frame 2.")
+alertcondition(ta.crossover(s3, 0),  "Bullish Trend Time Frame 3", message="Bullish trend detected on Time Frame 3.")
+alertcondition(ta.crossunder(s3, 0), "Bearish Trend Time Frame 3", message="Bearish trend detected on Time Frame 3.")
+alertcondition(ta.crossover(s4, 0),  "Bullish Trend Time Frame 4", message="Bullish trend detected on Time Frame 4.")
+alertcondition(ta.crossunder(s4, 0), "Bearish Trend Time Frame 4", message="Bearish trend detected on Time Frame 4.")
+//==== TABLE ============================================================
+if showDashboard and barstate.islast
+    var proTable = table.new(position=position.top_right, columns=2, rows=6, bgcolor=tableBg, border_width=1, border_color=borderColor, frame_color=frameColor, frame_width=1)
+    table.cell(proTable, 0, 0, "Time Frame", text_color=color.white, bgcolor=headerBg, text_halign=text.align_center)
+    table.cell(proTable, 1, 0, "Trend",      text_color=color.white, bgcolor=headerBg, text_halign=text.align_center)
+    table.cell(proTable, 0, 1, f_tfLabel(t1), text_color=color.white,      bgcolor=leftColBg,        text_halign=text.align_center)
+    table.cell(proTable, 1, 1, s1a,           text_color=f_textColor(s1a), bgcolor=f_signalColor(s1a), text_halign=text.align_center)
+    table.cell(proTable, 0, 2, f_tfLabel(t2), text_color=color.white,      bgcolor=leftColBg,        text_halign=text.align_center)
+    table.cell(proTable, 1, 2, s2a,           text_color=f_textColor(s2a), bgcolor=f_signalColor(s2a), text_halign=text.align_center)
+    table.cell(proTable, 0, 3, f_tfLabel(t3), text_color=color.white,      bgcolor=leftColBg,        text_halign=text.align_center)
+    table.cell(proTable, 1, 3, s3a,           text_color=f_textColor(s3a), bgcolor=f_signalColor(s3a), text_halign=text.align_center)
+    table.cell(proTable, 0, 4, f_tfLabel(t4), text_color=color.white,      bgcolor=leftColBg,        text_halign=text.align_center)
+    table.cell(proTable, 1, 4, s4a,           text_color=f_textColor(s4a), bgcolor=f_signalColor(s4a), text_halign=text.align_center)
+    table.cell(proTable, 0, 5, "Overall", text_color=color.white, bgcolor=headerBg,                    text_halign=text.align_center)
+    table.cell(proTable, 1, 5, overall,   text_color=color.white, bgcolor=f_signalColorOverall(overall), text_halign=text.align_center)
+//==== USAGE GUIDE ======================================================
+//
+// MSL Friendly Trend — what it does:
+//   A beginner-friendly trend filter built on a Zero-Lag EMA basis with
+//   an ATR deviation band around it. The basis colors and the shaded band
+//   show the current trend at a glance, and a multi-timeframe dashboard
+//   summarizes the trend across four timeframes.
+//
+// Signal logic:
+//   1. The basis is a Zero-Lag EMA of close over `Length` bars. The band
+//      is the highest ATR over the recent window times `Band Multiplier`.
+//   2. Bullish flip: close crosses ABOVE basis + band. The trend turns
+//      bullish, the basis turns to the bull color, the lower band and a
+//      bull tint appear, and a "Bullish" label prints on the flip bar.
+//   3. Bearish flip: close crosses BELOW basis - band. The trend turns
+//      bearish, the upper band and a bear tint appear, and a "Bearish"
+//      label prints on the flip bar.
+//   4. The trend stays in its last state until the opposite band is
+//      crossed, so it does not flip-flop inside the band.
+//
+// Dashboard:
+//   Reads the same trend on the four configured timeframes and shows
+//   each as Bullish or Bearish. "Overall" is Bullish when at least 3 of
+//   4 agree, Bearish when at least 3 disagree, otherwise Mixed.
+//
+// Alerts:
+//   - Bullish Trend / Bearish Trend / Trend Change on the chart timeframe
+//   - Bullish / Bearish per Time Frame 1-4 for the dashboard timeframes
+//
+// Suggested timeframes:
+//   - Intraday: H1 with the default Length 70
+//   - Swing:    H4 to D1 with Length 70 or higher
+//   Minimum timeframe is H1. Below H1 expect more noise and faster flips.
+//
+// Tips:
+//   - Raise Band Multiplier for fewer, more reliable flips in choppy
+//     markets. Lower it for earlier, more frequent flips in clean trends.
+//   - Raise Length to follow only the major trend and ignore pullbacks.
+//   - Use the dashboard "Overall" read as a bias filter: trade in the
+//     direction it shows and skip setups that fight it.

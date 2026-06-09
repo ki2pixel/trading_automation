@@ -69,6 +69,20 @@ from .strategies.smart_trader_geometric import (
     smart_trader_geometric_overrides_from_mapping,
     vectorbt_prescan as stg_vectorbt_prescan,
 )
+from .strategies.trend_type import (
+    TrendTypeConfigOverrides,
+    run_trend_type,
+    load_trend_type_overrides_from_config,
+    trend_type_overrides_from_mapping,
+    vectorbt_prescan as trend_type_vectorbt_prescan,
+)
+from .strategies.msl_trend import (
+    MSLTrendConfigOverrides,
+    run_msl_trend,
+    load_msl_trend_overrides_from_config,
+    msl_trend_overrides_from_mapping,
+    vectorbt_prescan as msl_trend_vectorbt_prescan,
+)
 
 @dataclass
 class StrategyInfo:
@@ -219,6 +233,32 @@ StrategyRegistry.register(
         overrides_from_mapping_function=smart_trader_geometric_overrides_from_mapping,
         indicators=["Ceil distance", "Ctr distance", "Flr distance", "PnU distance", "PnD distance"],
         vectorbt_prescan=stg_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="trend_type",
+        config_override_class=TrendTypeConfigOverrides,
+        run_function=run_trend_type,
+        load_overrides_function=load_trend_type_overrides_from_config,
+        overrides_from_mapping_function=trend_type_overrides_from_mapping,
+        indicators=["state"],
+        vectorbt_prescan=trend_type_vectorbt_prescan,
+        clear_feature_cache=None,
+    )
+)
+
+StrategyRegistry.register(
+    StrategyInfo(
+        name="msl_trend",
+        config_override_class=MSLTrendConfigOverrides,
+        run_function=run_msl_trend,
+        load_overrides_function=load_msl_trend_overrides_from_config,
+        overrides_from_mapping_function=msl_trend_overrides_from_mapping,
+        indicators=["state"],
+        vectorbt_prescan=msl_trend_vectorbt_prescan,
         clear_feature_cache=None,
     )
 )

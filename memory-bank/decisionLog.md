@@ -21,3 +21,7 @@
 ## [2026-06-01 01:45:00] - Résolution du bug de l'optimiseur (INELIGIBLE_CONSTRAINTS)
 - **Décision** : Ajout d'une détection dynamique des métriques requises par les contraintes (exposure_pct, max_drawdown_pct, profit_factor) dans l'optimiseur (`_evaluate_hma_parameters`). Si ces métriques sont absentes car `compute_full_metrics=False` et que le score a réussi avec les métriques rapides, le calcul complet est désormais forcé.
 - **Justification** : Résolution du bug critique systémique qui marquait toutes les itérations viables comme inéligibles lors du calcul des contraintes, car les valeurs restaient à `None`.
+
+## [2026-06-09 14:05:00] - Vectorisation Native Pandas pour VectorBT
+- **Décision** : Remplacement des appels à des librairies externes inexistantes (comme `talib`) par des opérations natives Pandas (`ewm`, `np.maximum`, `ffill`) dans l'implémentation de l'ATR, de l'ADX et du ZLEMA pour VectorBT.
+- **Justification** : Satisfaire l'exigence absolue de "zéro boucle Python" tout en s'assurant de la portabilité et de l'exécution matricielle immédiate du code, sans dépendre d'une librairie C externe.

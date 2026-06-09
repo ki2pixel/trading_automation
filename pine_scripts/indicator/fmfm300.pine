@@ -1,0 +1,1497 @@
+//@version=6
+indicator("fmfm300 ", overlay=true, max_lines_count=500, max_bars_back=5000, max_boxes_count=500, max_labels_count=500)
+
+atrPeriod   = input.int(10, "ATR Period", minval=1, group="⚙️ Supertrend")
+factor      = input.float(3.0, "Factor", minval=0.1, step=0.1, group="⚙️ Supertrend")
+ema20Length = input.int(20, "EMA 20 Length", minval=1, group="⚙️ Supertrend")
+
+maType            = input.string("EMA", "نوع المتوسط", options=["EMA", "SMA"], group="⚙️ Braid Filter")
+Period1           = input.int(3,  "الفترة الأولى",  group="⚙️ Braid Filter")
+Period2           = input.int(7,  "الفترة الثانية", group="⚙️ Braid Filter")
+Period3           = input.int(14, "الفترة الثالثة", group="⚙️ Braid Filter")
+PipsMinSepPercent = input.int(40, "الحد الأدنى للفصل % (حسب ATR)", group="⚙️ Braid Filter")
+
+lookBack   = input.int(100, "Calculated Bars", group="⚙️ HeatMap")
+displPf    = input.bool(true, "Profile", group="⚙️ HeatMap")
+bins       = input.int(50, "Resolution", group="⚙️ HeatMap")
+resolution = 100
+color sellColor = input.color(color.blue, "Sell Liquidity", group="⚙️ HeatMap")
+color buyColor  = input.color(color.lime, "Buy Liquidity",  group="⚙️ HeatMap")
+bool  poc       = input.bool(true, "", inline="maxp", group="⚙️ HeatMap")
+color maxColor  = input.color(color.orange, "Max Point Liquidity", inline="maxp", group="⚙️ HeatMap")
+
+pvtLength = input.int(20, "Pivot Length", minval=1, group="⚙️ Pivot")
+
+// ========== إعدادات المؤشر الثاني ==========
+sdLength2  = input.int(14, "طول Supply/Demand", group="⚙️ مؤشر ثاني")
+rsi2Upper  = input.int(55, "حد RSI أعلى", minval=1, maxval=100, group="⚙️ مؤشر ثاني")
+rsi2Lower  = input.int(45, "حد RSI أدنى", minval=1, maxval=100, group="⚙️ مؤشر ثاني")
+tblSize2   = input.string("Normal", "حجم النص",
+             options=["Tiny", "Small", "Normal", "Large"],
+             group="⚙️ مؤشر ثاني")
+
+getSize(s) =>
+    s == "Tiny" ? size.tiny : s == "Small" ? size.small : s == "Normal" ? size.normal : size.large
+
+tSize2 = getSize(tblSize2)
+
+formatBigNum(val) =>
+    if val >= 1000000000
+        str.tostring(val / 1000000000, "#.##") + "B"
+    else if val >= 1000000
+        str.tostring(val / 1000000, "#.##") + "M"
+    else if val >= 1000
+        str.tostring(val / 1000, "#.##") + "K"
+    else
+        str.tostring(val, "#")
+
+// ========== حسابات المؤشر الثاني ==========
+demandPressure2 = close > open ? (close - open) * volume : 0.0
+supplyPressure2 = close < open ? (open - close) * volume : 0.0
+avgDemand2      = ta.sma(demandPressure2, sdLength2)
+avgSupply2      = ta.sma(supplyPressure2, sdLength2)
+totalPressure2  = avgDemand2 + avgSupply2
+demandPerc2     = totalPressure2 > 0 ? (avgDemand2 / totalPressure2) * 100 : 50.0
+supplyPerc2     = totalPressure2 > 0 ? (avgSupply2 / totalPressure2) * 100 : 50.0
+rsi2            = ta.rsi(close, 14)
+flowText        = close > open ? "🟢" : close < open ? "🔴" : "⚪"
+
+// ========== Supertrend ==========
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+bull  = direction < 0
+ema20 = ta.ema(close, ema20Length)
+
+// ========== Braid Filter ==========
+ma(type, src_ma, len) => type == "SMA" ? ta.sma(src_ma, len) : ta.ema(src_ma, len)
+ma1 = ma(maType, close, Period1)
+ma2 = ma(maType, open,  Period2)
+ma3 = ma(maType, close, Period3)
+
+dif    = math.max(math.max(ma1,ma2),ma3) - math.min(math.min(ma1,ma2),ma3)
+filter = ta.atr(14) * PipsMinSepPercent / 100
+
+BraidColor = ma1 > ma2 and dif > filter ? color.green :
+             ma2 > ma1 and dif > filter ? color.red : color.gray
+
+isCall     = BraidColor == color.green
+isPut      = BraidColor == color.red
+isSideways = not isCall and not isPut
+
+combinedText  = bull and isCall ? "صاعد" : not bull and isPut ? "هابط" : not bull and isSideways ? "عرضي هابط" : bull and isSideways ? "عرضي صاعد" : "انتبه"
+combinedColor = bull and isCall ? color.new(color.green, 40) : not bull and isPut ? color.new(color.red, 40) : not bull and isSideways ? color.new(color.red, 60) : bull and isSideways ? color.new(color.green, 60) : color.new(color.yellow, 40)
+
+
+plot(ema20, "EMA 20", color=color.blue, linewidth=1)
+
+var label bullLabel = na
+var label bearLabel = na
+
+if bull and not bull[1]
+    if not na(bearLabel)
+        label.delete(bearLabel)
+    bullLabel := label.new(bar_index, supertrend, "إيجابي",
+                           style=label.style_label_up,
+                           color=color.new(color.green, 80),
+                           textcolor=color.green,
+                           size=size.normal)
+
+if not bull and bull[1]
+    if not na(bullLabel)
+        label.delete(bullLabel)
+    bearLabel := label.new(bar_index, supertrend, "سلبي",
+                           style=label.style_label_down,
+                           color=color.new(color.red, 80),
+                           textcolor=color.red,
+                           size=size.normal)
+
+noColor  = #00000000
+pvtHigh = ta.pivothigh(pvtLength, pvtLength)
+pvtLow  = ta.pivotlow(pvtLength, pvtLength)
+
+var label lastHigh     = na
+var label lastLow      = na
+var label lastHighTemp = na
+var label lastLowTemp  = na
+
+pvtLengthTemp = 3
+pvtHighTemp   = ta.pivothigh(pvtLengthTemp, pvtLengthTemp)
+pvtLowTemp    = ta.pivotlow(pvtLengthTemp, pvtLengthTemp)
+
+var float pvtHigh1Temp = 0.
+var float pvtLow1Temp  = 0.
+
+if not na(pvtHigh)
+    label.delete(lastHigh)
+    label.delete(lastHighTemp)
+    lastHigh := label.new(bar_index[pvtLength], pvtHigh, "▼", xloc.bar_index, yloc.price, noColor, label.style_label_down, #e8bcbc, size.normal, text.align_center, "Pivot High · " + str.tostring(pvtHigh, format.mintick))
+
+if not na(pvtLow)
+    label.delete(lastLow)
+    label.delete(lastLowTemp)
+    lastLow := label.new(bar_index[pvtLength], pvtLow, "▲", xloc.bar_index, yloc.price, noColor, label.style_label_up, #b3c9f5, size.normal, text.align_center, "Pivot Low · " + str.tostring(pvtLow, format.mintick))
+
+if not na(pvtHighTemp)
+    if pvtHighTemp > pvtHigh1Temp
+        label.delete(lastHighTemp)
+        lastHighTemp := label.new(bar_index[pvtLengthTemp], pvtHighTemp, "●\n▼", xloc.bar_index, yloc.price, noColor, label.style_label_down, #284aa9, size.normal, text.align_center, "Temporary Pivot High · " + str.tostring(pvtHighTemp, format.mintick) + "\n⚠ Subject to repaint")
+    pvtHigh1Temp := pvtHighTemp
+
+if high > pvtHigh1Temp
+    label.delete(lastHighTemp)
+
+if not na(pvtLowTemp)
+    if pvtLowTemp < pvtLow1Temp
+        label.delete(lastLowTemp)
+        lastLowTemp := label.new(bar_index[pvtLengthTemp], pvtLowTemp, "▲\n●", xloc.bar_index, yloc.price, noColor, label.style_label_up, #284aa9, size.normal, text.align_center, "Temporary Pivot Low · " + str.tostring(pvtLowTemp, format.mintick) + "\n⚠ Subject to repaint")
+    pvtLow1Temp := pvtLowTemp
+
+if low < pvtLow1Temp
+    label.delete(lastLowTemp)
+
+var boxes2      = array.new<box>()
+var labels2     = array.new<label>()
+var lines2      = array.new<line>()
+var volume_bins = array.new<float>(bins, 0.)
+h_l             = array.new<float>()
+
+type pivot
+    float value
+    int   index
+    float volume_
+    float vol
+    bool  isLower
+
+var pivots = array.new<pivot>()
+
+h2 = ta.highest(2)
+l2 = ta.lowest(2)
+
+volumeArr = array.new_float(lookBack)
+vol2      = math.sum(volume, 10)
+
+for i = 0 to lookBack-1
+    volumeArr.set(i, vol2[i])
+
+nVol   = vol2 / volumeArr.max() * 100
+atr2   = ta.atr(5) / 50
+offset = ta.highest(atr2 * nVol, lookBack)
+
+for i = 0 to lookBack-1
+    h_l.push(high[i]+offset[i])
+    h_l.push(low[i]-offset[i])
+
+if last_bar_index - bar_index < lookBack
+    top    = h_l.max()
+    bot    = h_l.min()
+    step2  = (top-bot)/resolution
+    level1 = high + atr2 * nVol
+    level2 = low  - atr2 * nVol
+
+    if h2 == high
+        for i = 0 to resolution - 1
+            lower = bot + step2 * i
+            mid   = lower + step2/2
+            if math.abs(level1 - mid) <= step2
+                pivots.push(pivot.new(mid, bar_index, nVol, vol2, false))
+
+    if l2 == low
+        for i = 0 to resolution - 1
+            lower = bot + step2 * i
+            mid   = lower + step2/2
+            if math.abs(level2 - mid) <= step2
+                pivots.push(pivot.new(mid - atr2 * nVol, bar_index, nVol, vol2, true))
+
+    if pivots.size() > 0
+        for p in pivots
+            y     = p.value
+            isLow = p.isLower
+            if isLow and low < y
+                pivots.remove(pivots.indexof(p))
+            if not isLow and high > y
+                pivots.remove(pivots.indexof(p))
+
+var float sMin = 100.0
+var float sMax = 15000000000.0
+
+var float pocVol      = 0.0
+var float maxBuyVol2  = 0.0
+var float maxSellVol2 = 0.0
+
+if barstate.islast
+
+    if lines2.size() > 0
+        for ln in lines2
+            ln.delete()
+
+    for b in boxes2
+        b.delete()
+    boxes2.clear()
+
+    for lbl in labels2
+        lbl.delete()
+    labels2.clear()
+
+    step3 = (h_l.max() - h_l.min()) / bins
+
+    for j = 0 to bins-1
+        volume_bins.set(j, 0)
+
+    if pivots.size() > 0
+        for i = 0 to pivots.size() - 1
+            lvl    = pivots.get(i)
+            vol_   = lvl.vol
+            line_y = lvl.value
+            for j = 0 to bins-1
+                lower = h_l.min() + step3 * j
+                mid   = lower + step3/2
+                upper = lower + step3
+                if math.abs(line_y-mid) < step3
+                    volume_bins.set(j, volume_bins.get(j) + vol_)
+
+        maxBuyVol2  := 0.0
+        maxSellVol2 := 0.0
+        maxBuyIdx   = -1
+        maxSellIdx  = -1
+
+        for j = 0 to bins-1
+            lower = h_l.min() + step3 * j
+            mid   = lower + step3/2
+            voll  = volume_bins.get(j)
+            if close > mid
+                if voll > maxBuyVol2
+                    maxBuyVol2 := voll
+                    maxBuyIdx  := j
+            else
+                if voll > maxSellVol2
+                    maxSellVol2 := voll
+                    maxSellIdx  := j
+
+        pocVol := volume_bins.max()
+
+        for j = 0 to bins-1
+            lower    = h_l.min() + step3 * j
+            upper    = lower + step3
+            mid      = lower + step3/2
+            voll     = volume_bins.get(j)
+            valueVol = voll / volume_bins.max() * 50
+            col      = close > mid ? buyColor : sellColor
+            m_col    = color.from_gradient(voll, volume_bins.min(), volume_bins.max(), color.new(col, 80), color.new(col, 0))
+            m_col1   = color.from_gradient(voll, volume_bins.min(), volume_bins.max(), color.new(col, 50), color.new(col, 0))
+
+            isBuyBin    = close > mid
+            isStrongest = (isBuyBin and j == maxBuyIdx) or (not isBuyBin and j == maxSellIdx)
+            isMaxPoc    = voll == volume_bins.max() and poc
+
+            if not (close < upper and close > lower)
+                if displPf and (valueVol != 0)
+                    boxes2.push(box.new(bar_index+20, upper, bar_index+20+int(valueVol), lower, bgcolor=voll == volume_bins.max() and poc ? maxColor : m_col, border_color=chart.bg_color, text=voll > volume_bins.avg() ? str.tostring(voll, format.volume) : "", text_halign=text.align_left))
+                    boxes2.push(box.new(bar_index+20, upper, bar_index+5, lower, text=str.tostring(valueVol*2, format.percent), bgcolor=color(na), border_color=color(na), text_color=voll == volume_bins.max() ? maxColor : m_col1))
+
+                var start = 0
+                isLower = close > mid
+
+                for i = 0 to lookBack - 1
+                    if isLower
+                        if low[i] < mid
+                            start := bar_index - i
+                            break
+                        if i == lookBack - 1
+                            start := bar_index - i
+                            break
+                    else
+                        if high[i] > mid
+                            start := bar_index - i
+                            break
+                        if i == lookBack - 1
+                            start := bar_index - i
+                            break
+
+                lineColor = voll == volume_bins.max() and poc ? maxColor : color.from_gradient(valueVol, 0, 50, color(na), isLower ? color.new(buyColor, 30) : color.new(sellColor, 30))
+
+                if isStrongest or isMaxPoc
+                    lines2.push(line.new(start+3, mid, bar_index+5, mid, width=int(valueVol/5), color=lineColor))
+
+    bgColorRSI2    = rsi2 > rsi2Upper ? color.new(color.green, 20) : rsi2 < rsi2Lower ? color.new(color.red, 20) : color.new(color.gray, 40)
+    bgColorDemand2 = demandPerc2 > 60 ? color.new(color.green, 20) : demandPerc2 > 50 ? color.new(color.green, 60) : color.new(color.gray, 40)
+    bgColorSupply2 = supplyPerc2 > 60 ? color.new(color.red,   20) : supplyPerc2 > 50 ? color.new(color.red,   60) : color.new(color.gray, 40)
+
+    buyBgColor  = bull ? color.new(#23da3c, 40) : color.new(color.black, 20)
+    sellBgColor = bull ? color.new(color.black, 20) : color.new(#ee1c1c, 40)
+
+// ─── Data Table Settings ──────────────────────────────────────────────────────
+var G4 = "Data Table"
+dtbChk   = input.bool(true, "تفعيل الجدول؟", group = G4)
+dtbLoc   = input.string("top_left", "الموقع",
+           ["top_right","middle_right","bottom_right","top_center","middle_center",
+            "bottom_center","top_left","middle_left","bottom_left"], group = G4)
+dtbBgClr = input.color(color.new(color.black, 40), "BG", group = G4)
+lookback = input.int(20, "عدد الشموع للحساب", minval = 1, maxval = 200, group = G4)
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+formatVolume(float vol) =>
+    if na(vol) or vol == 0
+        "0"
+    else if vol >= 1000000000
+        str.tostring(math.round(vol / 1000000000, 2)) + "B"
+    else if vol >= 1000000
+        str.tostring(math.round(vol / 1000000, 2)) + "M"
+    else if vol >= 1000
+        str.tostring(math.round(vol / 1000, 2)) + "K"
+    else
+        str.tostring(math.round(vol, 2))
+
+// ─── الحساب الصحيح بـ math.sum داخل request.security ─────────────────────────
+calcBotCol(string tf, int lb) =>
+    [botVol, colVol] = request.security(syminfo.tickerid, tf, [
+         math.sum(close >= open ? volume : 0.0, lb),
+         math.sum(close <  open ? volume : 0.0, lb)
+         ], lookahead = barmerge.lookahead_off)
+    [nz(botVol), nz(colVol)]
+
+// الأطر المطلوبة (بدون 4 ساعات)
+[bot1H, col1H] = calcBotCol("60",  lookback)  // 1 ساعة
+[bot15, col15] = calcBotCol("15",  lookback)  // 15 دقيقة
+[bot5,  col5]  = calcBotCol("5",   lookback)  // 5 دقائق
+
+// ─── المجاميع المطلوبة ───────────────────────────────────────────────────────
+totalUp   = bot1H + bot15 + bot5      // مجموع الصعود
+totalDown = col1H + col15 + col5      // مجموع الهبوط
+netResult = totalUp - totalDown       // النتيجة (الصافي)
+
+// ─── Vol Tracker Table ────────────────────────────────────────────────────────
+var table dtb = na
+
+if barstate.islast and dtbChk
+    if not na(dtb)
+        dtb.delete()
+
+    // جدول: 3 أعمدة × 4 صفوف (هيدر + 3 صفوف للمجاميع) - تم تصغير حجم الخط
+    dtb := table.new(dtbLoc, 3, 4,
+             bgcolor      = dtbBgClr,
+             border_color = color.new(color.white, 75),
+             border_width = 1,
+             frame_color  = color.new(color.white, 65),
+             frame_width  = 1)
+
+    hBg  = color.new(color.black, 55)
+    hClr = color.new(color.white, 5)
+
+    // ─── هيدر (تم تصغير النص إلى tiny) ───────────────────────────────────────
+    dtb.cell(0, 0, "البيان", text_color = hClr, bgcolor = hBg, text_size = size.tiny)
+    dtb.cell(1, 0, "القيمة", text_color = hClr, bgcolor = hBg, text_size = size.tiny)
+    dtb.cell(2, 0, "الاتجاه", text_color = hClr, bgcolor = hBg, text_size = size.tiny)
+
+    // ─── مجموع الصعود (تم تصغير النص إلى tiny) ───────────────────────────────
+    upBg = color.new(#1B5E20, 65)
+    dtb.cell(0, 1,  " صعود ", text_color = color.new(#4CAF50, 0), bgcolor = color.new(color.gray, 75), text_size = size.tiny)
+    dtb.cell(1, 1, formatVolume(totalUp), text_color = color.new(#00BFFF, 0), bgcolor = upBg, text_size = size.tiny)
+    dtb.cell(2, 1, "↑", text_color = color.new(#4CAF50, 0), bgcolor = color.new(color.gray, 75), text_size = size.tiny)
+
+    // ─── مجموع الهبوط (تم تصغير النص إلى tiny) ───────────────────────────────
+    downBg = color.new(#B71C1C, 65)
+    dtb.cell(0, 2,  " هبوط ", text_color = color.new(#F44336, 0), bgcolor = color.new(color.gray, 75), text_size = size.tiny)
+    dtb.cell(1, 2, formatVolume(totalDown), text_color = color.new(#FF69B4, 0), bgcolor = downBg, text_size = size.tiny)
+    dtb.cell(2, 2, "↓", text_color = color.new(#F44336, 0), bgcolor = color.new(color.gray, 75), text_size = size.tiny)
+
+    // ─── النتيجة (الصافي) (تم تصغير النص إلى tiny) ───────────────────────────
+    resultBg = netResult >= 0 ? color.new(#1B5E20, 65) : color.new(#B71C1C, 65)
+    resultArrow = netResult >= 0 ? "↑" : "↓"
+    resultColor = netResult >= 0 ? color.new(#4CAF50, 0) : color.new(#F44336, 0)
+    
+    dtb.cell(0, 3,  " صافي ", text_color = color.new(#d3c945, 0), bgcolor = color.new(color.gray, 75), text_size = size.tiny)
+    dtb.cell(1, 3, formatVolume(math.abs(netResult)), text_color = resultColor, bgcolor = resultBg, text_size = size.tiny)
+    dtb.cell(2, 3, resultArrow, text_color = resultColor, bgcolor = color.new(color.gray, 75), text_size = size.tiny)
+    
+// =====================
+// TYPES
+// =====================
+type Settings
+    string      htf
+    bool        mirror
+    int         max
+    int         lookback
+    string      override1
+    float       overridevalue1
+    string      override2
+    float       overridevalue2
+    string      override3
+    float       overridevalue3
+    string      override4
+    float       overridevalue4
+    string      override5
+    float       overridevalue5
+
+type FibLevels
+    bool        show
+    int         padding
+    bool        useLog
+    bool        use_background
+    int         fill_percent
+    bool        show_level
+    bool        show_price
+    string      label_size
+    bool        fib1
+    float       fib1_level
+    color       fib1_color
+    string      fib1_style
+    int         fib1_size
+    bool        fib2
+    float       fib2_level
+    color       fib2_color
+    string      fib2_style
+    int         fib2_size
+    bool        fib3
+    float       fib3_level
+    color       fib3_color
+    string      fib3_style
+    int         fib3_size
+    bool        fib4
+    float       fib4_level
+    color       fib4_color
+    string      fib4_style
+    int         fib4_size
+    bool        fib5
+    float       fib5_level
+    color       fib5_color
+    string      fib5_style
+    int         fib5_size
+    bool        fib6
+    float       fib6_level
+    color       fib6_color
+    string      fib6_style
+    int         fib6_size
+    bool        fib7
+    float       fib7_level
+    color       fib7_color
+    string      fib7_style
+    int         fib7_size
+    bool        fib8
+    float       fib8_level
+    color       fib8_color
+    string      fib8_style
+    int         fib8_size
+    bool        fib9
+    float       fib9_level
+    color       fib9_color
+    string      fib9_style
+    int         fib9_size
+
+type fib
+    float       level
+    float       price
+    color       color
+    string      style
+    int         size
+    line        ln
+    label       lbl
+    linefill    fl
+
+type Daily
+    array<fib>  fibs
+    float       price
+    int         time
+    int         time_last
+
+type Candle
+    float       o
+    float       c
+    float       h
+    float       l
+    int         o_idx
+    int         c_idx
+    int         h_idx
+    int         l_idx
+    box         body
+    line        wick_up
+    line        wick_down
+
+type CandleSettings
+    bool        show
+    string      htf
+    int         max_display
+
+type HTFSettings
+    int         max_sets
+    color       bull_body
+    color       bull_border
+    color       bull_wick
+    color       bear_body
+    color       bear_border
+    color       bear_wick
+    int         offset
+    int         buffer
+    int         htf_buffer
+    int         width
+    bool        htf_label_show
+    color       htf_label_color
+    string      htf_label_size
+
+type CandleSet
+    Candle[]        candles
+    CandleSettings  settings
+    label           tfName
+
+type VolumeData
+    float totalVol
+
+type orderblock
+    float      value
+    int        barStart
+    int        barEnd
+    box        block
+    label      lbl
+    label      signalLbl
+    bool       broken
+    VolumeData volumeData
+
+// =====================
+// INPUTS - fmfmf16
+// =====================
+settings_panel  = 'لوحة التحكم ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+show_indicator  = input.bool(true, '👁 إظهار المؤشر كاملاً', group = settings_panel)
+
+settings_tf     = 'لوحة الفريمات ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+selected_tf     = input.string('240', 'الفريم الزمني', options = ['60', '240', 'D'], group = settings_tf)
+
+settings_targets = 'الأهداف ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+fib_line_style  = input.string('⎯⎯⎯', 'نمط الخطوط', options = ['⎯⎯⎯', '----', '····'], group = settings_targets)
+fib_label_size  = input.string(size.small, 'حجم الأسعار', options = [size.tiny, size.small, size.normal, size.large], group = settings_targets)
+show_prices_lbl = input.bool(true, 'إظهار الأسعار', group = settings_targets)
+
+settings_tools  = 'الأدوات ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+showFVG         = input.bool(true,  'إظهار صناديق سيولة',         group = settings_tools)
+maxBoxes        = input.int(1, 'عدد صناديق سيولة', minval=1, maxval=10, group = settings_tools)
+showOB          = input.bool(true,  'إظهار مناطق العرض والطلب',   group = settings_tools)
+int zigzagLen        = input.int(9, 'طول الزجزاج', group = settings_tools)
+int numberObShow     = input.int(1, 'عدد مناطق العرض والطلب', minval=1, maxval=10, group = settings_tools)
+color bearishOrderblockColor = input.color(color.new(#f36767, 54), title='لون منطقة العرض', group = settings_tools)
+color bullishOrderblockColor = input.color(color.new(#a8f373, 61), title='لون منطقة الطلب', group = settings_tools)
+showTrendLines  = input.bool(true,  'إظهار خطوط الاتجاه',         group = settings_tools)
+show_daily_sr   = input.bool(true,  'إظهار الدعم والمقاومة',      group = settings_tools)
+
+settings_sr_lines = 'خطوط الدعم والمقاومة ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+sr_line_style_input = input.string('----', 'نمط خطوط الدعم/المقاومة', options = ['⎯⎯⎯', '----', '····'], group = settings_sr_lines)
+sr_line_width_input = input.int(1, 'سماكة الخطوط', minval=1, maxval=4, group = settings_sr_lines)
+sr_label_size_input = input.string(size.tiny, 'حجم الملصقات', options = [size.tiny, size.small, size.normal, size.large], group = settings_sr_lines)
+sr_extend_right     = input.bool(false, 'تمديد الخطوط يميناً', group = settings_sr_lines)
+
+settings_autofibo = 'Auto Fibonacci ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+FPeriod = input.int(85, title='Fibo Period', group=settings_autofibo)
+
+// =====================
+// HTF Candles INPUTS
+// =====================
+
+// =====================
+// INPUTS - Dynamic VWAP
+// =====================
+group_sw = "VWAP Swing Points"
+prd      = input.int(50, title='Swing Period', minval=2, group=group_sw)
+baseAPT  = input.float(20, 'Adaptive Price Tracking', minval=1, step=1, group=group_sw)
+useAdapt = input.bool(false, 'Adapt APT by ATR ratio', group=group_sw)
+volBias  = input.float(10.0, 'Volatility Bias', minval=0.1, step=0.1, group=group_sw)
+
+group_style = "VWAP Style"
+highS   = input.color(color.lime, title="Swing High Color", group=group_style)
+lowS    = input.color(color.red,  title="Swing Low Color",  group=group_style)
+lineS   = input.color(color.lime, title="VWAP Bull Color",  group=group_style, inline="VWAP")
+lineR   = input.color(color.red,  title="VWAP Bear Color",  group=group_style, inline="VWAP")
+vwap_w  = input.int(2, minval=1, title="VWAP Width", group=group_style)
+
+// =====================
+// INPUTS - Supertrend Labels
+// =====================
+st_lbl_atrPeriod = input.int(10,   "ATR Period", minval=1,   group="Supertrend Labels")
+st_lbl_factor    = input.float(3.0, "Factor",    minval=0.1, step=0.1, group="Supertrend Labels")
+
+
+// =====================
+// FIXED SETTINGS - fmfmf16
+// =====================
+var Settings  settings  = Settings.new()
+var FibLevels fiblevels = FibLevels.new()
+
+show_lines     = true
+show_labels    = true
+show_above     = true
+show_below     = true
+show_open_line = true
+
+settings.htf            := selected_tf
+settings.max            := 1
+settings.lookback       := 5000
+settings.mirror         := true
+settings.override1      := ''
+settings.overridevalue1 := 0.0
+settings.override2      := ''
+settings.overridevalue2 := 0.0
+settings.override3      := ''
+settings.overridevalue3 := 0.0
+settings.override4      := ''
+settings.overridevalue4 := 0.0
+settings.override5      := ''
+settings.overridevalue5 := 0.0
+
+fiblevels.fib1          := true
+fiblevels.fib1_level    := 0.0
+fiblevels.fib1_color    := color.white
+fiblevels.fib1_style    := fib_line_style
+fiblevels.fib1_size     := 2
+fiblevels.fib2          := true
+fiblevels.fib2_level    := 0.25
+fiblevels.fib2_color    := color.green
+fiblevels.fib2_style    := fib_line_style
+fiblevels.fib2_size     := 1
+fiblevels.fib3          := true
+fiblevels.fib3_level    := 0.5
+fiblevels.fib3_color    := color.green
+fiblevels.fib3_style    := fib_line_style
+fiblevels.fib3_size     := 1
+fiblevels.fib4          := true
+fiblevels.fib4_level    := 0.75
+fiblevels.fib4_color    := color.green
+fiblevels.fib4_style    := fib_line_style
+fiblevels.fib4_size     := 1
+fiblevels.fib5          := true
+fiblevels.fib5_level    := 1.0
+fiblevels.fib5_color    := color.green
+fiblevels.fib5_style    := fib_line_style
+fiblevels.fib5_size     := 2
+fiblevels.fib6          := true
+fiblevels.fib6_level    := 1.25
+fiblevels.fib6_color    := color.green
+fiblevels.fib6_style    := fib_line_style
+fiblevels.fib6_size     := 1
+fiblevels.fib7          := true
+fiblevels.fib7_level    := 1.5
+fiblevels.fib7_color    := color.green
+fiblevels.fib7_style    := fib_line_style
+fiblevels.fib7_size     := 1
+fiblevels.fib8          := false
+fiblevels.fib8_level    := 1.75
+fiblevels.fib8_color    := color.green
+fiblevels.fib8_style    := fib_line_style
+fiblevels.fib8_size     := 1
+fiblevels.fib9          := false
+fiblevels.fib9_level    := 2.0
+fiblevels.fib9_color    := color.green
+fiblevels.fib9_style    := fib_line_style
+fiblevels.fib9_size     := 2
+fiblevels.use_background := false
+fiblevels.fill_percent   := 99
+fiblevels.padding        := 1
+fiblevels.label_size     := fib_label_size
+fiblevels.show_level     := true
+fiblevels.show_price     := show_prices_lbl
+
+daily_resistance_color = color.new(#ff0000, 20)
+daily_support_color    = color.new(#00ff00, 20)
+daily_midline_color    = #ffeb3b
+
+upTlColor       = color.new(color.teal, 15)
+downTlColor     = color.new(color.red,  15)
+trendLineLength = 10
+
+contract  = true
+closeOnly = true
+fvgtra    = 80
+colUp     = color.red
+colDn     = color.green
+liqWidth  = 0.3
+
+atr = ta.atr(14)
+
+// =====================
+// FIB HELPERS
+// =====================
+color color_transparent = #00000000
+var array<Daily> daily  = array.new<Daily>()
+
+lineStyle(string style) =>
+    switch style
+        '----' => line.style_dashed
+        '····' => line.style_dotted
+        =>        line.style_solid
+
+srLineStyle(string style) =>
+    switch style
+        '----' => line.style_dashed
+        '····' => line.style_dotted
+        =>        line.style_solid
+
+method swap(array<fib> this, int i, int j) =>
+    temp = this.get(i)
+    this.set(i, this.get(j))
+    this.set(j, temp)
+
+method sort(array<fib> this) =>
+    sz = this.size()
+    for i = 0 to sz - 2
+        for j = 0 to sz - 2 - i
+            if this.get(j).level > this.get(j + 1).level
+                this.swap(j, j + 1)
+
+getLineColor(float level) =>
+    math.abs(level) == 0.25 ? color.new(color.blue, 0) : level > 0 ? color.new(color.green, 0) : level < 0 ? color.new(color.red, 0) : color.new(color.white, 0)
+
+getTargetLabel(float level, float price, bool show_price) =>
+    string txt = ''
+    if level == 0
+        txt := 'Open'
+    else if level == 0.25
+        txt := 'دخول كول'
+    else if level == -0.25
+        txt := 'دخول بوت'
+    else if level > 0
+        txt := 'T' + str.tostring(math.round(math.abs(level) / 0.25))
+    else
+        txt := 'T' + str.tostring(math.round(math.abs(level) / 0.25) + 1)
+    if show_price
+        txt := txt + ' (' + str.format('{0,number,#,###.00}', price) + ')'
+    txt
+
+shouldShow(float level) =>
+    if not show_indicator
+        false
+    else if level == 0
+        show_open_line
+    else if level > 0
+        show_above
+    else
+        show_below
+
+getFibLevel(float level, float _price, color _color, string _style, int _size) =>
+    fib f   = fib.new()
+    f.level := level
+    f.color := getLineColor(level)
+    f.price := _price
+    f.style := _style
+    f.size  := _size
+    f.ln    := line.new(na, _price, na, _price, color=f.color, style=lineStyle(_style), xloc=xloc.bar_time, width=_size)
+    f.lbl   := label.new(na, f.price, '', style=label.style_label_left, textcolor=f.color, color=color_transparent, size=fiblevels.label_size, xloc=xloc.bar_time)
+    f
+
+method calcFibs(Daily this, float price, float stdDev) =>
+    if this.fibs.size() == 0
+        if fiblevels.fib1
+            this.fibs.unshift(getFibLevel(fiblevels.fib1_level, price+(stdDev*fiblevels.fib1_level), fiblevels.fib1_color, fiblevels.fib1_style, fiblevels.fib1_size))
+            if settings.mirror and fiblevels.fib1_level != 0
+                this.fibs.unshift(getFibLevel(-fiblevels.fib1_level, price-(stdDev*fiblevels.fib1_level), fiblevels.fib1_color, fiblevels.fib1_style, fiblevels.fib1_size))
+        if fiblevels.fib2
+            this.fibs.unshift(getFibLevel(fiblevels.fib2_level, price+(stdDev*fiblevels.fib2_level), fiblevels.fib2_color, fiblevels.fib2_style, fiblevels.fib2_size))
+            if settings.mirror and fiblevels.fib2_level != 0
+                this.fibs.unshift(getFibLevel(-fiblevels.fib2_level, price-(stdDev*fiblevels.fib2_level), fiblevels.fib2_color, fiblevels.fib2_style, fiblevels.fib2_size))
+        if fiblevels.fib3
+            this.fibs.unshift(getFibLevel(fiblevels.fib3_level, price+(stdDev*fiblevels.fib3_level), fiblevels.fib3_color, fiblevels.fib3_style, fiblevels.fib3_size))
+            if settings.mirror and fiblevels.fib3_level != 0
+                this.fibs.unshift(getFibLevel(-fiblevels.fib3_level, price-(stdDev*fiblevels.fib3_level), fiblevels.fib3_color, fiblevels.fib3_style, fiblevels.fib3_size))
+        if fiblevels.fib4
+            this.fibs.unshift(getFibLevel(fiblevels.fib4_level, price+(stdDev*fiblevels.fib4_level), fiblevels.fib4_color, fiblevels.fib4_style, fiblevels.fib4_size))
+            if settings.mirror and fiblevels.fib4_level != 0
+                this.fibs.unshift(getFibLevel(-fiblevels.fib4_level, price-(stdDev*fiblevels.fib4_level), fiblevels.fib4_color, fiblevels.fib4_style, fiblevels.fib4_size))
+        if fiblevels.fib5
+            this.fibs.unshift(getFibLevel(fiblevels.fib5_level, price+(stdDev*fiblevels.fib5_level), fiblevels.fib5_color, fiblevels.fib5_style, fiblevels.fib5_size))
+            if settings.mirror and fiblevels.fib5_level != 0
+                this.fibs.unshift(getFibLevel(-fiblevels.fib5_level, price-(stdDev*fiblevels.fib5_level), fiblevels.fib5_color, fiblevels.fib5_style, fiblevels.fib5_size))
+        if fiblevels.fib6
+            this.fibs.unshift(getFibLevel(fiblevels.fib6_level, price+(stdDev*fiblevels.fib6_level), fiblevels.fib6_color, fiblevels.fib6_style, fiblevels.fib6_size))
+            if settings.mirror and fiblevels.fib6_level != 0
+                this.fibs.unshift(getFibLevel(-fiblevels.fib6_level, price-(stdDev*fiblevels.fib6_level), fiblevels.fib6_color, fiblevels.fib6_style, fiblevels.fib6_size))
+        if fiblevels.fib7
+            this.fibs.unshift(getFibLevel(fiblevels.fib7_level, price+(stdDev*fiblevels.fib7_level), fiblevels.fib7_color, fiblevels.fib7_style, fiblevels.fib7_size))
+            if settings.mirror and fiblevels.fib7_level != 0
+                this.fibs.unshift(getFibLevel(-fiblevels.fib7_level, price-(stdDev*fiblevels.fib7_level), fiblevels.fib7_color, fiblevels.fib7_style, fiblevels.fib7_size))
+        if fiblevels.fib8
+            this.fibs.unshift(getFibLevel(fiblevels.fib8_level, price+(stdDev*fiblevels.fib8_level), fiblevels.fib8_color, fiblevels.fib8_style, fiblevels.fib8_size))
+            if settings.mirror and fiblevels.fib8_level != 0
+                this.fibs.unshift(getFibLevel(-fiblevels.fib8_level, price-(stdDev*fiblevels.fib8_level), fiblevels.fib8_color, fiblevels.fib8_style, fiblevels.fib8_size))
+        if fiblevels.fib9
+            this.fibs.unshift(getFibLevel(fiblevels.fib9_level, price+(stdDev*fiblevels.fib9_level), fiblevels.fib9_color, fiblevels.fib9_style, fiblevels.fib9_size))
+            if settings.mirror and fiblevels.fib9_level != 0
+                this.fibs.unshift(getFibLevel(-fiblevels.fib9_level, price-(stdDev*fiblevels.fib9_level), fiblevels.fib9_color, fiblevels.fib9_style, fiblevels.fib9_size))
+    this.fibs.sort()
+    this
+
+method fibAlert(Daily this) =>
+    for f in this.fibs
+        if f.level < 0 and ta.crossunder(low, f.price)
+            alert('Price crossed below StdDev ' + str.tostring(f.level) + ' [' + syminfo.ticker + ']')
+            break
+        if f.level > 1 and ta.crossover(high, f.level)
+            alert('Price crossed above StdDev ' + str.tostring(f.level) + ' [' + syminfo.ticker + ']')
+            break
+
+method drawFibs(Daily this, int idx) =>
+    if this.fibs.size() > 0
+        for i = 0 to this.fibs.size() - 1
+            fib f      = this.fibs.get(i)
+            int padded = this.time_last + (fiblevels.padding * (time - time[1]))
+            string txt = getTargetLabel(f.level, f.price, fiblevels.show_price)
+            bool visible   = shouldShow(f.level)
+            color lineClr  = visible and show_lines  ? f.color : color_transparent
+            color labelClr = visible and show_labels ? f.color : color_transparent
+            f.ln.set_color(lineClr)
+            f.lbl.set_xy(padded, f.price)
+            f.lbl.set_textcolor(labelClr)
+            if idx == 0
+                f.ln.set_xy1(this.time, f.price)
+                f.ln.set_xy2(padded, f.price)
+                f.lbl.set_text(visible and show_labels ? txt : '')
+                if fiblevels.use_background and i > 0
+                    fib pf = this.fibs.get(i - 1)
+                    f.fl := linefill.new(pf.ln, f.ln, color.new(f.color, fiblevels.fill_percent))
+            else
+                f.ln.set_x1(this.time)
+                f.ln.set_x2(this.time_last + (time - time[1]))
+                f.lbl.set_x(this.time_last)
+    this
+
+getDailyStDev() =>
+    float stdev = 0
+    switch str.lower(syminfo.ticker)
+        str.lower(settings.override1) => settings.overridevalue1
+        str.lower(settings.override2) => settings.overridevalue2
+        str.lower(settings.override3) => settings.overridevalue3
+        str.lower(settings.override4) => settings.overridevalue4
+        str.lower(settings.override5) => settings.overridevalue5
+        =>
+            lookback = math.min(settings.lookback, bar_index)
+            lookback := lookback <= 0 ? 1 : lookback
+            diff = (close - open) / open
+            ta.stdev(diff, lookback)
+
+method delete(array<fib> this) =>
+    for f in this
+        f.ln.delete()
+        f.lbl.delete()
+        f.fl.delete()
+
+method add(array<Daily> this, float price, int _time, float stdDev) =>
+    Daily d     = Daily.new()
+    d.price     := price
+    d.time      := _time
+    d.time_last := _time
+    d.fibs      := array.new<fib>()
+    d.calcFibs(price, stdDev)
+    this.unshift(d)
+    if this.size() > settings.max
+        Daily temp = this.pop()
+        temp.fibs.delete()
+
+method update(array<Daily> this, int _time) =>
+    if this.size() > 0
+        Daily f = this.first()
+        f.time_last := _time
+
+// =====================
+// HTF HELPERS
+// =====================
+
+// =====================
+// FIB EXECUTION
+// =====================
+var float fib_factor = 0
+var float day_open   = 0
+var int   day_time   = 0
+
+if true
+    fib_factor := request.security(syminfo.ticker, settings.htf, getDailyStDev(), lookahead = barmerge.lookahead_on)
+    bool newDay = bool(ta.change(time(settings.htf, "america/New_York")))
+    if bool(newDay)
+        if not bool(newDay[1])
+            daily.add(open, time, (fib_factor * open))
+            day_open := open
+            day_time := time
+    daily.update(time)
+    if barstate.islast
+        for [i, d] in daily
+            d.drawFibs(i)
+        daily.first().fibAlert()
+
+// =====================
+// DAILY SUPPORT/RESISTANCE
+// =====================
+selected_high = request.security(syminfo.tickerid, selected_tf, high[1], lookahead = barmerge.lookahead_on)
+selected_low  = request.security(syminfo.tickerid, selected_tf, low[1],  lookahead = barmerge.lookahead_on)
+selected_mid  = (selected_high + selected_low) / 2
+
+tf_name = selected_tf == "60"  ? "ساعة"    :
+          selected_tf == "240" ? "4 ساعات" : "يوم"
+
+var line  daily_resistanceLine  = na
+var line  daily_supportLine     = na
+var line  daily_midLine         = na
+var label daily_resistanceLabel = na
+var label daily_supportLabel    = na
+var label daily_midLabel        = na
+
+if barstate.islast
+    line.delete(daily_resistanceLine)
+    line.delete(daily_supportLine)
+    line.delete(daily_midLine)
+    label.delete(daily_resistanceLabel)
+    label.delete(daily_supportLabel)
+    label.delete(daily_midLabel)
+    if show_daily_sr and not na(selected_high) and not na(selected_low)
+        int lx   = bar_index - 40
+        int rx   = bar_index + 5
+        ext_mode = sr_extend_right ? extend.right : extend.none
+        sr_style = srLineStyle(sr_line_style_input)
+        daily_resistanceLine  := line.new(lx, selected_high, rx, selected_high, color=daily_resistance_color, width=sr_line_width_input, style=sr_style, extend=ext_mode)
+        daily_supportLine     := line.new(lx, selected_low,  rx, selected_low,  color=daily_support_color,    width=sr_line_width_input, style=sr_style, extend=ext_mode)
+        daily_midLine         := line.new(lx, selected_mid,  rx, selected_mid,  color=daily_midline_color,    width=sr_line_width_input, style=sr_style, extend=ext_mode)
+        daily_resistanceLabel := label.new(rx, selected_high, "↑ مقاومة " + tf_name + "  " + str.tostring(selected_high, format.mintick), style=label.style_label_left, color=#00000000, textcolor=daily_resistance_color, size=sr_label_size_input)
+        daily_supportLabel    := label.new(rx, selected_low,  "↓ دعم "    + tf_name + "  " + str.tostring(selected_low,  format.mintick), style=label.style_label_left, color=#00000000, textcolor=daily_support_color,    size=sr_label_size_input)
+        daily_midLabel        := label.new(rx, selected_mid,  "◈ تمركز "  + tf_name + "  " + str.tostring(selected_mid,  format.mintick), style=label.style_label_left, color=#00000000, textcolor=daily_midline_color,    size=sr_label_size_input)
+
+// =====================
+// FVG
+// =====================
+var array<box>   fvgDnAll = array.new<box>()
+var array<box>   fvgUpAll = array.new<box>()
+var array<box>   liqDnBox = array.new<box>()
+var array<box>   liqUpBox = array.new<box>()
+var array<label> liqDnLab = array.new<label>()
+var array<label> liqUpLab = array.new<label>()
+var array<bool>  liqDnHit = array.new<bool>()
+var array<bool>  liqUpHit = array.new<bool>()
+var array<bool>  liqDnVis = array.new<bool>()
+var array<bool>  liqUpVis = array.new<bool>()
+
+fvg(direction) =>
+    var fvgMat      = matrix.new<float>(5)
+    var fvgDrawings = array.new<box>()
+    fvgDrawings.clear()
+    fvgMat.add_col(0, array.from(math.sign(close - open), close, high, low, float(time)))
+    if fvgMat.columns() > 3
+        fvgMat.remove_col(fvgMat.columns() - 1)
+    if fvgMat.row(0).sum() == direction
+        getDir = math.sign(direction)
+        [y, y1] = switch getDir
+            -1 => [fvgMat.get(3, 2), fvgMat.get(2, 0)]
+            =>    [fvgMat.get(3, 0), fvgMat.get(2, 2)]
+        col = color.new(color.black, 100)
+        fvgDrawings.push(box.new(int(fvgMat.get(4, 1)), y, last_bar_time, y1, xloc=xloc.bar_time, border_color=col, bgcolor=col))
+    fvgDrawings
+
+if showFVG
+    newDn = fvg(-3)
+    newUp = fvg(3)
+    if newDn.size() > 0
+        for b in newDn
+            top    = b.get_top()
+            bot    = b.get_bottom()
+            rgt    = b.get_right()
+            lft    = b.get_left()
+            midY   = (top + bot) / 2
+            totalW = rgt - lft
+            liqL   = rgt - int(totalW * liqWidth)
+            b.set_bgcolor(color.new(colDn, fvgtra))
+            b.set_border_color(color.new(colDn, fvgtra))
+            fvgDnAll.push(b)
+            liqDnBox.push(box.new(liqL, top, rgt, bot, xloc=xloc.bar_time, border_color=color.new(color.white, 50), bgcolor=color.new(colDn, 50)))
+            liqDnLab.push(label.new(liqL, midY, text="سيولة", xloc=xloc.bar_time, color=#00000000, textcolor=color.white, style=label.style_label_right, size=size.small))
+            liqDnHit.push(false)
+            liqDnVis.push(true)
+    if newUp.size() > 0
+        for b in newUp
+            top    = b.get_top()
+            bot    = b.get_bottom()
+            rgt    = b.get_right()
+            lft    = b.get_left()
+            midY   = (top + bot) / 2
+            totalW = rgt - lft
+            liqL   = rgt - int(totalW * liqWidth)
+            b.set_bgcolor(color.new(colUp, fvgtra))
+            b.set_border_color(color.new(colUp, fvgtra))
+            fvgUpAll.push(b)
+            liqUpBox.push(box.new(liqL, top, rgt, bot, xloc=xloc.bar_time, border_color=color.new(color.white, 50), bgcolor=color.new(colUp, 50)))
+            liqUpLab.push(label.new(liqL, midY, text="سيولة", xloc=xloc.bar_time, color=#00000000, textcolor=color.white, style=label.style_label_right, size=size.small))
+            liqUpHit.push(false)
+            liqUpVis.push(true)
+    if fvgDnAll.size() > 0
+        for i = fvgDnAll.size() - 1 to 0
+            b = fvgDnAll.get(i)
+            if high >= b.get_top()
+                b.delete()
+                fvgDnAll.remove(i)
+                liqDnBox.get(i).delete()
+                liqDnBox.remove(i)
+                liqDnLab.get(i).delete()
+                liqDnLab.remove(i)
+                liqDnHit.remove(i)
+                liqDnVis.remove(i)
+            else if contract and high > b.get_bottom()
+                b.set_bottom(high)
+    if fvgUpAll.size() > 0
+        for i = fvgUpAll.size() - 1 to 0
+            b = fvgUpAll.get(i)
+            if low <= b.get_bottom()
+                b.delete()
+                fvgUpAll.remove(i)
+                liqUpBox.get(i).delete()
+                liqUpBox.remove(i)
+                liqUpLab.get(i).delete()
+                liqUpLab.remove(i)
+                liqUpHit.remove(i)
+                liqUpVis.remove(i)
+            else if contract and low < b.get_top()
+                b.set_top(low)
+    if fvgDnAll.size() > 0
+        for i = 0 to fvgDnAll.size() - 1
+            b      = fvgDnAll.get(i)
+            lb     = liqDnBox.get(i)
+            ll     = liqDnLab.get(i)
+            top    = b.get_top()
+            bot    = b.get_bottom()
+            rgt    = b.get_right()
+            lft    = b.get_left()
+            totalW = rgt - lft
+            liqL   = rgt - int(totalW * liqWidth)
+            midY   = (top + bot) / 2
+            lb.set_lefttop(liqL, top)
+            lb.set_rightbottom(rgt, bot)
+            ll.set_xy(liqL, midY)
+            if not liqDnHit.get(i)
+                if close >= bot and close <= top
+                    liqDnHit.set(i, true)
+                    ll.set_text("✓ تم سحب السيولة")
+                    ll.set_textcolor(color.yellow)
+    if fvgUpAll.size() > 0
+        for i = 0 to fvgUpAll.size() - 1
+            b      = fvgUpAll.get(i)
+            lb     = liqUpBox.get(i)
+            ll     = liqUpLab.get(i)
+            top    = b.get_top()
+            bot    = b.get_bottom()
+            rgt    = b.get_right()
+            lft    = b.get_left()
+            totalW = rgt - lft
+            liqL   = rgt - int(totalW * liqWidth)
+            midY   = (top + bot) / 2
+            lb.set_lefttop(liqL, top)
+            lb.set_rightbottom(rgt, bot)
+            ll.set_xy(liqL, midY)
+            if not liqUpHit.get(i)
+                if close >= bot and close <= top
+                    liqUpHit.set(i, true)
+                    ll.set_text("✓ تم سحب السيولة")
+                    ll.set_textcolor(color.yellow)
+    if closeOnly and barstate.islast
+        if fvgDnAll.size() > 0
+            for i = 0 to fvgDnAll.size() - 1
+                fvgDnAll.get(i).set_bgcolor(color.new(color.black, 100))
+                fvgDnAll.get(i).set_border_color(color.new(color.black, 100))
+                liqDnBox.get(i).set_bgcolor(color.new(color.black, 100))
+                liqDnBox.get(i).set_border_color(color.new(color.black, 100))
+                liqDnLab.get(i).set_textcolor(color.new(color.white, 100))
+                liqDnVis.set(i, false)
+        if fvgUpAll.size() > 0
+            for i = 0 to fvgUpAll.size() - 1
+                fvgUpAll.get(i).set_bgcolor(color.new(color.black, 100))
+                fvgUpAll.get(i).set_border_color(color.new(color.black, 100))
+                liqUpBox.get(i).set_bgcolor(color.new(color.black, 100))
+                liqUpBox.get(i).set_border_color(color.new(color.black, 100))
+                liqUpLab.get(i).set_textcolor(color.new(color.white, 100))
+                liqUpVis.set(i, false)
+        if fvgDnAll.size() > 0
+            distsDn = array.new_float()
+            for i = 0 to fvgDnAll.size() - 1
+                distsDn.push(math.abs(close - fvgDnAll.get(i).get_bottom()))
+            for n = 0 to math.min(maxBoxes - 1, fvgDnAll.size() - 1)
+                idx = array.indexof(distsDn, array.min(distsDn))
+                fvgDnAll.get(idx).set_bgcolor(color.new(colDn, fvgtra))
+                fvgDnAll.get(idx).set_border_color(color.new(colDn, fvgtra))
+                liqDnBox.get(idx).set_bgcolor(color.new(colDn, 50))
+                liqDnBox.get(idx).set_border_color(color.new(color.white, 50))
+                if liqDnHit.get(idx)
+                    liqDnLab.get(idx).set_textcolor(color.yellow)
+                else
+                    liqDnLab.get(idx).set_textcolor(color.white)
+                liqDnVis.set(idx, true)
+                array.set(distsDn, idx, 1e10)
+        if fvgUpAll.size() > 0
+            distsUp = array.new_float()
+            for i = 0 to fvgUpAll.size() - 1
+                distsUp.push(math.abs(close - fvgUpAll.get(i).get_top()))
+            for n = 0 to math.min(maxBoxes - 1, fvgUpAll.size() - 1)
+                idx = array.indexof(distsUp, array.min(distsUp))
+                fvgUpAll.get(idx).set_bgcolor(color.new(colUp, fvgtra))
+                fvgUpAll.get(idx).set_border_color(color.new(colUp, fvgtra))
+                liqUpBox.get(idx).set_bgcolor(color.new(colUp, 50))
+                liqUpBox.get(idx).set_border_color(color.new(color.white, 50))
+                if liqUpHit.get(idx)
+                    liqUpLab.get(idx).set_textcolor(color.yellow)
+                else
+                    liqUpLab.get(idx).set_textcolor(color.white)
+                liqUpVis.set(idx, true)
+                array.set(distsUp, idx, 1e10)
+
+if not showFVG and barstate.islast
+    if fvgDnAll.size() > 0
+        for i = 0 to fvgDnAll.size() - 1
+            fvgDnAll.get(i).set_bgcolor(color.new(color.black, 100))
+            fvgDnAll.get(i).set_border_color(color.new(color.black, 100))
+            liqDnBox.get(i).set_bgcolor(color.new(color.black, 100))
+            liqDnBox.get(i).set_border_color(color.new(color.black, 100))
+            liqDnLab.get(i).set_textcolor(color.new(color.white, 100))
+    if fvgUpAll.size() > 0
+        for i = 0 to fvgUpAll.size() - 1
+            fvgUpAll.get(i).set_bgcolor(color.new(color.black, 100))
+            fvgUpAll.get(i).set_border_color(color.new(color.black, 100))
+            liqUpBox.get(i).set_bgcolor(color.new(color.black, 100))
+            liqUpBox.get(i).set_border_color(color.new(color.black, 100))
+            liqUpLab.get(i).set_textcolor(color.new(color.white, 100))
+
+// =====================
+// ORDER BLOCKS
+// =====================
+var array<orderblock> bullishOrderblock = array.new<orderblock>()
+var array<orderblock> bearishOrderblock = array.new<orderblock>()
+var array<int>   highValIndex = array.new<int>()
+var array<int>   lowValIndex  = array.new<int>()
+var array<float> highVal      = array.new_float()
+var array<float> lowVal       = array.new_float()
+
+var bool   drawUp    = false
+var bool   drawDown  = false
+var string lastState = na
+var bool   to_up     = false
+var bool   to_down   = false
+var int    trend     = 1
+
+to_up   := high[zigzagLen] >= ta.highest(high, zigzagLen)
+to_down := low[zigzagLen]  <= ta.lowest(low,  zigzagLen)
+trend   := trend == 1 and to_down ? -1 : trend == -1 and to_up ? 1 : trend
+
+if ta.change(trend) != 0 and trend == 1
+    array.push(highValIndex, time[zigzagLen])
+    array.push(highVal, high[zigzagLen])
+    if array.size(lowVal) > 1
+        drawUp := false
+
+if ta.change(trend) != 0 and trend == -1
+    array.push(lowValIndex, time[zigzagLen])
+    array.push(lowVal, low[zigzagLen])
+    if array.size(highVal) > 1
+        drawDown := false
+
+if array.size(lowVal) > 1 and drawDown == false
+    if close < array.get(lowVal, array.size(lowVal) - 1)
+        drawDown  := true
+        lastState := 'down'
+        orderblock newOB = orderblock.new()
+        float max = 0
+        int bar   = na
+        for i = (time - array.get(lowValIndex, array.size(lowValIndex)-1) - (time-time[1])) / (time-time[1]) to 0 by 1
+            if high[i] > max
+                max := high[i]
+                bar := time[i]
+        newOB.barStart   := bar
+        newOB.barEnd     := time
+        newOB.broken     := false
+        newOB.value      := max
+        newOB.volumeData := VolumeData.new(volume)
+        newOB.block := box.new(
+             left         = newOB.barStart,
+             top          = newOB.value,
+             right        = newOB.barEnd,
+             bottom       = newOB.value - atr,
+             xloc         = xloc.bar_time,
+             bgcolor      = showOB ? bearishOrderblockColor : color.new(color.black, 100),
+             border_width = 2,
+             border_color = showOB ? color.new(#cd1212, 0) : color.new(color.black, 100))
+        newOB.lbl := label.new(
+             x         = newOB.barEnd,
+             y         = newOB.value - (atr / 2),
+             text      = "",
+             xloc      = xloc.bar_time,
+             style     = label.style_label_right,
+             textcolor = color.white,
+             color     = color.new(color.red, 100),
+             size      = size.small)
+        newOB.signalLbl := label.new(
+             x         = newOB.barEnd,
+             y         = newOB.value - (atr / 2),
+             text      = "",
+             xloc      = xloc.bar_time,
+             style     = label.style_label_right,
+             textcolor = color.white,
+             color     = color.new(color.red, 100),
+             size      = size.small)
+        array.push(bearishOrderblock, newOB)
+        if array.size(bearishOrderblock) > 20
+            oldOb = array.shift(bearishOrderblock)
+            if not na(oldOb.block)
+                oldOb.block.delete()
+            if not na(oldOb.lbl)
+                oldOb.lbl.delete()
+            if not na(oldOb.signalLbl)
+                oldOb.signalLbl.delete()
+
+if array.size(highVal) > 1 and drawUp == false
+    if close > array.get(highVal, array.size(highVal) - 1)
+        drawUp    := true
+        lastState := 'up'
+        orderblock newOB = orderblock.new()
+        float min = 999999999
+        int bar   = na
+        for i = (time - array.get(highValIndex, array.size(highValIndex)-1) - (time-time[1])) / (time-time[1]) to 0 by 1
+            if low[i] < min
+                min := low[i]
+                bar := time[i]
+        newOB.barStart   := bar
+        newOB.barEnd     := time
+        newOB.broken     := false
+        newOB.value      := min
+        newOB.volumeData := VolumeData.new(volume)
+        newOB.block := box.new(
+             left         = newOB.barStart,
+             top          = newOB.value + atr,
+             right        = newOB.barEnd,
+             bottom       = newOB.value,
+             xloc         = xloc.bar_time,
+             bgcolor      = showOB ? bullishOrderblockColor : color.new(color.black, 100),
+             border_width = 2,
+             border_color = showOB ? color.new(#52ae10, 0) : color.new(color.black, 100))
+        newOB.lbl := label.new(
+             x         = newOB.barEnd,
+             y         = newOB.value + (atr / 2),
+             text      = "",
+             xloc      = xloc.bar_time,
+             style     = label.style_label_right,
+             textcolor = color.white,
+             color     = color.new(color.green, 100),
+             size      = size.small)
+        newOB.signalLbl := label.new(
+             x         = newOB.barEnd,
+             y         = newOB.value + (atr / 2),
+             text      = "",
+             xloc      = xloc.bar_time,
+             style     = label.style_label_right,
+             textcolor = color.white,
+             color     = color.new(color.green, 100),
+             size      = size.small)
+        array.push(bullishOrderblock, newOB)
+        if array.size(bullishOrderblock) > 20
+            oldOb = array.shift(bullishOrderblock)
+            if not na(oldOb.block)
+                oldOb.block.delete()
+            if not na(oldOb.lbl)
+                oldOb.lbl.delete()
+            if not na(oldOb.signalLbl)
+                oldOb.signalLbl.delete()
+
+var int activeBullishCount = 0
+var int activeBearishCount = 0
+
+if array.size(bullishOrderblock) > 0
+    orderblock testOB = na
+    int counter = 0
+    activeBullishCount := 0
+    for i = array.size(bullishOrderblock) - 1 to 0 by 1
+        testOB := array.get(bullishOrderblock, i)
+        if counter < numberObShow
+            testOB.block.set_right(time)
+            if close < testOB.value
+                testOB.block.delete()
+                testOB.lbl.delete()
+                testOB.signalLbl.delete()
+                array.remove(bullishOrderblock, i)
+            else
+                activeBullishCount += 1
+                bool nearBull = close <= testOB.value + atr and close >= testOB.value
+                if showOB
+                    testOB.block.set_bgcolor(bullishOrderblockColor)
+                    testOB.block.set_border_color(color.new(#52ae10, 0))
+                    testOB.lbl.set_text("منطقة طلب")
+                    testOB.lbl.set_x(time)
+                    testOB.lbl.set_y(testOB.value + (atr / 2))
+                    testOB.lbl.set_style(label.style_label_right)
+                    testOB.lbl.set_textcolor(color.white)
+                    if nearBull
+                        testOB.signalLbl.set_text("▲")
+                        testOB.signalLbl.set_x(time)
+                        testOB.signalLbl.set_y(testOB.value - (atr * 1.5))
+                        testOB.signalLbl.set_style(label.style_label_up)
+                        testOB.signalLbl.set_color(color.new(color.green, 0))
+                        testOB.signalLbl.set_textcolor(color.white)
+                        testOB.signalLbl.set_size(size.normal)
+                    else
+                        testOB.signalLbl.set_text("")
+                else
+                    testOB.block.set_bgcolor(color.new(color.black, 100))
+                    testOB.block.set_border_color(color.new(color.black, 100))
+                    testOB.lbl.set_text("")
+                    testOB.signalLbl.set_text("")
+            counter += 1
+        else
+            testOB.block.set_right(testOB.barStart)
+            testOB.lbl.set_text("")
+            testOB.signalLbl.set_text("")
+
+if array.size(bearishOrderblock) > 0
+    orderblock testOB = na
+    int counter = 0
+    activeBearishCount := 0
+    for i = array.size(bearishOrderblock) - 1 to 0 by 1
+        testOB := array.get(bearishOrderblock, i)
+        if counter < numberObShow
+            testOB.block.set_right(time)
+            if close > testOB.value
+                testOB.block.delete()
+                testOB.lbl.delete()
+                testOB.signalLbl.delete()
+                array.remove(bearishOrderblock, i)
+            else
+                activeBearishCount += 1
+                bool nearBear = close >= testOB.value - atr and close <= testOB.value
+                if showOB
+                    testOB.block.set_bgcolor(bearishOrderblockColor)
+                    testOB.block.set_border_color(color.new(#cd1212, 0))
+                    testOB.lbl.set_text("منطقة عرض")
+                    testOB.lbl.set_x(time)
+                    testOB.lbl.set_y(testOB.value - (atr / 2))
+                    testOB.lbl.set_style(label.style_label_right)
+                    testOB.lbl.set_textcolor(color.white)
+                    if nearBear
+                        testOB.signalLbl.set_text("▼")
+                        testOB.signalLbl.set_x(time)
+                        testOB.signalLbl.set_y(testOB.value + (atr * 1.5))
+                        testOB.signalLbl.set_style(label.style_label_down)
+                        testOB.signalLbl.set_color(color.new(color.red, 0))
+                        testOB.signalLbl.set_textcolor(color.white)
+                        testOB.signalLbl.set_size(size.normal)
+                    else
+                        testOB.signalLbl.set_text("")
+                else
+                    testOB.block.set_bgcolor(color.new(color.black, 100))
+                    testOB.block.set_border_color(color.new(color.black, 100))
+                    testOB.lbl.set_text("")
+                    testOB.signalLbl.set_text("")
+            counter += 1
+        else
+            testOB.block.set_right(testOB.barStart)
+            testOB.lbl.set_text("")
+            testOB.signalLbl.set_text("")
+
+// =====================
+// TREND LINES
+// =====================
+extendTrendline(lineId, startIndex, startValue, endIndex, endValue) =>
+    slope = (endValue - startValue) / (endIndex - startIndex)
+    line.set_x2(lineId, bar_index)
+    line.set_y2(lineId, startValue + slope * (bar_index - startIndex))
+
+getSlope(startIndex, startValue, endIndex, endValue) =>
+    (endValue - startValue) / (endIndex - startIndex)
+
+var line newBearishTrendline = na
+var line newBullishTrendline = na
+
+if showTrendLines
+    phTrend = ta.pivothigh(high, trendLineLength, trendLineLength)
+    plTrend = ta.pivotlow(low,  trendLineLength, trendLineLength)
+    bullishStart    = ta.valuewhen(not na(plTrend), bar_index[trendLineLength], 1)
+    bullishEnd      = ta.valuewhen(not na(plTrend), bar_index[trendLineLength], 0)
+    bearishStart    = ta.valuewhen(not na(phTrend), bar_index[trendLineLength], 1)
+    bearishEnd      = ta.valuewhen(not na(phTrend), bar_index[trendLineLength], 0)
+    bullishStartVal = ta.valuewhen(not na(plTrend), low[trendLineLength],  1)
+    bullishEndVal   = ta.valuewhen(not na(plTrend), low[trendLineLength],  0)
+    bearishStartVal = ta.valuewhen(not na(phTrend), high[trendLineLength], 1)
+    bearishEndVal   = ta.valuewhen(not na(phTrend), high[trendLineLength], 0)
+    line.delete(newBearishTrendline)
+    line.delete(newBullishTrendline)
+    slopeBearish = getSlope(bearishStart, bearishStartVal, bearishEnd, bearishEndVal)
+    slopeBullish = getSlope(bullishStart, bullishStartVal, bullishEnd, bullishEndVal)
+    if slopeBearish < 0
+        newBearishTrendline := line.new(x1=bearishStart, y1=bearishStartVal, x2=bar_index, y2=bearishEndVal, xloc=xloc.bar_index, color=downTlColor, width=2)
+    if slopeBullish > 0
+        newBullishTrendline := line.new(x1=bullishStart, y1=bullishStartVal, x2=bar_index, y2=bullishEndVal, xloc=xloc.bar_index, color=upTlColor, width=2)
+    if not na(newBearishTrendline)
+        extendTrendline(newBearishTrendline, bearishStart, bearishStartVal, bearishEnd, bearishEndVal)
+    if not na(newBullishTrendline)
+        extendTrendline(newBullishTrendline, bullishStart, bullishStartVal, bullishEnd, bullishEndVal)
+
+// =====================
+// ALERTS - fmfmf16
+// =====================
+alertcondition(
+     condition = array.size(bullishOrderblock) > 0 and
+     close <= array.get(bullishOrderblock, array.size(bullishOrderblock) - 1).value + atr and
+     close >= array.get(bullishOrderblock, array.size(bullishOrderblock) - 1).value,
+     title   = "🟢 إشارة طلب - ارتفاع محتمل",
+     message = "السعر وصل منطقة الطلب - توقع ارتفاع ▲")
+
+alertcondition(
+     condition = array.size(bearishOrderblock) > 0 and
+     close >= array.get(bearishOrderblock, array.size(bearishOrderblock) - 1).value - atr and
+     close <= array.get(bearishOrderblock, array.size(bearishOrderblock) - 1).value,
+     title   = "🔴 إشارة عرض - انخفاض محتمل",
+     message = "السعر وصل منطقة العرض - توقع انخفاض ▼")
+
+// =====================
+// DYNAMIC VWAP LOGIC
+// =====================
+var float ph = na
+var float pl = na
+var int phL  = bar_index
+var int plL  = bar_index
+var float prev_v = na
+
+ph  := ta.highestbars(high, prd) == 0 ? high : ph
+pl  := ta.lowestbars(low,  prd) == 0 ? low  : pl
+phL := ta.highestbars(high, prd) == 0 ? bar_index : phL
+plL := ta.lowestbars(low,  prd) == 0 ? bar_index : plL
+
+dir_vwap = phL > plL ? 1 : -1
+atr_v    = ta.atr(10)
+atr_avg  = ta.rma(atr_v, 50)
+ratio_v  = atr_avg > 0 ? atr_v / atr_avg : 1.0
+apt_raw  = useAdapt ? baseAPT / math.pow(ratio_v, volBias) : baseAPT
+apt_clamped = math.round(math.max(5.0, math.min(300.0, apt_raw)))
+
+alphaFromAPT(apt) =>
+    1.0 - math.exp(-math.log(2.0) / math.max(1.0, apt))
+
+type dataPoints
+    array<chart.point> points
+    polyline poly = na
+
+var dataPoints vwap_obj = na
+if na(vwap_obj)
+    vwap_obj := dataPoints.new(array.new<chart.point>())
+
+var float p_acc   = hlc3 * volume
+var float vol_acc = volume
+
+if dir_vwap != dir_vwap[1]
+    x_v = dir_vwap > 0 ? plL : phL
+    y_v = dir_vwap > 0 ? pl  : ph
+    label.new(x_v, y_v, text = dir_vwap > 0 ? (pl < prev_v ? "" : "") : (ph > prev_v ? "" : ""),
+         style    = dir_vwap > 0 ? label.style_label_up : label.style_label_down,
+         color    = color.new(dir_vwap > 0 ? highS : lowS, 20),
+         textcolor = color.white,
+         size     = size.tiny)
+    prev_v := dir_vwap > 0 ? ph[1] : pl[1]
+    bars_b  = bar_index - x_v
+    p_acc   := y_v * volume[bars_b]
+    vol_acc := volume[bars_b]
+    if not na(vwap_obj.poly)
+        vwap_obj.poly.delete()
+    vwap_obj.points.clear()
+    for i = bars_b to 0
+        alpha    = alphaFromAPT(apt_clamped[i])
+        p_acc   := (1 - alpha) * p_acc   + alpha * (hlc3[i] * volume[i])
+        vol_acc := (1 - alpha) * vol_acc + alpha * volume[i]
+        vwap_obj.points.push(chart.point.from_index(bar_index - i, vol_acc > 0 ? p_acc / vol_acc : na))
+    vwap_obj.poly := polyline.new(vwap_obj.points, false, false, line_color = dir_vwap < 0 ? lineR : lineS, line_width = vwap_w)
+else
+    alpha    = alphaFromAPT(apt_clamped)
+    p_acc   := (1 - alpha) * p_acc   + alpha * (hlc3 * volume)
+    vol_acc := (1 - alpha) * vol_acc + alpha * volume
+    if not na(vwap_obj.poly)
+        vwap_obj.poly.delete()
+    vwap_obj.points.push(chart.point.from_index(bar_index, vol_acc > 0 ? p_acc / vol_acc : na))
+    vwap_obj.poly := polyline.new(vwap_obj.points, false, false, line_color = dir_vwap > 0 ? lineR : lineS, line_width = vwap_w)
+

@@ -1,0 +1,85 @@
+//@version=6
+indicator("Smart Market Structure Pro", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ===== INPUTS =====
+leftBars  = input.int(5, "Left Bars", minval=1)
+rightBars = input.int(5, "Right Bars", minval=1)
+
+showLabels = input.bool(true, "Show HH HL LH LL")
+showLines  = input.bool(true, "Show Structure Lines")
+
+// ===== PIVOTS =====
+pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+pivotLow  = ta.pivotlow(low, leftBars, rightBars)
+
+// ===== STORAGE =====
+var float lastHigh = na
+var float lastLow  = na
+
+var int lastHighBar = na
+var int lastLowBar  = na
+
+// ===== HIGHS =====
+if not na(pivotHigh)
+
+    currentBar = bar_index - rightBars
+
+    if showLabels
+        if na(lastHigh)
+            label.new(currentBar, pivotHigh,
+                 "H",
+                 style=label.style_label_down)
+
+        else
+            txt = pivotHigh > lastHigh ? "HH" : "LH"
+
+            label.new(currentBar, pivotHigh,
+                 txt,
+                 style=label.style_label_down)
+
+    if showLines and not na(lastHighBar)
+        line.new(lastHighBar, lastHigh,
+             currentBar, pivotHigh,
+             width=2)
+
+    lastHigh := pivotHigh
+    lastHighBar := currentBar
+
+// ===== LOWS =====
+if not na(pivotLow)
+
+    currentBar = bar_index - rightBars
+
+    if showLabels
+        if na(lastLow)
+            label.new(currentBar, pivotLow,
+                 "L",
+                 style=label.style_label_up)
+
+        else
+            txt = pivotLow > lastLow ? "HL" : "LL"
+
+            label.new(currentBar, pivotLow,
+                 txt,
+                 style=label.style_label_up)
+
+    if showLines and not na(lastLowBar)
+        line.new(lastLowBar, lastLow,
+             currentBar, pivotLow,
+             width=2)
+
+    lastLow := pivotLow
+    lastLowBar := currentBar
+
+// ===== PLOT SHAPES =====
+plotshape(not na(pivotHigh),
+     location=location.abovebar,
+     style=shape.triangledown,
+     size=size.small,
+     offset=-rightBars)
+
+plotshape(not na(pivotLow),
+     location=location.belowbar,
+     style=shape.triangleup,
+     size=size.small,
+     offset=-rightBars)

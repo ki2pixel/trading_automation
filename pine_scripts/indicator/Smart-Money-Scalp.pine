@@ -1,0 +1,260 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// erdensedat
+
+//@version=6
+indicator("Smart Money Scalp", shorttitle="SM Scalp", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+
+//==================== CORE ====================
+grpCore = "Core Settings"
+len          = input.int(10, "Fractal Length (odd)", minval=3, group=grpCore)
+requireBody  = input.bool(true, "Break = Close Beyond Level", group=grpCore)
+oldFiboLen   = input.int(8, "Old Fibo Length (Bars)", minval=1, group=grpCore)
+showLastN    = input.int(0, "Show Last N Fibo Zones (0=all)", minval=0, group=grpCore)
+
+//==================== MAGIC FILTERS ====================
+grpMagic = "Magic Filters"
+useVolFilter   = input.bool(false, "Volume Confirmation", group=grpMagic, tooltip="Only confirms CHoCH if breakout volume is above 20-period average.")
+useTrendFilter = input.bool(false, "Trend Filter", group=grpMagic, tooltip="Only confirms CHoCH in the direction of the selected Moving Average.")
+maType         = input.string("SMA", "MA Type", options=["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group=grpMagic)
+maLen          = input.int(20, "MA Length", minval=1, group=grpMagic)
+maColor        = input.color(color.new(color.gray, 50), "MA Line Color", group=grpMagic)
+
+//==================== STYLES ====================
+candCol      = input.color(color.new(color.gray, 60), "Candidate Color")
+brkUpCol     = input.color(color.rgb(8,153,129), "CHoCH/BOS UP Color")
+brkDnCol     = input.color(color.new(color.red, 0), "CHoCH/BOS DN Color")
+
+// Fibo Colors
+fiboLineCol  = input.color(color.new(color.gray, 30), "Fibo Lines Color")
+boxEntryCol  = input.color(color.new(#5b9cf6, 80), "Entry Zone (0.382-0.618)")
+boxTargetCol = input.color(color.new(#089981, 80), "Target Zone (1.382-1.618)")
+
+//==================== TYPES ====================
+type FiboGroup
+    line[]  lines
+    box[]   boxes
+    label[] labels
+    label   entryTxt
+    label   targetTxt
+    line    triggerLine   // The CHoCH line that created this Fibo
+    label   triggerLabel  // The CHoCH label
+    int     breakTime
+    float   y382
+    float   y618
+
+//==================== CORE LOGIC ====================
+f_ma(type, src, length) =>
+    switch type
+        "SMA"        => ta.sma(src, length)
+        "EMA"        => ta.ema(src, length)
+        "SMMA (RMA)" => ta.rma(src, length)
+        "WMA"        => ta.wma(src, length)
+        "VWMA"       => ta.vwma(src, length)
+        => ta.sma(src, length)
+
+maValue = f_ma(maType, close, maLen)
+volSma = ta.sma(volume, 20)
+
+plot(useTrendFilter ? maValue : na, "Trend Filter", color=maColor, linewidth=1)
+
+//==================== PIVOTS ====================
+L = (len % 2 == 0) ? (len + 1) : len
+p = int(L / 2)
+
+phVal = ta.pivothigh(high, p, p)
+plVal = ta.pivotlow(low,  p, p)
+
+var float lastPhV = na
+var int   lastPhT = na
+var float lastPlV = na
+var int   lastPlT = na
+
+if not na(phVal)
+    lastPhV := phVal
+    lastPhT := time[p]
+if not na(plVal)
+    lastPlV := plVal
+    lastPlT := time[p]
+
+//==================== STATE ====================
+var float upLvl = na
+var int   upT   = na
+var bool  upBroken = false
+var line  upLine = na
+
+var float dnLvl = na
+var int   dnT   = na
+var bool  dnBroken = false
+var line  dnLine = na
+
+var int os = 0 
+
+//==================== STORAGE ====================
+var line[] brkLines = array.new_line()
+var label[] brkLabs = array.new_label()
+var FiboGroup[] fiboGroups = array.new<FiboGroup>()
+
+f_cleanup() =>
+    limit = showLastN > 0 ? showLastN : 500
+    // Cleanup BOS lines separately
+    if array.size(brkLines) > limit
+        line.delete(array.shift(brkLines))
+        label.delete(array.shift(brkLabs))
+    
+    // Cleanup Fibo groups (including their birth CHoCH lines)
+    if array.size(fiboGroups) > limit
+        FiboGroup fg = array.shift(fiboGroups)
+        for ln in fg.lines
+            line.delete(ln)
+        for bx in fg.boxes
+            box.delete(bx)
+        for lb in fg.labels
+            label.delete(lb)
+        label.delete(fg.entryTxt)
+        label.delete(fg.targetTxt)
+        line.delete(fg.triggerLine)
+        label.delete(fg.triggerLabel)
+
+//==================== FIBONACCI DRAWING ====================
+f_drawFibo(int startT, float startV, int endT, float endV, line triggerLn, label triggerLb) =>
+    l_lines  = array.new_line()
+    l_boxes  = array.new_box()
+    l_labels = array.new_label()
+    
+    tfMs = timeframe.in_seconds(timeframe.period) * 1000
+    extT = time + (tfMs * 10) 
+    
+    levels = array.from(0.0, 0.236, 0.382, 0.618, 0.764, 1.0, 1.382, 1.618)
+    diff   = endV - startV
+    
+    for lvl in levels
+        y = startV + diff * lvl
+        ln = line.new(endT, y, extT, y, xloc=xloc.bar_time, color=fiboLineCol, style=line.style_dashed)
+        array.push(l_lines, ln)
+        
+        lb = label.new(extT, y, str.tostring(lvl, "#.###"), xloc=xloc.bar_time, style=label.style_label_left, textcolor=chart.fg_color, color=color.new(color.white, 100), size=size.tiny)
+        array.push(l_labels, lb)
+
+    y382 = startV + diff * 0.382
+    y618 = startV + diff * 0.618
+    y1382 = startV + diff * 1.382
+    y1618 = startV + diff * 1.618
+
+    lEntry = box.new(endT, y382, extT, y618, xloc=xloc.bar_time, bgcolor=boxEntryCol, border_color=color.new(fiboLineCol, 50))
+    lTarget = box.new(endT, y1382, extT, y1618, xloc=xloc.bar_time, bgcolor=boxTargetCol, border_color=color.new(fiboLineCol, 50))
+    array.push(l_boxes, lEntry)
+    array.push(l_boxes, lTarget)
+    
+    txtE = label.new(extT, (y382 + y618) / 2, "ENTRY ZONE", xloc=xloc.bar_time, style=label.style_label_left, textcolor=chart.fg_color, color=#00000000, size=size.small)
+    txtT = label.new(extT, (y1382 + y1618) / 2, "TP ZONE", xloc=xloc.bar_time, style=label.style_label_left, textcolor=chart.fg_color, color=#00000000, size=size.small)
+    
+    FiboGroup.new(l_lines, l_boxes, l_labels, txtE, txtT, triggerLn, triggerLb, endT, y382, y618)
+
+//==================== LOGIC ====================
+tfMs = timeframe.in_seconds(timeframe.period) * 1000
+extMs = tfMs * 10
+
+if not na(phVal)
+    if not na(upLine) and not upBroken
+        line.delete(upLine)
+    upLvl := phVal, upT := time[p], upBroken := false
+    upLine := line.new(upT, upLvl, time + int(extMs), upLvl, xloc=xloc.bar_time, color=candCol, style=line.style_dotted)
+
+if not na(plVal)
+    if not na(dnLine) and not dnBroken
+        line.delete(dnLine)
+    dnLvl := plVal, dnT := time[p], dnBroken := false
+    dnLine := line.new(dnT, dnLvl, time + int(extMs), dnLvl, xloc=xloc.bar_time, color=candCol, style=line.style_dotted)
+
+if not na(upLine) and not upBroken
+    line.set_x2(upLine, time + int(extMs))
+if not na(dnLine) and not dnBroken
+    line.set_x2(dnLine, time + int(extMs))
+
+brkUp = not na(upLvl) and not upBroken and (requireBody ? close > upLvl : high > upLvl)
+brkDn = not na(dnLvl) and not dnBroken and (requireBody ? close < dnLvl : low < dnLvl)
+
+// --- Update Active Fibo ---
+if array.size(fiboGroups) > 0
+    FiboGroup activeFg = array.get(fiboGroups, array.size(fiboGroups) - 1)
+    futureExt = time + int(tfMs * 10)
+    for ln in activeFg.lines
+        line.set_x2(ln, futureExt)
+    for bx in activeFg.boxes
+        box.set_right(bx, futureExt)
+    for lb in activeFg.labels
+        label.set_x(lb, futureExt)
+    label.set_x(activeFg.entryTxt, futureExt)
+    label.set_x(activeFg.targetTxt, futureExt)
+    
+    // --- Alert Detection ---
+    lowBound = math.min(activeFg.y382, activeFg.y618)
+    highBound = math.max(activeFg.y382, activeFg.y618)
+    if (low > lowBound and low < highBound) or (high > lowBound and high < highBound) or (close > lowBound and close < highBound)
+        alert("Price entered the Smart Money Entry Zone!", alert.freq_once_per_bar)
+
+if brkUp
+    upBroken := true
+    isChoch = (os == -1)
+    
+    // Filters
+    volPass = not useVolFilter or volume > volSma
+    trendPass = not useTrendFilter or close > maValue
+    
+    line.set_color(upLine, brkUpCol), line.set_style(upLine, line.style_solid), line.set_x2(upLine, time)
+    label lb = label.new(int(math.avg(time, upT)), upLvl, isChoch ? "CHoCH ↑" : "BOS ↑", xloc=xloc.bar_time, style=label.style_label_down, textcolor=brkUpCol, color=color.new(color.white, 100), size=size.tiny)
+    
+    if isChoch and not na(lastPlV) and volPass and trendPass
+        if array.size(fiboGroups) > 0
+            FiboGroup oldFg = array.get(fiboGroups, array.size(fiboGroups) - 1)
+            int targetTime = oldFg.breakTime + (int(tfMs) * oldFiboLen)
+            for ln in oldFg.lines
+                line.set_x2(ln, targetTime)
+            for bx in oldFg.boxes
+                box.set_right(bx, targetTime)
+            for lb in oldFg.labels
+                label.set_x(lb, targetTime)
+            label.delete(oldFg.entryTxt)
+            label.delete(oldFg.targetTxt)
+        
+        // Tie the CHoCH line/label to the FiboGroup instead of the general array
+        array.push(fiboGroups, f_drawFibo(lastPlT, lastPlV, time, high, upLine, lb))
+        alert("Strong Bullish CHoCH! Setup active.", alert.freq_once_per_bar)
+    else
+        // Regular BOS or filtered CHoCH goes to standard storage
+        array.push(brkLines, upLine)
+        array.push(brkLabs, lb)
+    
+    upLine := na, os := 1, f_cleanup()
+
+if brkDn
+    dnBroken := true
+    isChoch = (os == 1)
+    
+    // Filters
+    volPass = not useVolFilter or volume > volSma
+    trendPass = not useTrendFilter or close < maValue
+
+    line.set_color(dnLine, brkDnCol), line.set_style(dnLine, line.style_solid), line.set_x2(dnLine, time)
+    label lb = label.new(int(math.avg(time, dnT)), dnLvl, isChoch ? "CHoCH ↓" : "BOS ↓", xloc=xloc.bar_time, style=label.style_label_up, textcolor=brkDnCol, color=color.new(color.white, 100), size=size.tiny)
+    
+    if isChoch and not na(lastPhV) and volPass and trendPass
+        if array.size(fiboGroups) > 0
+            FiboGroup oldFg = array.get(fiboGroups, array.size(fiboGroups) - 1)
+            int targetTime = oldFg.breakTime + (int(tfMs) * oldFiboLen)
+            for ln in oldFg.lines
+                line.set_x2(ln, targetTime)
+            for bx in oldFg.boxes
+                box.set_right(bx, targetTime)
+            for lb in oldFg.labels
+                label.set_x(lb, targetTime)
+            label.delete(oldFg.entryTxt)
+            label.delete(oldFg.targetTxt)
+                
+        array.push(fiboGroups, f_drawFibo(lastPhT, lastPhV, time, low, dnLine, lb))
+        alert("Strong Bearish CHoCH! Setup active.", alert.freq_once_per_bar)
+    else
+        array.push(brkLines, dnLine)
+        array.push(brkLabs, lb)
+    
+    dnLine := na, os := -1, f_cleanup()
