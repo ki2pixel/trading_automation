@@ -48,7 +48,7 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
 ## Catégorie C : Stratégies Complexes (3 Passes)
 *Ces stratégies possèdent des logiques de money management, de trailing stops dynamiques et d'horaires d'exécution. Les diviser est **obligatoire**.*
 
-### 5. Cybernetic Trading (Transformée de Hilbert)
+### 6. Cybernetic Trading (Transformée de Hilbert)
 *Note : Cette stratégie exploite l'algorithme génétique CMA-ES. Pour éviter de casser sa matrice de covariance avec des "falaises" mathématiques, **aucun paramètre booléen** (ex: `use_net_bracket_exits`) ne doit être inclus dans l'espace de recherche (search space). Ils doivent être fixés en dur.*
 
 - **Passe 1 : Mode Tendance & TP/SL (Trend Mode)**
@@ -64,7 +64,7 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *À optimiser* : `safety_max_bars_in_trade` (Int).
   - *Objectif* : Couper les positions qui stagnent trop longtemps (Time Stop) pour libérer le capital.
 
-### 6. 3Commas-Bot
+### 7. 3Commas-Bot
 - **Passe 1 : Le Signal (Croisement MAs)**
   - *À optimiser* : `ma_type1`, `ma_type2`, `ma_length1`, `ma_length2`.
   - *À bloquer* : `trail_stop = false`, et fixez `rnr = 1.0`, `risk_m = 1.0`.
@@ -78,7 +78,7 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *À optimiser* : `trail_stop = true`, `trail_stop_size`, `rr_exit`.
   - *Objectif* : Laisser courir les gains une fois la cible initiale atteinte.
 
-### 7. Bjorgum Double Tap
+### 8. Bjorgum Double Tap
 - **Passe 1 : Détection du Pattern**
   - *À optimiser* : `tol` (tolérance géométrique), `length` (pivot), `dLong`, `dShort`.
   - *À bloquer* : Fixer les cibles très loin (`fib = 100` ou plus, `stopPer = 0`) et désactiver l'ATR stop (`atrStop = false`).
@@ -92,7 +92,7 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *À optimiser* : `atrStop = true`, `atrLength`, `atrMult`.
   - *Objectif* : Sécuriser les gains sur les très grands mouvements.
 
-### 8. Noise Boundary Intraday
+### 9. Noise Boundary Intraday
 - **Passe 1 : Le Signal Volatilité Brut**
   - *À optimiser* : `lookback_days`, `volatility_multiplier_enter`, `volatility_multiplier_exit`.
   - *À bloquer* : Mode de sortie basique (`exit_mode = time_only`), Safety stop OFF, filtres VWAP OFF.
@@ -106,7 +106,7 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *À optimiser* : `exit_mode` (`ladder`, `vwap`, `combined`) et les paramètres de `ladder` (steps, ratios).
   - *Objectif* : Capturer des profits partiels en intraday pour lisser la courbe de gains (Sharpe Ratio).
 
-### 9. Smart Trader Geometric
+### 10. Smart Trader Geometric
 *Note : Cette stratégie utilisant l'optimisation bayésienne continue, les paramètres catégoriques ou booléens (`signal_mode`, bracket exits) doivent être traités séparément pour éviter de briser la continuité mathématique de l'algorithme d'optimisation.*
 
 - **Passe 1 : Géométrie et Quorum (Core)**
@@ -121,39 +121,6 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *À bloquer* : Tous les paramètres précédents.
   - *À optimiser* : Tester avec `signal_mode = "Live"` vs `"Close"`.
   - *Objectif* : Voir si l'exécution intra-barre (Live) améliore le rendement en réduisant le slippage implicite d'attente de clôture.
-
-### 10. Smart Trader Episode 1 | Unified Matrix
-*Note : Cette stratégie utilisant l'optimisation bayésienne continue, les TPE gérent bien les booléens et les choix.*
-
-> [!WARNING]
-> **Timeframe Critique (1 Minute Max) :** Cette stratégie est 100% basée sur la distribution du volume intra-barre (détection des *Highest Buyers*). Pour éviter de lisser et détruire les signaux d'anomalies de pression acheteuse, **il est impératif d'utiliser un dataset avec une résolution maximale de 1 minute** (le "sweet spot" entre précision et profondeur historique). L'utilisation d'un timeframe supérieur (5m, 15m...) écrasera la dynamique volumétrique et ruinera l'avantage mathématique de l'algorithme.
-
-- **Passe 1 : L'Anchor et les Puissances (Core)**
-  - *À bloquer* : Fixer `calc_method = "Geometry (Source File)"`, les buffers à `0.0`.
-  - *À optimiser* : `universal_len` (Int), `long_power_min` (Float), `short_power_max` (Float).
-  - *Objectif* : Trouver la longueur idéale de la fenêtre de volume et les bons seuils d'entrée pour identifier de véritables mouvements.
-- **Passe 2 : Filtrage de la décroissance**
-  - *À bloquer* : Le trio `universal_len` et les seuils de power trouvés en Passe 1.
-  - *À optimiser* : `opp_dom_threshold` (Float), `max_decay_angle` (Float).
-  - *Objectif* : Éliminer les faux signaux où la tendance s'essouffle en réglant finement le PathTracker.
-- **Passe 3 : Risk-Management & Buffers**
-  - *À bloquer* : Tous les paramètres de détection des Passes 1 et 2.
-  - *À optimiser* : `sl_buffer_pct` (Float), `tp_buffer_pct` (Float).
-  - *Objectif* : Ajuster la cible et le stop loss dynamiques générés par la stratégie pour coller parfaitement à la volatilité de l'actif.
-
-### 11. Dual RSI DCA Long
-- **Passe 1 : Le Moteur de Signal (Pre-Scan VectorBT)**
-  - *À optimiser* : `entry_rsi_len`, `entry_rsi_level`, `exit_rsi_len`, `exit_rsi_level`.
-  - *À bloquer* : Tous les paramètres de DCA géométrique (`ao_step`, `ao_size_mult`, `min_profit_pct`...) sur leurs valeurs par défaut.
-  - *Objectif* : Trouver la structure RSI parfaite qui capte les vrais retournements. L'optimiseur utilisera le pre-scan VectorBT multi-coeurs pour filtrer 95% de l'espace inutile instantanément.
-- **Passe 2 : La Grille de DCA (Rattrapage)**
-  - *À bloquer* : Les longueurs et seuils RSI trouvés en Passe 1.
-  - *À optimiser* : `ao_step`, `ao_step_mult`, `ao_size_mult`.
-  - *Objectif* : Configurer l'espacement et le poids des Average Orders pour résister aux forts drawdowns tout en abaissant le prix moyen d'achat.
-- **Passe 3 : Le Profit & La Sécurité**
-  - *À bloquer* : Les RSI (Passe 1) et la structure DCA (Passe 2).
-  - *À optimiser* : `min_profit_pct` et `ao_count` (nombre maximal d'ordres).
-  - *Objectif* : Ajuster le take-profit dynamique pour s'assurer que la sortie ne soit ni trop gourmande (blocage) ni trop courte (non couverte par le risque).
 
 ---
 *Si à une étape N, vous ne trouvez aucun résultat positif, cela signifie souvent que l'étape N-1 n'était pas assez robuste. Il faut alors revenir en arrière et tester un autre "sweet spot" issu de l'étape précédente.*

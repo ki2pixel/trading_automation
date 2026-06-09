@@ -40,7 +40,7 @@ from .paths import get_reports_dir
 
 ParameterKindPayload = Literal["numeric", "choice", "bool"]
 ScoreDirectionPayload = Literal["max", "min"]
-StrategyPayload = Literal["hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric", "smart_trader_ep1", "dual_rsi_dca_long"]
+StrategyPayload = Literal["hma_crossover", "adaptive_volatility_trend", "range_filter", "3commas_bot", "pmax_explorer", "bjorgum_double_tap", "noise_boundary_intraday", "cybernetic_hilbert", "smart_trader_geometric"]
 
 
 class ParameterSpecPayload(BaseModel):
@@ -938,18 +938,7 @@ def create_optimizer_app(
                     "schema": [asdict(param) for param in parameter_definitions("smart_trader_geometric").values()],
                     "score_metrics": list(allowed_score_metrics("smart_trader_geometric")),
                 },
-                {
-                    "name": "smart_trader_ep1",
-                    "parameters": [asdict(param) for param in optimizable_parameters("smart_trader_ep1").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("smart_trader_ep1").values()],
-                    "score_metrics": list(allowed_score_metrics("smart_trader_ep1")),
-                },
-                {
-                    "name": "dual_rsi_dca_long",
-                    "parameters": [asdict(param) for param in optimizable_parameters("dual_rsi_dca_long").values()],
-                    "schema": [asdict(param) for param in parameter_definitions("dual_rsi_dca_long").values()],
-                    "score_metrics": list(allowed_score_metrics("dual_rsi_dca_long")),
-                },
+
             ]
         }
 

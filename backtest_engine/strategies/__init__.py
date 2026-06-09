@@ -12,11 +12,6 @@ from .bjorgum_double_tap import (
     run_bjorgum_double_tap,
     clear_bjorgum_double_tap_feature_cache,
 )
-from .smart_trader_ep1 import (
-    SmartTraderEP1ConfigOverrides,
-    smart_trader_ep1_overrides_from_mapping,
-    run_smart_trader_ep1,
-)
 
 __all__ = [
     "PMaxExplorerConfigOverrides",
@@ -27,7 +22,4 @@ __all__ = [
     "bjorgum_double_tap_overrides_from_mapping",
     "run_bjorgum_double_tap",
     "clear_bjorgum_double_tap_feature_cache",
-    "SmartTraderEP1ConfigOverrides",
-    "smart_trader_ep1_overrides_from_mapping",
-    "run_smart_trader_ep1",
 ]
