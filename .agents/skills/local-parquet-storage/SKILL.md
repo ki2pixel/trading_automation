@@ -14,6 +14,7 @@ L'agent en charge de cette spécialisation est responsable du stockage, de l'ind
 - **Indexation Temporelle**: Lors de la sauvegarde d'un DataFrame, s'assurer que l'index (ex: `time`) ou les colonnes de filtrage (ex: `symbol`) sont correctement typés (Datetime UTC).
 - **Partitionnement par Dossiers**: Pour des datasets massifs (ex: ticks tick-par-tick sur plusieurs années), partitionner les fichiers physiquement sur le disque par année/mois ou par symbole (ex: `dataset/symbol=AAPL/year=2025/data.parquet`).
 - **Lazy Loading / Memory Mapping**: Pour analyser de gros volumes sans saturer la RAM, utiliser les capacités de lecture par partitions (`pyarrow.dataset`) ou les lectures filtrées (`filters` dans `read_parquet`).
+- **Shared Memory vs Pickle**: Les données massives chargées depuis les fichiers Parquet et destinées à être consommées par des processus concurrents (ex: Optuna workers) ne doivent jamais être passées via `pickle`. Elles doivent être injectées dans la mémoire partagée POSIX via `shm_allocators.py`.
 
 ## 3. Schémas de Référence (Patterns)
 

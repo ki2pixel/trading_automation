@@ -4,73 +4,11 @@
 - Aucune tâche active.
 
 ## Prochaines Étapes
-- Intégrer les configurations validées pour les actifs testés dans le moteur de production live.
-- Poursuivre la Remédiation SonarCloud (Refactorisation des Stratégies).
+- Aucune
 
 ## Bloquants / Problèmes Actuels
 - Aucun.
 
-- [2026-06-01 13:51:00] - Analyse Passe 2 terminée, configuration validée pour GMAB.
-- [2026-06-01 22:12:00] - Création du rapport Passe 1 et synthèse stratégique pour `hma_crossover`.
-- [2026-06-02 20:05:00] - Audit de la Passe 1 de la stratégie adaptive_volatility_trend terminé et consigné.
-- [2026-06-02 20:39:00] - Audit de la Passe 2 de la stratégie adaptive_volatility_trend terminé. Setups validés et consigné.
-- [2026-06-02 23:00:00] - Résolution du bug de montage de la mémoire partagée et optimisation CPU (vectorisation HMA/WMA) pour `3commas_bot` avant la Passe 1.
-- [2026-06-03 22:30:00] - Remédiation SonarCloud : Phase 0 terminée, Phase 1 (web.py) terminée, bayesian_optimizer.py différé. Plan de remédiation enregistré dans `docs/audit/SonarCloud_Remediation_Plan.md`.
-- [2026-06-03 22:45:00] - Remédiation SonarCloud : Refactorisation de `bayesian_optimizer.py` terminée. Complexité cognitive réduite drastiquement grâce à l'extraction de l'allocation SHM vers `shm_allocators.py`. Tous les tests passent avec succès (correction d'un bug mineur de variable manquante dans `web.py` pour `global-analysis`).
-- [2026-06-03 23:25:00] - Remédiation SonarCloud terminée : Phase 2 et Phase 3 partielles exécutées avec succès sans régression. Plan clos.
-- [2026-06-03 23:33:00] - Audit de la Passe 1 de 3commas_bot terminé. Rapport et synthèse stratégique documentés.
-- [2026-06-04 00:46:15] - Audit de la Passe 2 de 3commas_bot terminé. Setups de risk-management consignés.
-- [2026-06-04 01:42:00] - Audit de la Passe 3 de 3commas_bot (Trailing Stop Dynamique) terminé. Documentation et synthèse mises à jour.
-- [2026-06-04 12:05:00] - Exécution du workflow /docs-updater : Création de la documentation technique (SKILL.md) pour shm_allocators.py, metrics.py, et mise à jour de bayesian_optimizer.py suite à la refactorisation de la gestion mémoire.
-- [2026-06-04 12:10:00] - Traduction en français des documentations (bayesian_optimizer, shm_allocators, metrics_engine) et création de global_analysis.md.
-- [2026-06-04 12:28:00] - Alignement des compétences (.agents/skills) avec l'architecture réelle (Parquet, vectorbt) et les schémas d'outils MCP.
-- [2026-06-04 13:59:00] - Alignement de `codingstandards.md` avec le codebase réel validé (float vs Decimal, multiprocessing, architecture de tests).
-- [2026-06-04 14:03:00] - Audit, vérification et alignement complet des compétences (.agents/skills/) avec codingstandards.md (float/Decimal, shm_allocators.py) terminés.
-- [2026-06-04 14:08:00] - Exécution du workflow /docs-updater : Création de docs/backtester/backtest-engine/broker_simulator.md pour documenter le simulateur de broker et ses Exit Rules. Indexation dans README.md et runner.md.
-- [2026-06-04 14:30:00] - Audit de la Passe 1 de bjorgum_double_tap terminé. Échec de la détection d'edge. Synthèse stratégique et rapport de passe 1 documentés.
-- [2026-06-04 19:38:00] - Implémentation, intégration (POSIX SHM, Bayesian Optimizer) et vérification de la stratégie Cybernetic Trading (John Ehlers' Hilbert Transform).
-- [2026-06-04 19:46:00] - Exécution du workflow /docs-updater : Création de la documentation technique (Cybernetic Hilbert Transform) et mise à jour de l'indexation dans README.md.
-- [2026-06-04 19:47:00] - Traduction en français de la documentation cybernetic_hilbert.md pour cohérence.
-- [2026-06-04 19:53:00] - Intégration de la stratégie Cybernetic Trading dans les guides d'optimisation (README_BACKTEST_PARAMS.md et README_OPTIMIZATION_ROADMAP.md).
-- [2026-06-04 19:57:00] - Création du fichier de configuration par défaut `configs/strategies/cybernetic_hilbert.default.json`.
-- [2026-06-04 20:02:00] - Ajout de `cybernetic_hilbert` au backend UI (`web.py`) et déclaration de ses indicateurs dans le frontend (`viewer.js`).
-- [2026-06-04 20:04:00] - Correction de l'erreur 500 sur `/api/strategies` en ajoutant `cybernetic_hilbert` aux listes des stratégies autorisées dans `backtest_engine/optimizer.py`.
-- [2026-06-04 20:12:00] - Correction de l'erreur 400 sur `/api/estimate` en ajoutant `cybernetic_hilbert` au littéral `StrategyPayload` (Pydantic) dans `web.py`.
-- [2026-06-04 21:03:00] - Mise à jour de `README_OPTIMIZATION_ROADMAP.md` pour diviser l'optimisation Cybernetic en 2 passes (Trend Mode / Phase Mode) afin d'exploiter correctement l'algorithme CMA-ES.
-- [2026-06-05 21:16:00] - Audit de la Passe 1 de cybernetic_hilbert (Trend Mode) terminé. Edge détecté sur NVO et ZEAL.CO. Paramètres validés pour la Passe 2.
-- [2026-06-05 21:33:00] - Audit de la Passe 2 de cybernetic_hilbert (Phase Mode) terminé. Aucun edge trouvé. Le Mode Phase est désactivé. La stratégie tournera exclusivement en Trend Mode (Passe 1).
-- [2026-06-05 21:47:00] - Audit de la Passe 3 de cybernetic_hilbert (Time Stop) terminé. Aucune amélioration constatée (`safety_max_bars_in_trade = 0` optimal). La configuration finale de production reste bloquée sur la Passe 1 pure.
-- [2026-06-05 01:11:00] - Rédaction et sauvegarde de l'analyse détaillée du Google Coral AI Edge TPU (Workload Fit & Incompatibilités) dans docs/recherches/Coral-USB-TPU/Analyse-Workload-Fit-TPU.md. Recommandation : NO-GO.
-- [2026-06-05 01:47:00] - Arbitrage TPE vs CMA-ES statué : l'hyper-optimisation GPU asymétrique (JAX) est recommandée pour les algorithmes TPE séquentiels.
-- [2026-06-05 01:47:00] - Implémentation du Zéro-Copie véritable dans `backtest_engine/shm_allocators.py` et `shared_memory.py` via `create=True`.
-- [2026-06-05 01:47:00] - Bridage Numba AVX2 ajouté dans `start_backtest_engine.sh` pour éviter le downclocking thermique du CPU.
-- [2026-06-05 14:11:00] - Optimisation de `cybernetic_hilbert.py` : extraction Numpy et optimisation de boucle.
-- [2026-06-05 14:25:00] - Vectorisation complète de `_generate_signals` et `_build_state_from_broker` dans `cybernetic_hilbert.py` (élimination totale des goulots O(N) Python pur).
-- [2026-06-05 13:51:00] - Correction du bug d'early stop drawdown (pct=0) dans la stratégie `cybernetic_hilbert`.
-- [2026-06-05 22:42:00] - Implémentation de la stratégie géométrique Smart Trader Final Episode via ICS et Numba.
-- [2026-06-06 01:26:00] - Intégration complète de la stratégie Smart Trader Geometric au moteur (optimizer.py, web.py).
-- [2026-06-06 01:26:00] - Mise à jour de la documentation d'optimisation (READMEs) pour Smart Trader Geometric.
-- [2026-06-06 01:26:00] - Mise à jour globale des configurations de stratégies JSON pour supporter l'architecture de conversion Forex V3.
-- [2026-06-07 23:17:00] - Exécution de l'analyse et de l'audit de la Passe 1 de Smart Trader Geometric. Edge fort détecté sur ZEAL.CO et LOGI. Génération du rapport de la Passe 1 et de la synthèse stratégique.
-- [2026-06-07 23:35:00] - Analyse et audit de la Passe 2 de Smart Trader Geometric terminés pour ZEAL.CO et LOGI. Ratios asymétriques très performants identifiés via Bracket Exits. Synthèse mise à jour.
-- [2026-06-07 23:51:00] - Analyse et audit de la Passe 3 de Smart Trader Geometric terminés. Comparaison Live vs Close. Aucune différence de performance. Validation définitive du mode `Close` pour optimisation CPU en live. Setups prêts pour la production.
-- [2026-06-08 13:30:00] - Audit de la Passe 1 de la stratégie Smart Trader EP1 terminé. Le signal volumétrique pur de l'Anchor sur 1 minute génère du sur-trading destructeur. Constat d'échec sur la Passe 1 isolée. Plan d'action défini : fusionner la Passe 1 (Anchor) et la Passe 2 (Decay PathTracker) pour la prochaine optimisation.
-- [2026-06-08 00:35:00] - Intégration de la stratégie Smart Trader EP1 (Unified Matrix) au backtest_engine (implémentation Numba, optimizer, web UI, docs).
-- [2026-06-08 14:22:00] - Intégration de la stratégie Pine Script 'Dual RSI DCA - Long Strategy' au moteur de backtest : script autonome avec progression géométrique AO exacte, tests unitaires et intégration dans strategy_registry.py.
-- [2026-06-09 12:25:00] - Suppression complète et propre des stratégies obsolètes (`smart_trader_ep1`, `dual_rsi_dca_long`, `nq_mnq_super_scalper`) du moteur de backtest. Code source, registres, interfaces UI et documentation nettoyés. Aucun impact sur les stratégies actives.
-- [2026-06-09 14:05:00] - Vectorisation de 'Trend Type Indicator' et 'MSL Friendly Trend' terminée (Phase 1).
-- [2026-06-09 14:40:00] - Implémentation de la Phase 3 "Pivot Breakout Retest Signals" terminée et testée (Numba, VectorBT).
-- [2026-06-09 14:59:%00] - Implémentation de "Adaptive Trend Classification" terminée et testée (Numba, VectorBT, Pydantic). MAs en pur Numba sans talib. Perf <20ms.
-- [2026-06-09 15:16:00] - Implémentation de "Momentum-based ZigZag" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful anti-lookahead bias validée. Performance très rapide (~4ms/10k bars).
-- [2026-06-09 16:06:00] - Implémentation de "HMM Regime Filter" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful récursive validée sans lookahead bias.
-- [2026-06-09 16:49:00] - Phase 4 "Recherche Machine Learning" TERMINÉE : Lorentzian Classification KNN intégré au backtest_engine. Indicateur Numba @njit (KNN ANN + Lorentz distance + 5 features normalisées + Kernel Nadaraya-Watson), stratégie Pydantic, wrapper BrokerSimulator, StrategyRegistry, PARAMETER_DEFINITIONS. 18/18 tests passés (causality, distance, anti-lookahead, perf, registry).
-- [2026-06-09 00:06:47] - Audit de la Passe 1 de la stratégie Dual RSI DCA Long terminé. Échec des filtres sans DCA optimisé (0 itération éligible). Rapport et synthèse générés. Ouverture de la Passe 2.
-- [2026-06-09 17:40:00] - Documentation et catégorisation des 7 nouvelles stratégies Pine Script vectorisées terminées dans README_BACKTEST_PARAMS.md et README_OPTIMIZATION_ROADMAP.md.
-- [2026-06-09 17:52:00] - Correction de l'anomalie signal_mode ('Live' non autorisé dans configuration.py) pour les stratégies trend_type, msl_trend, pivot_retest, adaptive_trend_classification et momentum_based_zigzag.
-- [2026-06-09 18:06:00] - Implémentation du pré-scan VectorBT de la stratégie trend_type pour optimiser le calcul et la vitesse d'Optuna.
-- [2026-06-09 18:06:00] - Correction d'un bug de sérialisation Pydantic (Type Error avec asdict()) pour les 7 nouvelles stratégies.
-- [2026-06-09 19:24:00] - Exécution du workflow /docs-updater : Rédaction de l'index global des stratégies (README.md) et des guides techniques détaillés conformes à SKILL.md pour lorentzian_classification.md (KNN ML) et hmm_regime_filter.md (HMM regime filter).
-- [2026-06-09 18:15:00] - Implémentation et validation des pré-scans VectorBT pour les 6 stratégies restantes (msl_trend, pivot_retest, adaptive_trend_classification, momentum_based_zigzag, hmm_regime_filter, lorentzian_classification).
 - [2026-06-09 22:14:00] - Optimisation d'Adaptive Trend Classification : Caching thread-safe des MAs, correction du ratio de sous-échantillonnage de grille, et implémentation du multiprocessing (ProcessPoolExecutor) pour le pré-scan VectorBT. Temps réduit de 8h à 24 secondes avec 4 workers (speedup ~1200x).
 - [2026-06-09 22:30:00] - Optimisation du pré-scan VectorBT de la stratégie trend_type avec multiprocessing (ProcessPoolExecutor). Temps réduit de 96s à 31s.
 - [2026-06-09 22:35:00] - Audit global de toutes les stratégies du registre concernant le pré-scan VectorBT. 9 stratégies parallélisées, 2 stubs ignorés, 5 séquentiels rapides.
@@ -80,3 +18,6 @@
 - [2026-06-10 01:58:00] - Corrections majeures sur `lorentzian_classification` : le KNN regarde désormais la fenêtre glissante correcte, utilise un tri par insertion O(K), respecte l'heuristique ANN et évite les sauts conditionnels coûteux.
 - [2026-06-10 02:28:00] - Déploiement de l'architecture multi-core + short-circuit (Early Abandoning) dans `_lorentzian_knn_1d_nb`. Temps d'exécution par essai réduit de 23s à ~1s.
 - [2026-06-10 15:25:00] - Optimisation de `optimizer.py` et `bayesian_optimizer.py` : Suppression du stockage disque `JournalFileStorage` et implémentation du Queue Pipelining. CPU Usage de 72% à 82%, benchmark Optuna considérablement accéléré.
+- [2026-06-10 15:48:00] - Audit et analyse des rapports de backtesting de Trend Type Indicator terminés. Fichiers `passe_1_signal.md` et `synthese_strategie.md` générés avec validation de NVO et mention spéciale pour NVS. Mise à jour du README de suivi d'optimisation.
+- [2026-06-10 19:55:00] - Analyse et consignation des rapports de backtesting de la stratégie MSL Friendly Trend. Documentation (passe 1 et synthèse) générée, validant NVO, AMS.MC et NVS.
+- [2026-06-10 20:02:00] - Mise à jour de codingstandards.md : Intégration des standards sur le Queue Pipelining, le bypass CPU des pré-scans et l'utilisation systématique des métriques NVO, NVS et AMS.MC pour la validation de robustesse financière.

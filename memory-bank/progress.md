@@ -99,3 +99,5 @@
 - [x] [2026-06-09 22:35:00] - Audit global de toutes les stratégies du registre concernant le pré-scan VectorBT. 9 stratégies parallélisées, 2 stubs ignorés, 5 séquentiels rapides.
 - [x] [2026-06-09 22:36:00] - Validation finale de la suite de tests unitaires avec 429 tests passés avec succès.
 - [x] [2026-06-10 00:14:00] - Implémentation du multiprocessing (ProcessPoolExecutor) pour le pré-scan VectorBT de la stratégie momentum_based_zigzag (10ème stratégie parallélisée).
+- [x] [2026-06-10 15:48:00] - Audit et analyse des rapports de backtesting de Trend Type Indicator terminés. Fichiers `passe_1_signal.md` et `synthese_strategie.md` générés avec validation de NVO et mention spéciale pour NVS. Mise à jour du README de suivi d'optimisation.
+- [x] [2026-06-10 19:55:00] - Analyse et consignation des rapports de backtesting de la stratégie MSL Friendly Trend. Documentation (passe 1 et synthèse) générée, validant NVO, AMS.MC et NVS.

@@ -15,6 +15,7 @@ L'ingestion doit être résiliente (tolérance aux pannes réseau), conforme aux
 - **Backoff Exponentiel**: Obligatoire pour toute interaction réseau. Si une API (ex: Trading 212) renvoie un `429 Too Many Requests` ou un `5xx`, implémenter un retry intelligent.
 - **Normalisation**: Les structures de données reçues de courtiers distincts doivent être standardisées avant d'entrer dans le pipeline du moteur de backtest ou de la DB.
 - **Nettoyage et Imputation**: Gérer les trous de liquidité. Ne jamais forwarder des valeurs `NaN` ou infinies. Si une bougie manque, imputer via Forward Fill ou interpoler selon le contexte.
+- **Précision Financière (Live)**: Lors de l'ingestion de flux en direct destinés à l'exécution, les prix critiques (bid, ask) doivent être parsés en `decimal.Decimal` pour éviter toute perte de précision avant de rejoindre la file d'attente (Queue Pipelining).
 
 ## 3. Schémas de Référence (Patterns)
 

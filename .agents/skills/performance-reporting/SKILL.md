@@ -14,6 +14,7 @@ L'agent en charge de cette compétence a pour mission de rendre les résultats d
 - **Interopérabilité des Formats**: Les rapports doivent être exportables en formats standardisés (JSON pour une API, CSV pour l'analyse Excel, HTML pour les visualisations Plotly).
 - **Attribution de Performance**: Savoir dissocier le rendement dû au marché (Beta) du rendement lié à la compétence de l'algorithme (Alpha).
 - **Analyse des Trades**: Documenter non seulement le PnL global, mais aussi les statistiques par trade (Win Rate, Average Win, Average Loss, Consecutive Losses).
+- **Reporting WFA & Métriques Clés**: Les rapports finaux et logs structurés (JSON) doivent impérativement intégrer les métriques NVO, NVS et AMS.MC pour permettre la validation formelle des stratégies post-Optuna.
 
 ## 3. Schémas de Référence (Patterns)
 

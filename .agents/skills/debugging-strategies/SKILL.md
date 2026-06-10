@@ -46,6 +46,28 @@ Transform debugging from frustrating guesswork into systematic problem-solving w
 
 Explain your code and problem out loud (to a rubber duck, colleague, or yourself). Often reveals the issue.
 
+## Trading Automation Specific Debugging
+
+### 1. Optuna & Multiprocessing OOM (Out Of Memory)
+- **Symptom**: Optuna workers silently crashing or consuming 100% RAM.
+- **Root Cause**: Often due to pickling large Pandas DataFrames between processes.
+- **Fix**: Never use `pickle` for DataFrames. Verify that `shm_allocators.py` (POSIX Shared Memory) is correctly used to pass data to workers.
+
+### 2. Live Execution Precision Issues
+- **Symptom**: Order rejected by the broker (e.g., Trading 212) due to invalid lot size or price rounding errors.
+- **Root Cause**: Using `float` instead of `decimal.Decimal` in the execution pipeline.
+- **Fix**: Check `execution-order-routing` logs. Ensure all API prices/quantities are cast to `Decimal`.
+
+### 3. SQLite/JournalFileStorage Locks
+- **Symptom**: Optuna trials are hanging or crashing with `database is locked`.
+- **Root Cause**: Using disk-based SQLite or `JournalFileStorage` for concurrent Optuna workers.
+- **Fix**: Switch to Queue Pipelining in memory for tracking concurrent trials.
+
+### 4. Walk-Forward Analysis (WFA) Failures
+- **Symptom**: Strategy works in standard backtest but fails WFA validation.
+- **Root Cause**: Overfitting or alpha decay. 
+- **Fix**: Analyze NVO (Net Value Optimization), NVS (Net Value Stability), and AMS.MC (Average Monthly Sharpe Monte Carlo) metrics in the performance report.
+
 ## Systematic Debugging Process
 
 ### Phase 1: Reproduce

@@ -15,7 +15,8 @@ Sequential Thinking Logic décompose les problèmes complexes en séquences logi
 - Analyse du flux de données (Indicateurs -> Signaux -> Ordres)
 - Validation de la thread-safety (Lock, RLock) pour les états partagés (ex: carnet d'ordres)
 - Identification des points de défaillance dans les exécutions asynchrones (asyncio)
-- Construction de chaînes de raisonnement robustes pour l'optimisation bayésienne
+- Construction de chaînes de raisonnement robustes pour l'optimisation bayésienne (Optuna avec Queue Pipelining)
+- Vérification rigoureuse des conditions de Walk-Forward Analysis (WFA) et des métriques de robustesse (NVO, NVS, AMS.MC)
 
 ### Workflow obligatoire
 
@@ -75,6 +76,11 @@ Pattern spécifique pour l'automatisation :
 - Valider la logique de reconnexion et de réconciliation de l'état du portfolio.
 
 ## Common gotchas
+
+### Optuna & Walk-Forward Analysis (WFA)
+
+- **Interdiction du JournalFileStorage** : L'utilisation de bases SQLite ou de stockage disque est formellement interdite pour les workers Optuna (risque de locks). Valider systématiquement l'usage d'une architecture Queue Pipelining en mémoire.
+- **Validation WFA** : Une stratégie ne peut être validée par ce skill que si son raisonnement inclut une passe de WFA analysant les métriques NVO, NVS et AMS.MC.
 
 ### Séquences incomplètes
 

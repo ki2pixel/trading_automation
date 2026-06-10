@@ -15,7 +15,15 @@ Conformément à la feuille de route (`configs/strategies/README_OPTIMIZATION_RO
 Stratégies documentées :
 - `pmax_explorer/` : Suivi de tendance avec Trailing Stop ATR (Passe 1 et 2 complétées)
 - `hma_crossover/` : Suivi de tendance par croisement de moyennes mobiles de Hull (Stratégie à 1 passe, complétée)
-- `3commas_bot/` : Croisement de MAs (Passe 1, 2 et 3 complétées)
+- `trend_type/` : Trend Type Indicator (Stratégie à 1 passe, complétée)
+- `msl_trend/` : MSL Friendly Trend (Stratégie à 1 passe, complétée)
+- `3commas_bot/` : Croisement de MAs (Passes 1, 2 et 3 complétées)
+- `adaptive_volatility_trend/` : Adaptive Volatility Trend (Passe 1 et 2 complétées)
+- `bjorgum_double_tap/` : Bjorgum Double Tap (Passe 1 complétée, échec de détection d'edge)
+- `cybernetic_hilbert/` : Cybernetic Hilbert (Passes 1, 2 et 3 complétées)
+- `noise_boundary_intraday/` : Noise Boundary Intraday (Passes 1, 2 et 3 complétées)
+- `range_filter/` : Range Filter (Stratégie à 1 passe, complétée)
+- `smart_trader_geometric/` : Smart Trader Geometric (Passes 1, 2 et 3 complétées)
 
 Chaque stratégie dispose de son propre sous-dossier contenant :
 - Un fichier par passe (ex: `passe_1_signal.md`) qui détaille les résultats de l'optimiseur, les symboles et timeframes performants, et les paramètres retenus.

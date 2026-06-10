@@ -37,6 +37,8 @@
 
 ## 4. Concurrence, Multiprocessing et Mémoire Partagée (Pandas/NumPy/Optuna)
 L'optimisation bayésienne (via Optuna) manipule des volumes massifs de données historiques sur plusieurs processus. Une mauvaise gestion entraîne rapidement des pics de RAM (OOM) et des goulots d'étranglement de sérialisation.
+- **Queue Pipelining et ProcessPoolExecutor**: L'utilisation du stockage disque pour Optuna (`JournalFileStorage`) est **strictement interdite** en raison de la lenteur d'I/O. L'architecture doit utiliser le **Queue Pipelining** en RAM via `ProcessPoolExecutor` pour garantir un taux d'utilisation CPU maximal.
+- **Early Abandoning & Bypass CPU (Short-circuit)**: Les stratégies complexes (ex: algorithmes de classification, HMM) ont l'obligation d'implémenter un mécanisme de court-circuitage (bypass) du pré-scan VectorBT pour éviter les bottlenecks CPU.
 - **Vectorisation**: L'itération native (`iterrows`, boucles `for`) est interdite sur les DataFrames de backtest. Privilégiez les opérations vectorisées.
 - **Shared Memory Obligatoire**: Ne transmettez jamais de larges DataFrames ou tableaux Numpy natifs entre les processus (serialization Pickle). Utilisez impérativement `shm_allocators.py` et `SharedIndicatorVolume` (POSIX Shared Memory) pour précalculer et partager les grilles d'indicateurs. Seules les métadonnées de la mémoire partagée (nom, shape, dtype) doivent être transmises aux workers.
   ```python
@@ -56,7 +58,8 @@ L'optimisation bayésienne (via Optuna) manipule des volumes massifs de données
 ## 5. Architecture, Structure et Frameworks
 - **Dualité de Traitement**: Maintenez une séparation stricte des paradigmes. Le backtest et l'optimisation doivent être **massivement vectorisés** (Pandas, Numpy, Vectorbt). L'exécution live et le routage (`broker.py`) doivent être **Event-Driven** (asynchrone tick-par-tick ou bougie-par-bougie).
 - **Séparation des Préoccupations (SoC)**: Maintenez une séparation claire entre la logique de trading/calcul (stratégies, indicateurs), la plomberie (connexions API, BDD) et l'I/O.
-- **Optimisation & Validation (WFA)**: L'optimisation hyperparamétrique repose sur **Optuna**. Toute stratégie optimisée doit obligatoirement réussir une phase de **Walk-Forward Analysis (WFA)** pour attester de son immunité au surapprentissage (overfitting) avant son intégration en production.
+- **Architectures Hybrides**: Les stratégies particulièrement lourdes en calcul doivent s'affranchir de la vectorisation totale du pré-scan (bypass/short-circuit) si cela crée un goulot d'étranglement CPU.
+- **Optimisation & Validation (WFA)**: L'optimisation hyperparamétrique repose sur **Optuna**. Toute stratégie optimisée doit obligatoirement réussir une phase de **Walk-Forward Analysis (WFA)** pour attester de son immunité au surapprentissage (overfitting) avant son intégration en production. L'évaluation de la robustesse s'appuie désormais sur les métriques clés : **NVO** (Net Value Optimization), **NVS** (Net Value Stability), et **AMS.MC** (Average Monthly Sharpe Monte Carlo).
 - **Interfaces & Reporting**: Tout endpoint API ou interface de reporting web (`web.py`) doit être développé avec **FastAPI** et **Uvicorn**. Le rendu visuel privilégie **Plotly** ou Lightweight Charts.
 - **Configuration**: Ne codez jamais les paramètres en dur. Utilisez les fichiers de configuration dédiés (dossier `configs/`) ou les variables d'environnement.
 - **Dépendances**: Limitez strictement l'introduction de nouvelles dépendances externes. Toute nouvelle librairie doit être justifiée et enregistrée dans `requirements-backtest-engine.txt`.
@@ -71,7 +74,7 @@ Les connexions aux exchanges sont instables par nature.
 ## 7. Tests, Validation et Mocking
 - **Tests (pytest)**: Écrivez systématiquement des tests pour les nouvelles fonctionnalités (dossier `tests/`).
 - **Mocking Obligatoire**: L'exécution de requêtes réseau réelles vers des brokers pendant la CI/CD ou les tests locaux est formellement interdite. Utilisez des mocks (`pytest-mock`) ou des cassettes (`VCR.py`).
-- **Non-Régression Financière**: Toute modification du moteur de backtest ou des stratégies doit être validée par une exécution de test pour s'assurer qu'il n'y a pas de régression non intentionnelle sur les métriques (ex: `aggregated_metrics.json`).
+- **Non-Régression Financière**: Toute modification du moteur de backtest ou des stratégies doit être validée par une exécution de test pour s'assurer qu'il n'y a pas de régression non intentionnelle sur les métriques (ex: `aggregated_metrics.json`). Les rapports d'optimisation et la détection des régressions utilisent systématiquement les métriques d'évaluation **NVO**, **NVS**, et **AMS.MC**.
 
 ## 8. Stockage Local (Parquet) et I/O de Données Historiques
 - **Format et Compression**: Utilisez exclusivement le format `.parquet` avec compression `snappy` (pour la vitesse) ou `zstd` (pour le stockage froid) pour historiser les données de marché tick-level ou minute.

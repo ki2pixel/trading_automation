@@ -12,6 +12,9 @@ L'agent incarnant cette spécialisation est l'architecte du moteur de simulation
 
 - **Vectorisation Impérative**: Les boucles `for` sur les lignes d'un DataFrame Pandas sont strictement interdites. Utiliser `np.where`, `pd.Series.shift()`, et le broadcasting de Numpy pour générer les signaux et calculer le PnL (vectorized backtesting).
 - **Précision Numérique (Floats autorisés)**: Contrairement à l'exécution Live où `Decimal` est obligatoire, l'utilisation de types `float` (ex: `np.float64`) est **requise** dans ce moteur pour garantir la performance des calculs vectorisés avec Pandas/Numpy.
+- **Shared Memory (shm_allocators.py)**: L'échange de gros DataFrames entre les processus (workers) lors des optimisations Optuna doit obligatoirement passer par la mémoire partagée POSIX. La sérialisation via `pickle` est formellement interdite (risque d'OOM).
+- **Queue Pipelining (Optuna)**: L'utilisation de bases SQLite ou de `JournalFileStorage` sur le disque est interdite pour gérer l'historique des essais concurrents Optuna. Utiliser une architecture basée sur des Queues en mémoire.
+- **Walk-Forward Analysis (WFA)**: Les stratégies doivent obligatoirement être soumises à une WFA robuste incluant le calcul des métriques NVO (Net Value Optimization), NVS (Net Value Stability) et AMS.MC (Average Monthly Sharpe Monte Carlo) pour valider leur robustesse avant tout passage en Live.
 - **Simulation Orientée Événements**: Pour les stratégies nécessitant une granularité extrême (intra-bougie) ou un ordre d'exécution complexe (Event-Driven backtesting), un moteur de file d'attente (Queue) doit être utilisé, au détriment de la vitesse.
 - **Réalisme Financier**: Toujours inclure un modèle de commission et de slippage. Un backtest sans friction n'a aucune valeur en production.
 - **Thread-Safety**: Lors de l'optimisation de paramètres en parallèle (Multiprocessing), veiller à ce que l'état du moteur ne soit pas corrompu par la concurrence.

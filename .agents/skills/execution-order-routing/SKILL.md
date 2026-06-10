@@ -15,6 +15,7 @@ Cette spécialisation concerne la traduction de décisions de trading abstraites
 - **Routage Actif**: Si on supporte plusieurs courtiers, cette couche doit pouvoir choisir vers où diriger l'ordre selon la commission, la liquidité ou la disponibilité.
 - **Types d'Ordres**: Préférer les Limit Orders pour contrôler le slippage, sauf cas de sortie d'urgence absolue où un Market Order est requis.
 - **Précision Financière (Live)**: L'utilisation de `float` est **strictement interdite** pour représenter des prix, des quantités ou des montants dans ce module. Utilisez toujours `decimal.Decimal`.
+- **Transactional Logging**: Chaque exécution Live d'un ordre doit être tracée par un logging transactionnel structuré (format JSON) pour faciliter l'audit, la réconciliation et le calcul des performances réelles.
 
 ## 3. Schémas de Référence (Patterns)
 

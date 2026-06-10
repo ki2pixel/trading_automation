@@ -11,6 +11,7 @@ Cet agent est l'ingénieur quantitatif spécialisé dans la création de caract�
 ## 2. Principes Fondamentaux & Contraintes
 
 - **Performance vectorbt** : L'utilisation de bibliothèques optimisées et vectorisées comme `vectorbt` (vbt) est obligatoire pour les calculs d'indicateurs (Moyennes mobiles, RSI, etc.). Éviter de recalculer manuellement ces indicateurs ou d'utiliser des boucles Python.
+- **Early Abandoning (Bypass)**: Pour les générateurs de signaux extrêmement lourds en CPU, un mécanisme d'abandon anticipé ("early abandoning" / "pruning") doit être implémenté. Si les indicateurs préliminaires (ex: regime filters) montrent un potentiel nul, les calculs plus complexes doivent être court-circuités.
 - **Stateful vs Stateless**: Distinguer clairement les calculs "stateless" (ex: RSI sur un batch entier de données pour un backtest) et "stateful" (ex: mise à jour en temps réel d'un EMA à la réception d'un tick sans recalculer tout l'historique).
 - **Normalisation**: Les indicateurs destinés au Machine Learning doivent être stationnaires (ex: rendements, z-scores) et non absolus (prix).
 - **Régimes de Marché**: Toujours envisager des indicateurs macroscopiques pour filtrer les régimes (tendance vs range / forte vs faible volatilité).
