@@ -1668,7 +1668,7 @@ PIVOT_RETEST_PARAMETER_DEFINITIONS: dict[str, StrategyParameterDefinition] = {
         description="pivot_timeframe parameter",
         default="D",
         group="Indicator",
-        choices=["D"],
+        choices=["D", "W", "M", "1H", "2H", "4H", "12H"],
     ),
     "retest_bars": StrategyParameterDefinition(
         name="retest_bars",

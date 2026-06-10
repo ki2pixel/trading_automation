@@ -12,7 +12,7 @@ Architecture:
 import numpy as np
 import pandas as pd
 import vectorbt as vbt
-from numba import njit
+from numba import njit, prange
 import math
 
 
@@ -377,6 +377,74 @@ def _adx_filter_nb(high, low, close, length, threshold):
         if not np.isnan(adx[i]):
             out[i] = 1 if adx[i] > threshold else 0
     return out
+@njit(cache=True, parallel=True)
+def _compute_knn_predictions_parallel(
+    f1, f2, f3, f4, f5, y_train, neighbors_count, max_bars_back
+):
+    """
+    Parallel execution of the KNN ANN logic using Numba prange.
+    Computes distances with Early Abandoning (Short-circuit).
+    """
+    n = f1.shape[0]
+    out_prediction = np.zeros(n, dtype=np.float64)
+    
+    for t in prange(5, n):
+        last_distance = -1.0
+        buf_size = 0
+        dist_buf = np.zeros(neighbors_count + 1, dtype=np.float64)
+        pred_buf = np.zeros(neighbors_count + 1, dtype=np.int64)
+        
+        start_idx = max(0, t - max_bars_back)
+        
+        for j in range(start_idx, t):
+            i = j - start_idx
+            
+            # Early Abandoning
+            if (i % 4) == 0:
+                d = (
+                    math.log1p(abs(f1[t] - f1[j])) +
+                    math.log1p(abs(f2[t] - f2[j])) +
+                    math.log1p(abs(f3[t] - f3[j])) +
+                    math.log1p(abs(f4[t] - f4[j])) +
+                    math.log1p(abs(f5[t] - f5[j]))
+                )
+            else:
+                d = math.log1p(abs(f1[t] - f1[j]))
+                if d >= last_distance: continue
+                d += math.log1p(abs(f2[t] - f2[j]))
+                if d >= last_distance: continue
+                d += math.log1p(abs(f3[t] - f3[j]))
+                if d >= last_distance: continue
+                d += math.log1p(abs(f4[t] - f4[j]))
+                if d >= last_distance: continue
+                d += math.log1p(abs(f5[t] - f5[j]))
+                if d >= last_distance: continue
+
+            last_distance = max(d, last_distance)
+
+            # Insertion sort into buffer
+            pos = buf_size
+            while pos > 0 and dist_buf[pos - 1] > d:
+                dist_buf[pos] = dist_buf[pos - 1]
+                pred_buf[pos] = pred_buf[pos - 1]
+                pos -= 1
+            dist_buf[pos] = d
+            pred_buf[pos] = y_train[j]
+            buf_size += 1
+            
+            if buf_size > neighbors_count:
+                idx_75 = int(round((neighbors_count + 1) * 0.75)) - 1
+                idx_75 = max(0, min(idx_75, buf_size - 1))
+                last_distance = dist_buf[idx_75]
+                buf_size -= 1
+
+        prediction = 0.0
+        for k in range(buf_size):
+            prediction += float(pred_buf[k])
+            
+        out_prediction[t] = prediction
+
+    return out_prediction
 
 
 @njit(cache=True)
@@ -419,10 +487,10 @@ def _lorentzian_knn_1d_nb(
         else:
             y_train[i] = 0
 
-    # Pre-allocate KNN buffers
-    dist_buf = np.zeros(neighbors_count + 1, dtype=np.float64)
-    pred_buf = np.zeros(neighbors_count + 1, dtype=np.int64)
-    buf_size = 0
+    # Run parallel KNN engine
+    out_prediction = _compute_knn_predictions_parallel(
+        f1, f2, f3, f4, f5, y_train, neighbors_count, max_bars_back
+    )
 
     # State variables
     signal = 0  # 0=neutral, 1=long, -1=short
@@ -461,66 +529,7 @@ def _lorentzian_knn_1d_nb(
             is_sma_uptrend = close[t] > sma_arr[t]
             is_sma_downtrend = close[t] < sma_arr[t]
 
-        # ─── KNN ANN loop ───
-        if t >= 5:  # Need at least 5 bars for y_train[4]
-            last_distance = -1.0
-            buf_size = 0
-            size_loop = min(max_bars_back - 1, t - 1)
-
-            for i in range(size_loop + 1):
-                # i iterates over array positions from oldest (0) to most recent
-                # In Pine: array index i corresponds to bar pushed at bar index i
-                # At bar t, we look at historical bars [max(0, t-max_bars_back) .. t-1]
-
-                # Compute Lorentzian distance
-                d = 0.0
-                if feature_count >= 1:
-                    d += math.log(1.0 + abs(f1[t] - f1[i]))
-                if feature_count >= 2:
-                    d += math.log(1.0 + abs(f2[t] - f2[i]))
-                if feature_count >= 3:
-                    d += math.log(1.0 + abs(f3[t] - f3[i]))
-                if feature_count >= 4:
-                    d += math.log(1.0 + abs(f4[t] - f4[i]))
-                if feature_count >= 5:
-                    d += math.log(1.0 + abs(f5[t] - f5[i]))
-
-                # ANN filter: d >= lastDistance AND i % 4 != 0
-                if d >= last_distance and (i % 4) != 0:
-                    last_distance = d
-
-                    # Push to buffer
-                    if buf_size < neighbors_count + 1:
-                        dist_buf[buf_size] = d
-                        pred_buf[buf_size] = y_train[i]
-                        buf_size += 1
-                    else:
-                        # Shift buffer (remove oldest)
-                        for k in range(buf_size - 1):
-                            dist_buf[k] = dist_buf[k + 1]
-                            pred_buf[k] = pred_buf[k + 1]
-                        dist_buf[buf_size - 1] = d
-                        pred_buf[buf_size - 1] = y_train[i]
-
-                    if buf_size > neighbors_count:
-                        # Recalibrate lastDistance to 75th percentile
-                        idx_75 = int(round(neighbors_count * 3.0 / 4.0))
-                        if idx_75 < buf_size:
-                            last_distance = dist_buf[idx_75]
-                        # Shift front
-                        for k in range(buf_size - 1):
-                            dist_buf[k] = dist_buf[k + 1]
-                            pred_buf[k] = pred_buf[k + 1]
-                        buf_size -= 1
-
-            # Sum predictions
-            prediction = 0.0
-            for k in range(buf_size):
-                prediction += float(pred_buf[k])
-        else:
-            prediction = 0.0
-
-        out_prediction[t] = prediction
+        prediction = out_prediction[t]
 
         # ─── Signal generation ───
         if prediction > 0.0 and filter_all:

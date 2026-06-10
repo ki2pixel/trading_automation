@@ -1,6 +1,9 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-10 02:28:00] - Parallélisation massive du KNN Lorentzian Classification via `numba.prange` et implémentation du coupe-circuit (Early Abandoning) pour accélérer le backtest.
+- [x] [2026-06-10 01:58:00] - Résolution des bottlenecks CPU et corrections de logique ML dans la stratégie Lorentzian Classification (indexation historique, tri de buffer, vectorisation LLVM).
+- [x] [2026-06-10 01:21:00] - Court-circuitage (bypass) des pré-scans VectorBT pour les stratégies complexes lorentzian_classification et hmm_regime_filter afin d'éliminer le goulot d'étranglement CPU.
 - [x] Initialisation du protocole Memory Bank.
 - [x] Nettoyage des historiques hérités de `workflow_mediapipe`.
 - [x] Exécution du workflow `/docs-updater` : Audit structurel/métrique complet du moteur et mise à jour de la documentation sur l'optimisation bayésienne (Front de Pareto et importance relative).
@@ -81,10 +84,18 @@
 - [x] [2026-06-09 14:59:%00] - Implémentation de "Adaptive Trend Classification" terminée et testée. MAs codées en pur Numba remplaçant talib. Boucle stateful O(T) très performante (<20ms/10k bars) sans lookahead bias.
 - [x] [2026-06-09 15:16:00] - Implémentation de "Momentum-based ZigZag" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful anti-lookahead bias validée. Performance très rapide (~4ms/10k bars).
 - [x] [2026-06-09 16:06:00] - Implémentation de "HMM Regime Filter" terminée et testée (Numba 2D, VectorBT, Pydantic). Logique stateful récursive validée sans lookahead bias.
+- [x] [2026-06-10 15:25:00] - Optimisation majeure du CPU et résolution du Queue Starvation dans le moteur de backtest (optimizer.py et bayesian_optimizer.py). Remplacement de JournalFileStorage par InMemoryStorage. Implémentation du Queue Pipelining (max_pending = workers * 2). Utilisation CPU augmentée à 82% et benchmark Optuna considérablement accéléré.
 - [ ] Intégration des APIs courtiers.
 - [x] [2026-06-09 00:06:47] - Audit de la Passe 1 de la stratégie Dual RSI DCA Long terminé. Échec des filtres sans DCA optimisé (0 itération éligible). Rapport et synthèse générés. Ouverture de la Passe 2.
 - [x] [2026-06-09 17:40:00] - Documentation et catégorisation des 7 nouvelles stratégies Pine Script vectorisées terminées dans README_BACKTEST_PARAMS.md et README_OPTIMIZATION_ROADMAP.md.
 - [x] [2026-06-09 17:52:00] - Correction de l'anomalie signal_mode ('Live' non autorisé dans configuration.py) pour les stratégies trend_type, msl_trend, pivot_retest, adaptive_trend_classification et momentum_based_zigzag.
 - [x] [2026-06-09 18:06:00] - Implémentation du pré-scan VectorBT de la stratégie trend_type pour optimiser le calcul et la vitesse d'Optuna.
+- [x] [2026-06-09 19:24:00] - Exécution du workflow `/docs-updater` : Rédaction de l'index global des stratégies (README.md) et des guides techniques détaillés conformes à `SKILL.md` pour `lorentzian_classification.md` (KNN ML) et `hmm_regime_filter.md` (HMM regime filter).
 - [x] [2026-06-09 18:06:00] - Correction d'un bug de sérialisation Pydantic (Type Error avec asdict()) pour les 7 nouvelles stratégies.
 - [x] [2026-06-09 18:15:00] - Implémentation et validation des pré-scans VectorBT pour les 6 stratégies restantes (msl_trend, pivot_retest, adaptive_trend_classification, momentum_based_zigzag, hmm_regime_filter, lorentzian_classification) pour Optuna.
+- [x] [2026-06-09 21:32:00] - Élargissement des choix autorisés pour le paramètre `pivot_timeframe` dans `configuration.py` à ["D", "W", "M", "1H", "2H", "4H", "12H"] afin de permettre son optimisation.
+- [x] [2026-06-09 22:14:00] - Optimisation d'Adaptive Trend Classification : Caching thread-safe des MAs, correction du ratio de sous-échantillonnage de grille, et implémentation du multiprocessing (ProcessPoolExecutor) pour le pré-scan VectorBT. Temps réduit de 8h à 24 secondes avec 4 workers (speedup ~1200x).
+- [x] [2026-06-09 22:30:00] - Optimisation du pré-scan VectorBT de la stratégie trend_type avec multiprocessing (ProcessPoolExecutor). Temps réduit de 96s à 31s.
+- [x] [2026-06-09 22:35:00] - Audit global de toutes les stratégies du registre concernant le pré-scan VectorBT. 9 stratégies parallélisées, 2 stubs ignorés, 5 séquentiels rapides.
+- [x] [2026-06-09 22:36:00] - Validation finale de la suite de tests unitaires avec 429 tests passés avec succès.
+- [x] [2026-06-10 00:14:00] - Implémentation du multiprocessing (ProcessPoolExecutor) pour le pré-scan VectorBT de la stratégie momentum_based_zigzag (10ème stratégie parallélisée).

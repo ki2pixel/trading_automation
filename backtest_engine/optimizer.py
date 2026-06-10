@@ -975,7 +975,7 @@ def run_grid_optimization(
         try:
             item_iter = iter(canonical_grid_items)
             futures: dict = {}
-            max_pending = workers
+            max_pending = workers * 2
 
             def submit_next() -> bool:
                 try:

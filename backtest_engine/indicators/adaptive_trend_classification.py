@@ -2,6 +2,10 @@ import numpy as np
 import pandas as pd
 from numba import njit
 import vectorbt as vbt
+import threading
+
+_MA_CACHE = {}
+_MA_CACHE_LOCK = threading.Lock()
 
 @njit(cache=True)
 def calc_ema(arr, length):
@@ -213,26 +217,60 @@ def apply_adaptive_trend(close, La, De, cutout, robustness, Long_threshold, Shor
         get_lengths(kama_len, rob)
     ]
     
+    global _MA_CACHE
+
+    ema_len_val = int(ema_len.item() if isinstance(ema_len, np.ndarray) else ema_len)
+    hull_len_val = int(hull_len.item() if isinstance(hull_len, np.ndarray) else hull_len)
+    wma_len_val = int(wma_len.item() if isinstance(wma_len, np.ndarray) else wma_len)
+    dema_len_val = int(dema_len.item() if isinstance(dema_len, np.ndarray) else dema_len)
+    lsma_len_val = int(lsma_len.item() if isinstance(lsma_len, np.ndarray) else lsma_len)
+    kama_len_val = int(kama_len.item() if isinstance(kama_len, np.ndarray) else kama_len)
+
     for c in range(cols):
         c_arr = close_np[:, c].astype(np.float64)
         
-        for i, l in enumerate(lengths[0]):
-            mas_3d[:, c, i] = calc_ema(c_arr, l)
+        # Build a cache key for this column
+        check_vals = (c_arr[0], c_arr[rows // 2], c_arr[-1]) if rows > 0 else (0.0, 0.0, 0.0)
+        cache_key = (
+            rows,
+            check_vals,
+            rob,
+            ema_len_val,
+            hull_len_val,
+            wma_len_val,
+            dema_len_val,
+            lsma_len_val,
+            kama_len_val
+        )
         
-        for i, l in enumerate(lengths[1]):
-            mas_3d[:, c, 9 + i] = calc_sma(c_arr, l)
-            
-        for i, l in enumerate(lengths[2]):
-            mas_3d[:, c, 18 + i] = calc_wma(c_arr, l)
-            
-        for i, l in enumerate(lengths[3]):
-            mas_3d[:, c, 27 + i] = calc_dema(c_arr, l)
-            
-        for i, l in enumerate(lengths[4]):
-            mas_3d[:, c, 36 + i] = calc_lsma(c_arr, l)
-            
-        for i, l in enumerate(lengths[5]):
-            mas_3d[:, c, 45 + i] = calc_kama(c_arr, l)
+        cached_mas = None
+        with _MA_CACHE_LOCK:
+            if cache_key in _MA_CACHE:
+                cached_mas = _MA_CACHE[cache_key]
+                
+        if cached_mas is not None:
+            mas_3d[:, c, :] = cached_mas
+        else:
+            col_mas = np.full((rows, 54), np.nan, dtype=np.float64)
+            for i, l in enumerate(lengths[0]):
+                col_mas[:, i] = calc_ema(c_arr, l)
+            for i, l in enumerate(lengths[1]):
+                col_mas[:, 9 + i] = calc_sma(c_arr, l)
+            for i, l in enumerate(lengths[2]):
+                col_mas[:, 18 + i] = calc_wma(c_arr, l)
+            for i, l in enumerate(lengths[3]):
+                col_mas[:, 27 + i] = calc_dema(c_arr, l)
+            for i, l in enumerate(lengths[4]):
+                col_mas[:, 36 + i] = calc_lsma(c_arr, l)
+            for i, l in enumerate(lengths[5]):
+                col_mas[:, 45 + i] = calc_kama(c_arr, l)
+                
+            with _MA_CACHE_LOCK:
+                if len(_MA_CACHE) >= 32:
+                    _MA_CACHE.clear()
+                _MA_CACHE[cache_key] = col_mas
+                
+            mas_3d[:, c, :] = col_mas
             
     def get_val(param):
         return param.item() if isinstance(param, np.ndarray) else param

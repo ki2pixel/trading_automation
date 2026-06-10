@@ -894,11 +894,6 @@ def run_bayesian_optimization(
         output_root = get_reports_dir() / "local_optimizer"
     try:
         import optuna
-        from optuna.storages import JournalStorage
-        try:
-            from optuna.storages import JournalFileStorage
-        except ImportError:
-            from optuna.storages.journal import JournalFileBackend as JournalFileStorage
     except ImportError as exc:
         raise ImportError(
             "Bayesian optimization requires 'optuna'. "
@@ -1027,17 +1022,17 @@ def run_bayesian_optimization(
         sampler_obj = optuna.samplers.TPESampler(seed=seed, multivariate=True, constant_liar=True)
     logger.info(f"Optuna sampler: {effective_sampler} ({type(sampler_obj).__name__})")
     
-    # Remove stale storage so old distributions (with incorrect bounds) are not reused
+    # Remove obsolete storage file if it exists from previous runs
     storage_path = output_root / "bayes_opt_journal.log"
     if storage_path.exists():
         storage_path.unlink()
-    storage = JournalStorage(JournalFileStorage(str(storage_path)))
+        
     study_name = f"{strategy}_{symbol}_{minutes}m_{score_metric}"
     
     study = optuna.create_study(
         study_name=study_name,
-        storage=storage,
-        load_if_exists=True,
+        storage=None,
+        load_if_exists=False,
         directions=optuna_direction if isinstance(optuna_direction, list) else None,
         direction=optuna_direction if not isinstance(optuna_direction, list) else None,
         sampler=sampler_obj
@@ -1222,7 +1217,8 @@ def run_bayesian_optimization(
                     return True
 
                 # Initial fill
-                for _ in range(min(workers, n_trials)):
+                max_pending = workers * 2
+                for _ in range(min(max_pending, n_trials)):
                     submit_next()
 
                 while futures_map:

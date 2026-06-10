@@ -465,6 +465,7 @@ def _write_prescan_report(
 ) -> None:
     if output_dir is None:
         return
+    import json
     report = {
         "status": status,
         "top_n_configurations_found": top_n,
@@ -475,6 +476,73 @@ def _write_prescan_report(
         path.write_text(json.dumps(report, indent=4, default=str), encoding="utf-8")
     except Exception:
         pass
+
+
+# Globals for multiprocessing workers
+_worker_high = None
+_worker_low = None
+_worker_close = None
+
+
+def _init_prescan_worker(high, low, close):
+    global _worker_high, _worker_low, _worker_close
+    _worker_high = high
+    _worker_low = low
+    _worker_close = close
+
+
+def _process_prescan_batch(args):
+    global _worker_high, _worker_low, _worker_close
+    import pandas as pd
+    import numpy as np
+    import vectorbt as vbt
+    from ..indicators.momentum_based_zigzag import MomentumBasedZigZagIndicator
+    import gc
+
+    batch_combos, keys, prescan_timeframe = args
+
+    batch_vals = list(zip(*batch_combos))
+    run_kwargs = {keys[i]: list(batch_vals[i]) for i in range(len(keys))}
+    run_kwargs["param_product"] = False
+
+    mbzz = MomentumBasedZigZagIndicator.run(
+        _worker_high, _worker_low, _worker_close,
+        **run_kwargs
+    )
+
+    long_entries = mbzz.bullish_signal
+    short_entries = mbzz.bearish_signal
+    long_exits = short_entries
+    short_exits = long_entries
+
+    pf = vbt.Portfolio.from_signals(
+        _worker_close,
+        entries=long_entries,
+        exits=long_exits,
+        short_entries=short_entries,
+        short_exits=short_exits,
+        freq=f"{prescan_timeframe}min",
+    )
+    
+    ret_series = pf.total_return()
+    if not isinstance(ret_series, pd.Series):
+        if hasattr(long_entries, 'columns'):
+            idx = long_entries.columns
+        elif hasattr(long_entries, 'name'):
+            idx = pd.Index([long_entries.name])
+        else:
+            idx = pd.Index([batch_combos[0]])
+        ret_series = pd.Series([ret_series], index=idx)
+        
+    del mbzz
+    del long_entries
+    del short_entries
+    del long_exits
+    del short_exits
+    del pf
+    gc.collect()
+
+    return ret_series
 
 
 def vectorbt_prescan(
@@ -582,55 +650,115 @@ def vectorbt_prescan(
         low = data["low"]
         close = data["close"]
 
-        logger.info(f"Lancement du Pre-Scan Momentum-based ZigZag ({len(combos)} combos, {total_batches} lots)...")
+        # Multiprocessing Parallelization
+        if workers > 1:
+            logger.info(f"Lancement du Pre-Scan Momentum-based ZigZag en parallèle avec {workers} processus (Batch Size={batch_size})...")
+            import multiprocessing
+            import concurrent.futures
 
-        for batch_idx in range(total_batches):
-            if stop_requested is not None and stop_requested():
-                logger.warning("Pre-scan Momentum-based ZigZag annulé pendant le calcul.")
-                _write_prescan_report(output_dir, "cancelled", None, {})
-                return parameter_specs
+            try:
+                ctx = multiprocessing.get_context("fork")
+            except ValueError:
+                ctx = multiprocessing.get_context()
 
-            start_i = batch_idx * batch_size
-            end_i = min(start_i + batch_size, len(combos))
-            batch_combos = combos[start_i:end_i]
+            batches = []
+            for batch_idx in range(total_batches):
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(combos))
+                batches.append((combos[start_i:end_i], keys, prescan_timeframe))
 
-            batch_vals = list(zip(*batch_combos))
-            run_kwargs = {keys[i]: list(batch_vals[i]) for i in range(len(keys))}
-            run_kwargs["param_product"] = False
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=workers,
+                mp_context=ctx,
+                initializer=_init_prescan_worker,
+                initargs=(high, low, close)
+            ) as executor:
+                futures = {executor.submit(_process_prescan_batch, b): b for b in batches}
+                completed = 0
 
-            mbzz = MomentumBasedZigZagIndicator.run(
-                high, low, close,
-                **run_kwargs
-            )
+                while futures:
+                    if stop_requested is not None and stop_requested():
+                        logger.warning("Pre-scan Momentum-based ZigZag annulé pendant le calcul parallèle.")
+                        for f in futures:
+                            f.cancel()
+                        executor.shutdown(wait=False)
+                        _write_prescan_report(output_dir, "cancelled", None, {})
+                        return parameter_specs
 
-            long_entries = mbzz.bullish_signal
-            short_entries = mbzz.bearish_signal
-            long_exits = short_entries
-            short_exits = long_entries
+                    done, _ = concurrent.futures.wait(
+                        futures.keys(),
+                        timeout=1.0,
+                        return_when=concurrent.futures.FIRST_COMPLETED
+                    )
 
-            pf = vbt.Portfolio.from_signals(
-                close,
-                entries=long_entries,
-                exits=long_exits,
-                short_entries=short_entries,
-                short_exits=short_exits,
-                freq=f"{prescan_timeframe}min",
-            )
-            returns_batches.append(pf.total_return())
+                    for future in done:
+                        try:
+                            res = future.result()
+                            returns_batches.append(res)
+                        except Exception as e:
+                            logger.error(f"Le process worker a crashé ou échoué: {e}")
+                            for f in futures:
+                                f.cancel()
+                            executor.shutdown(wait=False)
+                            raise RuntimeError(f"Pre-scan VectorBT échoué: {e}") from e
 
-            del mbzz
-            del long_entries
-            del short_entries
-            del long_exits
-            del short_exits
-            del pf
-            gc.collect()
+                        del futures[future]
+                        completed += 1
+                        if progress_callback is not None:
+                            try:
+                                progress_callback(completed, total_batches)
+                            except Exception as cb_err:
+                                logger.warning(f"Error in prescan progress callback: {cb_err}")
+        else:
+            logger.info(f"Lancement du Pre-Scan Momentum-based ZigZag en séquentiel ({len(combos)} combos, {total_batches} lots)...")
 
-            if progress_callback is not None:
-                try:
-                    progress_callback(batch_idx + 1, total_batches)
-                except Exception as cb_err:
-                    logger.warning(f"Error in prescan progress callback: {cb_err}")
+            for batch_idx in range(total_batches):
+                if stop_requested is not None and stop_requested():
+                    logger.warning("Pre-scan Momentum-based ZigZag annulé pendant le calcul.")
+                    _write_prescan_report(output_dir, "cancelled", None, {})
+                    return parameter_specs
+
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(combos))
+                batch_combos = combos[start_i:end_i]
+
+                batch_vals = list(zip(*batch_combos))
+                run_kwargs = {keys[i]: list(batch_vals[i]) for i in range(len(keys))}
+                run_kwargs["param_product"] = False
+
+                mbzz = MomentumBasedZigZagIndicator.run(
+                    high, low, close,
+                    **run_kwargs
+                )
+
+                long_entries = mbzz.bullish_signal
+                short_entries = mbzz.bearish_signal
+                long_exits = short_entries
+                short_exits = long_entries
+
+                pf = vbt.Portfolio.from_signals(
+                    close,
+                    entries=long_entries,
+                    exits=long_exits,
+                    short_entries=short_entries,
+                    short_exits=short_exits,
+                    freq=f"{prescan_timeframe}min",
+                )
+                returns_batches.append(pf.total_return())
+
+                del mbzz
+                del long_entries
+                del short_entries
+                del long_exits
+                del short_exits
+                del pf
+                gc.collect()
+
+                if progress_callback is not None:
+                    try:
+                        progress_callback(batch_idx + 1, total_batches)
+                    except Exception as cb_err:
+                        logger.warning(f"Error in prescan progress callback: {cb_err}")
 
         if returns_batches:
             returns = pd.concat(returns_batches)

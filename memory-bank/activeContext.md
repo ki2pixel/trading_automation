@@ -69,4 +69,14 @@
 - [2026-06-09 17:52:00] - Correction de l'anomalie signal_mode ('Live' non autorisé dans configuration.py) pour les stratégies trend_type, msl_trend, pivot_retest, adaptive_trend_classification et momentum_based_zigzag.
 - [2026-06-09 18:06:00] - Implémentation du pré-scan VectorBT de la stratégie trend_type pour optimiser le calcul et la vitesse d'Optuna.
 - [2026-06-09 18:06:00] - Correction d'un bug de sérialisation Pydantic (Type Error avec asdict()) pour les 7 nouvelles stratégies.
+- [2026-06-09 19:24:00] - Exécution du workflow /docs-updater : Rédaction de l'index global des stratégies (README.md) et des guides techniques détaillés conformes à SKILL.md pour lorentzian_classification.md (KNN ML) et hmm_regime_filter.md (HMM regime filter).
 - [2026-06-09 18:15:00] - Implémentation et validation des pré-scans VectorBT pour les 6 stratégies restantes (msl_trend, pivot_retest, adaptive_trend_classification, momentum_based_zigzag, hmm_regime_filter, lorentzian_classification).
+- [2026-06-09 22:14:00] - Optimisation d'Adaptive Trend Classification : Caching thread-safe des MAs, correction du ratio de sous-échantillonnage de grille, et implémentation du multiprocessing (ProcessPoolExecutor) pour le pré-scan VectorBT. Temps réduit de 8h à 24 secondes avec 4 workers (speedup ~1200x).
+- [2026-06-09 22:30:00] - Optimisation du pré-scan VectorBT de la stratégie trend_type avec multiprocessing (ProcessPoolExecutor). Temps réduit de 96s à 31s.
+- [2026-06-09 22:35:00] - Audit global de toutes les stratégies du registre concernant le pré-scan VectorBT. 9 stratégies parallélisées, 2 stubs ignorés, 5 séquentiels rapides.
+- [2026-06-09 22:36:00] - Validation finale de la suite de tests unitaires avec 429 tests passés avec succès.
+- [2026-06-10 00:14:00] - Implémentation du multiprocessing (ProcessPoolExecutor) pour le pré-scan VectorBT de la stratégie momentum_based_zigzag, augmentant à 10 le nombre de stratégies parallélisées.
+- [2026-06-10 01:21:00] - Court-circuitage (bypass) des pré-scans VectorBT pour les stratégies complexes lorentzian_classification et hmm_regime_filter afin d'éliminer le goulot d'étranglement CPU.
+- [2026-06-10 01:58:00] - Corrections majeures sur `lorentzian_classification` : le KNN regarde désormais la fenêtre glissante correcte, utilise un tri par insertion O(K), respecte l'heuristique ANN et évite les sauts conditionnels coûteux.
+- [2026-06-10 02:28:00] - Déploiement de l'architecture multi-core + short-circuit (Early Abandoning) dans `_lorentzian_knn_1d_nb`. Temps d'exécution par essai réduit de 23s à ~1s.
+- [2026-06-10 15:25:00] - Optimisation de `optimizer.py` et `bayesian_optimizer.py` : Suppression du stockage disque `JournalFileStorage` et implémentation du Queue Pipelining. CPU Usage de 72% à 82%, benchmark Optuna considérablement accéléré.

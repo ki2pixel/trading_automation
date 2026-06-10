@@ -508,6 +508,68 @@ def _write_prescan_report(
         pass
 
 
+# Globals for multiprocessing workers
+_worker_high = None
+_worker_low = None
+_worker_close = None
+
+def _init_prescan_worker(high, low, close):
+    global _worker_high, _worker_low, _worker_close
+    _worker_high = high
+    _worker_low = low
+    _worker_close = close
+
+def _process_prescan_batch(args):
+    global _worker_high, _worker_low, _worker_close
+    import pandas as pd
+    import numpy as np
+    import vectorbt as vbt
+    from ..indicators.trend_type import TrendType
+
+    batch_combos, prescan_timeframe = args
+
+    batch_atr_len = [c[0] for c in batch_combos]
+    batch_atr_ma_len = [c[1] for c in batch_combos]
+    batch_adx_len = [c[2] for c in batch_combos]
+    batch_di_len = [c[3] for c in batch_combos]
+    batch_adx_lim = [c[4] for c in batch_combos]
+    batch_smooth = [c[5] for c in batch_combos]
+
+    tt = TrendType.run(
+        _worker_high, _worker_low, _worker_close,
+        use_atr=True,
+        atr_len=batch_atr_len,
+        atr_ma_len=batch_atr_ma_len,
+        use_adx=True,
+        adx_len=batch_adx_len,
+        di_len=batch_di_len,
+        adx_lim=batch_adx_lim,
+        smooth=batch_smooth,
+        param_product=False
+    )
+
+    state = tt.state
+    long_entries = (state == 2.0) & (state.shift(1) != 2.0)
+    long_exits = (state != 2.0) & (state.shift(1) == 2.0)
+    short_entries = (state == -2.0) & (state.shift(1) != -2.0)
+    short_exits = (state != -2.0) & (state.shift(1) == -2.0)
+
+    pf = vbt.Portfolio.from_signals(
+        _worker_close,
+        entries=long_entries,
+        exits=long_exits,
+        short_entries=short_entries,
+        short_exits=short_exits,
+        freq=f"{prescan_timeframe}min",
+    )
+    
+    ret_series = pf.total_return()
+    if not isinstance(ret_series, pd.Series):
+        ret_series = pd.Series([ret_series], index=tt.state.columns)
+        
+    return ret_series
+
+
 def vectorbt_prescan(
     data: pd.DataFrame,
     parameter_specs: list[Any],
@@ -522,8 +584,10 @@ def vectorbt_prescan(
     avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
+    import itertools
     import numpy as np
     from ..optimizer import ParameterGridSpec
+    import gc
 
     logger = logging.getLogger(__name__)
 
@@ -549,7 +613,6 @@ def vectorbt_prescan(
 
     try:
         import vectorbt as vbt
-        import gc
         from ..indicators.trend_type import TrendType
 
         # 1. Temporal Downsampling
@@ -625,7 +688,7 @@ def vectorbt_prescan(
                 for sm in smooths
             ]
 
-        # Simulation par lots séquentielle (très rapide et mémoire-safe)
+        # Simulation par lots
         batch_size = 500
         total_batches = (len(combos) + batch_size - 1) // batch_size if combos else 0
         returns_batches: list[pd.Series] = []
@@ -634,69 +697,129 @@ def vectorbt_prescan(
         low = data["low"]
         close = data["close"]
 
-        logger.info(f"Lancement du Pre-Scan Trend Type en séquentiel ({len(combos)} combos, {total_batches} lots)...")
+        # Multiprocessing Parallelization
+        if workers > 1:
+            logger.info(f"Lancement du Pre-Scan Trend Type en parallèle avec {workers} processus (Batch Size={batch_size})...")
+            import multiprocessing
+            import concurrent.futures
 
-        for batch_idx in range(total_batches):
-            if stop_requested is not None and stop_requested():
-                logger.warning("Pre-scan Trend Type annulé pendant le calcul des signaux.")
-                _write_prescan_report(output_dir, "cancelled", None, {})
-                return parameter_specs
+            try:
+                ctx = multiprocessing.get_context("fork")
+            except ValueError:
+                ctx = multiprocessing.get_context()
 
-            start_i = batch_idx * batch_size
-            end_i = min(start_i + batch_size, len(combos))
-            batch_combos = combos[start_i:end_i]
+            batches = []
+            for batch_idx in range(total_batches):
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(combos))
+                batches.append((combos[start_i:end_i], prescan_timeframe))
 
-            batch_atr_len = [c[0] for c in batch_combos]
-            batch_atr_ma_len = [c[1] for c in batch_combos]
-            batch_adx_len = [c[2] for c in batch_combos]
-            batch_di_len = [c[3] for c in batch_combos]
-            batch_adx_lim = [c[4] for c in batch_combos]
-            batch_smooth = [c[5] for c in batch_combos]
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=workers,
+                mp_context=ctx,
+                initializer=_init_prescan_worker,
+                initargs=(high, low, close)
+            ) as executor:
+                futures = {executor.submit(_process_prescan_batch, b): b for b in batches}
+                completed = 0
 
-            tt = TrendType.run(
-                high, low, close,
-                use_atr=True,
-                atr_len=batch_atr_len,
-                atr_ma_len=batch_atr_ma_len,
-                use_adx=True,
-                adx_len=batch_adx_len,
-                di_len=batch_di_len,
-                adx_lim=batch_adx_lim,
-                smooth=batch_smooth,
-                param_product=False
-            )
+                while futures:
+                    if stop_requested is not None and stop_requested():
+                        logger.warning("Pre-scan Trend Type annulé pendant le calcul parallèle.")
+                        for f in futures:
+                            f.cancel()
+                        executor.shutdown(wait=False)
+                        _write_prescan_report(output_dir, "cancelled", None, {})
+                        return parameter_specs
 
-            state = tt.state
-            long_entries = (state == 2.0) & (state.shift(1) != 2.0)
-            long_exits = (state != 2.0) & (state.shift(1) == 2.0)
-            short_entries = (state == -2.0) & (state.shift(1) != -2.0)
-            short_exits = (state != -2.0) & (state.shift(1) == -2.0)
+                    done, _ = concurrent.futures.wait(
+                        futures.keys(),
+                        timeout=1.0,
+                        return_when=concurrent.futures.FIRST_COMPLETED
+                    )
 
-            pf = vbt.Portfolio.from_signals(
-                close,
-                entries=long_entries,
-                exits=long_exits,
-                short_entries=short_entries,
-                short_exits=short_exits,
-                freq=f"{prescan_timeframe}min",
-            )
-            returns_batches.append(pf.total_return())
+                    for future in done:
+                        try:
+                            res = future.result()
+                            returns_batches.append(res)
+                        except Exception as e:
+                            logger.error(f"Le process worker a crashé ou échoué: {e}")
+                            for f in futures:
+                                f.cancel()
+                            executor.shutdown(wait=False)
+                            raise RuntimeError(f"Pre-scan VectorBT échoué: {e}") from e
 
-            # Libérer la RAM
-            del tt
-            del state
-            del long_entries
-            del long_exits
-            del short_entries
-            del short_exits
-            del pf
-            gc.collect()
+                        del futures[future]
+                        completed += 1
+                        if progress_callback is not None:
+                            try:
+                                progress_callback(completed, total_batches)
+                            except Exception as cb_err:
+                                logger.warning(f"Error in prescan progress callback: {cb_err}")
+        else:
+            logger.info(f"Lancement du Pre-Scan Trend Type en séquentiel ({len(combos)} combos, {total_batches} lots)...")
 
-            if progress_callback is not None:
-                try:
-                    progress_callback(batch_idx + 1, total_batches)
-                except Exception as cb_err:
-                    logger.warning(f"Error in prescan progress callback: {cb_err}")
+            for batch_idx in range(total_batches):
+                if stop_requested is not None and stop_requested():
+                    logger.warning("Pre-scan Trend Type annulé pendant le calcul des signaux.")
+                    _write_prescan_report(output_dir, "cancelled", None, {})
+                    return parameter_specs
+
+                start_i = batch_idx * batch_size
+                end_i = min(start_i + batch_size, len(combos))
+                batch_combos = combos[start_i:end_i]
+
+                batch_atr_len = [c[0] for c in batch_combos]
+                batch_atr_ma_len = [c[1] for c in batch_combos]
+                batch_adx_len = [c[2] for c in batch_combos]
+                batch_di_len = [c[3] for c in batch_combos]
+                batch_adx_lim = [c[4] for c in batch_combos]
+                batch_smooth = [c[5] for c in batch_combos]
+
+                tt = TrendType.run(
+                    high, low, close,
+                    use_atr=True,
+                    atr_len=batch_atr_len,
+                    atr_ma_len=batch_atr_ma_len,
+                    use_adx=True,
+                    adx_len=batch_adx_len,
+                    di_len=batch_di_len,
+                    adx_lim=batch_adx_lim,
+                    smooth=batch_smooth,
+                    param_product=False
+                )
+
+                state = tt.state
+                long_entries = (state == 2.0) & (state.shift(1) != 2.0)
+                long_exits = (state != 2.0) & (state.shift(1) == 2.0)
+                short_entries = (state == -2.0) & (state.shift(1) != -2.0)
+                short_exits = (state != -2.0) & (state.shift(1) == -2.0)
+
+                pf = vbt.Portfolio.from_signals(
+                    close,
+                    entries=long_entries,
+                    exits=long_exits,
+                    short_entries=short_entries,
+                    short_exits=short_exits,
+                    freq=f"{prescan_timeframe}min",
+                )
+                returns_batches.append(pf.total_return())
+
+                # Libérer la RAM
+                del tt
+                del state
+                del long_entries
+                del long_exits
+                del short_entries
+                del short_exits
+                del pf
+                gc.collect()
+
+                if progress_callback is not None:
+                    try:
+                        progress_callback(batch_idx + 1, total_batches)
+                    except Exception as cb_err:
+                        logger.warning(f"Error in prescan progress callback: {cb_err}")
 
         if returns_batches:
             returns = pd.concat(returns_batches)

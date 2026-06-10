@@ -31,7 +31,9 @@ def downsample_parameter_grid(
         "sous-echantillonnage applique (grille reduite)."
     )
     
-    num_dims = len(arrays_to_downsample)
+    # Only count dimensions with more than 1 value to avoid underestimating the downsampling ratio
+    active_dims = [name for name, v in arrays_to_downsample.items() if len(v) > 1]
+    num_dims = len(active_dims)
     if num_dims == 0:
         return arrays_to_downsample
         
@@ -45,7 +47,10 @@ def downsample_parameter_grid(
         
     downsampled = {}
     for name, arr in arrays_to_downsample.items():
-        target_len = max(2, int(len(arr) / ratio))
-        downsampled[name] = subsample_array(arr, target_len)
+        if len(arr) > 1:
+            target_len = max(2, int(len(arr) / ratio))
+            downsampled[name] = subsample_array(arr, target_len)
+        else:
+            downsampled[name] = arr
         
     return downsampled

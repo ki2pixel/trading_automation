@@ -518,6 +518,52 @@ def _write_prescan_report(
         pass
 
 
+# Globals for multiprocessing workers
+_worker_close = None
+
+def _init_prescan_worker(close):
+    global _worker_close
+    _worker_close = close
+
+def _process_prescan_batch(args):
+    global _worker_close
+    import pandas as pd
+    import numpy as np
+    import vectorbt as vbt
+    from ..indicators.adaptive_trend_classification import AdaptiveTrend
+
+    batch_combos, keys, rob_val, prescan_timeframe = args
+
+    batch_vals = list(zip(*batch_combos))
+    run_kwargs = {keys[i]: list(batch_vals[i]) for i in range(len(keys))}
+    run_kwargs["robustness"] = [rob_val] * len(batch_combos)
+    run_kwargs["param_product"] = False
+
+    at = AdaptiveTrend.run(_worker_close, **run_kwargs)
+    direction = at.direction
+    long_entries = (direction == 1.0) & (direction.shift(1) != 1.0)
+    short_entries = (direction == -1.0) & (direction.shift(1) != -1.0)
+    long_exits = short_entries
+    short_exits = long_entries
+
+    pf = vbt.Portfolio.from_signals(
+        _worker_close,
+        entries=long_entries,
+        exits=long_exits,
+        short_entries=short_entries,
+        short_exits=short_exits,
+        freq=f"{prescan_timeframe}min",
+    )
+    
+    ret_series = pf.total_return()
+    if not isinstance(ret_series, pd.Series):
+        ret_series = pd.Series([ret_series], index=[(rob_val,) + batch_combos[0]])
+    else:
+        ret_series.index = [(rob_val,) + combo for combo in batch_combos]
+
+    return pd.Series(ret_series.values, index=ret_series.index)
+
+
 def vectorbt_prescan(
     data: pd.DataFrame,
     parameter_specs: list[Any],
@@ -534,6 +580,7 @@ def vectorbt_prescan(
     import itertools
     import numpy as np
     from ..optimizer import ParameterGridSpec
+    import gc
 
     logger = logging.getLogger(__name__)
 
@@ -576,7 +623,6 @@ def vectorbt_prescan(
 
     try:
         import vectorbt as vbt
-        import gc
         from ..indicators.adaptive_trend_classification import AdaptiveTrend
 
         # 1. Temporal Downsampling
@@ -636,67 +682,129 @@ def vectorbt_prescan(
 
         close = data["close"]
 
-        logger.info(f"Lancement du Pre-Scan Adaptive Trend (Robs={robs}, combos={len(combos_numeric)})...")
+        # Multiprocessing Parallelization
+        if workers > 1:
+            logger.info(f"Lancement du Pre-Scan Adaptive Trend en parallèle avec {workers} processus (Batch Size={batch_size})...")
+            import multiprocessing
+            import concurrent.futures
 
-        total_runs = len(robs) * total_batches
-        run_count = 0
+            try:
+                ctx = multiprocessing.get_context("fork")
+            except ValueError:
+                ctx = multiprocessing.get_context()
 
-        for rob_val in robs:
-            for batch_idx in range(total_batches):
-                if stop_requested is not None and stop_requested():
-                    logger.warning("Pre-scan Adaptive Trend Classification annulé.")
-                    _write_prescan_report(output_dir, "cancelled", None, {})
-                    return parameter_specs
+            batches = []
+            for rob_val in robs:
+                for batch_idx in range(total_batches):
+                    start_i = batch_idx * batch_size
+                    end_i = min(start_i + batch_size, len(combos_numeric))
+                    batch_combos = combos_numeric[start_i:end_i]
+                    batches.append((batch_combos, keys, rob_val, prescan_timeframe))
 
-                start_i = batch_idx * batch_size
-                end_i = min(start_i + batch_size, len(combos_numeric))
-                batch_combos = combos_numeric[start_i:end_i]
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=workers,
+                mp_context=ctx,
+                initializer=_init_prescan_worker,
+                initargs=(close,)
+            ) as executor:
+                futures = {executor.submit(_process_prescan_batch, b): b for b in batches}
+                completed = 0
+                total_runs = len(batches)
 
-                batch_vals = list(zip(*batch_combos))
-                run_kwargs = {keys[i]: list(batch_vals[i]) for i in range(len(keys))}
-                run_kwargs["robustness"] = [rob_val] * len(batch_combos)
-                run_kwargs["param_product"] = False
+                while futures:
+                    if stop_requested is not None and stop_requested():
+                        logger.warning("Pre-scan Adaptive Trend Classification annulé pendant le calcul parallèle.")
+                        for f in futures:
+                            f.cancel()
+                        executor.shutdown(wait=False)
+                        _write_prescan_report(output_dir, "cancelled", None, {})
+                        return parameter_specs
 
-                at = AdaptiveTrend.run(close, **run_kwargs)
-                direction = at.direction
-                long_entries = (direction == 1.0) & (direction.shift(1) != 1.0)
-                short_entries = (direction == -1.0) & (direction.shift(1) != -1.0)
-                long_exits = short_entries
-                short_exits = long_entries
+                    done, _ = concurrent.futures.wait(
+                        futures.keys(),
+                        timeout=1.0,
+                        return_when=concurrent.futures.FIRST_COMPLETED
+                    )
 
-                pf = vbt.Portfolio.from_signals(
-                    close,
-                    entries=long_entries,
-                    exits=long_exits,
-                    short_entries=short_entries,
-                    short_exits=short_exits,
-                    freq=f"{prescan_timeframe}min",
-                )
-                
-                ret_series = pf.total_return()
-                if not isinstance(ret_series, pd.Series):
-                    ret_series = pd.Series([ret_series], index=[0])
-                else:
-                    ret_series.index = list(range(len(ret_series)))
+                    for future in done:
+                        try:
+                            res = future.result()
+                            returns_batches.append(res)
+                        except Exception as e:
+                            logger.error(f"Le process worker a crashé ou échoué: {e}")
+                            for f in futures:
+                                f.cancel()
+                            executor.shutdown(wait=False)
+                            raise RuntimeError(f"Pre-scan VectorBT échoué: {e}") from e
 
-                ret_series.index = [(rob_val,) + combo for combo in batch_combos]
-                returns_batches.append(pd.Series(ret_series.values, index=ret_series.index))
+                        del futures[future]
+                        completed += 1
+                        if progress_callback is not None:
+                            try:
+                                progress_callback(completed, total_runs)
+                            except Exception as cb_err:
+                                logger.warning(f"Error in prescan progress callback: {cb_err}")
+        else:
+            logger.info(f"Lancement du Pre-Scan Adaptive Trend en séquentiel (Batch Size={batch_size})...")
+            total_runs = len(robs) * total_batches
+            run_count = 0
 
-                del at
-                del direction
-                del long_entries
-                del short_entries
-                del long_exits
-                del short_exits
-                del pf
-                gc.collect()
+            for rob_val in robs:
+                for batch_idx in range(total_batches):
+                    if stop_requested is not None and stop_requested():
+                        logger.warning("Pre-scan Adaptive Trend Classification annulé.")
+                        _write_prescan_report(output_dir, "cancelled", None, {})
+                        return parameter_specs
 
-                run_count += 1
-                if progress_callback is not None:
-                    try:
-                        progress_callback(run_count, total_runs)
-                    except Exception as cb_err:
-                        logger.warning(f"Error in prescan progress callback: {cb_err}")
+                    start_i = batch_idx * batch_size
+                    end_i = min(start_i + batch_size, len(combos_numeric))
+                    batch_combos = combos_numeric[start_i:end_i]
+
+                    batch_vals = list(zip(*batch_combos))
+                    run_kwargs = {keys[i]: list(batch_vals[i]) for i in range(len(keys))}
+                    run_kwargs["robustness"] = [rob_val] * len(batch_combos)
+                    run_kwargs["param_product"] = False
+
+                    at = AdaptiveTrend.run(close, **run_kwargs)
+                    direction = at.direction
+                    long_entries = (direction == 1.0) & (direction.shift(1) != 1.0)
+                    short_entries = (direction == -1.0) & (direction.shift(1) != -1.0)
+                    long_exits = short_entries
+                    short_exits = long_entries
+
+                    pf = vbt.Portfolio.from_signals(
+                        close,
+                        entries=long_entries,
+                        exits=long_exits,
+                        short_entries=short_entries,
+                        short_exits=short_exits,
+                        freq=f"{prescan_timeframe}min",
+                    )
+                    
+                    ret_series = pf.total_return()
+                    if not isinstance(ret_series, pd.Series):
+                        ret_series = pd.Series([ret_series], index=[0])
+                    else:
+                        ret_series.index = list(range(len(ret_series)))
+
+                    ret_series.index = [(rob_val,) + combo for combo in batch_combos]
+                    returns_batches.append(pd.Series(ret_series.values, index=ret_series.index))
+
+                    del at
+                    del direction
+                    del long_entries
+                    del short_entries
+                    del long_exits
+                    del short_exits
+                    del pf
+                    gc.collect()
+
+                    run_count += 1
+                    if progress_callback is not None:
+                        try:
+                            progress_callback(run_count, total_runs)
+                        except Exception as cb_err:
+                            logger.warning(f"Error in prescan progress callback: {cb_err}")
 
         if returns_batches:
             returns = pd.concat(returns_batches)
