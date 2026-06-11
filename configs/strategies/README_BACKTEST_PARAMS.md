@@ -2,7 +2,7 @@
 
 Ce document resume les parametres **strategiques** (logique d'entree/sortie) les plus pertinents a optimiser pour chaque strategie du moteur de backtest.
 
-Les parametres de risk-management (`max_capital_bucket`, `trade_direction_mode`, `safety_stop_*`) sont communs a toutes les strategies ; ils peuvent faire l'objet d'une optimisation secondaire mais ne sont pas listes ici car identiques partout.
+Les paramètres de risk-management et de dimensionnement (`max_capital_bucket`, `trade_direction_mode`, `safety_stop_*`) sont communs à toutes les stratégies (voir la section **Paramètres Communs** à la fin de ce document) ; ils peuvent faire l'objet d'une optimisation secondaire.
 
 ---
 
@@ -92,29 +92,7 @@ Strategie de crossover MA avec stops ATR dynamiques et trailing stop optionnel :
 | `set_max_drawdown`| false | bool   | true/false     | Activer la protection max drawdown                  |
 | `max_perc_dd`    | 20.0   | float  | 5.0 - 50.0     | Drawdown max autorise (%)                           |
 
-### Parametres de fee / safety stop (communs a toutes les strategies)
-
-| Parametre                    | Defaut | Type   | Plage suggeree | Description                                         |
-|------------------------------|--------|--------|----------------|-----------------------------------------------------|
-| `trade_direction_mode`       | Long & Short | str | Long & Short / Long only / Short only | Direction de trading autorisée |
-| `fee_mode`                   | Parametric: hold until net covers fees | str | 3 modes | Comportement sur signal opposé (reversal) |
-| `estimated_commission_per_order_long` | 0.0 | float | 0 - 5 | Commission estimée par ordre LONG |
-| `estimated_commission_per_order_short`| 3.0 | float | 0 - 5 | Commission estimée par ordre SHORT |
-| `estimated_slippage_per_side_long`    | 0.0 | float | 0 - 5 | Slippage estimé par côté LONG |
-| `estimated_slippage_per_side_short`   | 0.0 | float | 0 - 5 | Slippage estimé par côté SHORT |
-| `min_net_profit_after_costs` | 0.0    | float  | 0 - 20         | Profit net minimal pour reversal (fee_mode) |
-| `use_net_bracket_exits`      | false  | bool   | true/false     | Activer les sorties TP/SL nettes explicites |
-| `take_profit_net_percent`    | 10.0   | float  | 1 - 20         | Take-profit net en % de la valeur d'entrée |
-| `stop_loss_net_percent`      | 10.0   | float  | 1 - 20         | Stop-loss net en % de la valeur d'entrée |
-| `use_safety_stop`            | true   | bool   | true/false     | Activer le safety stop de dernier recours |
-| `safety_stop_applies_to`     | Short only | str | Both / Long only / Short only | Directions concernées par le safety stop |
-| `safety_stop_mode`           | Net loss only | str | 4 modes | Mode de déclenchement du safety stop |
-| `safety_max_net_loss_mode`   | Cash amount | str | Cash amount / % entry value | Type de seuil de perte |
-| `safety_max_net_loss_cash`   | 50.0   | float  | 0 - 100        | Perte maximale cash |
-| `safety_max_net_loss_percent`| 0.0    | float  | 0 - 20         | Perte maximale en % de la valeur d'entrée |
-| `safety_max_bars_in_trade`   | 0      | int    | 0 - 50         | Nombre max de barres en position (0 = désactivé) |
-
-**Conseil** : `ma_length1`/`ma_length2` et `ma_type1`/`ma_type2` sont les piliers (choix du couple de MAs). `rnr` et `risk_m` controlent le risk-management. Tester `trail_stop=true` avec `rr_exit=0.5` - `1.0` pour ameliorer les trades gagnants. Les paramètres `fee_mode` et `safety_stop` s'appliquent uniquement quand `flip=true` (reversal activé).
+**Conseil** : `ma_length1`/`ma_length2` et `ma_type1`/`ma_type2` sont les piliers (choix du couple de MAs). `rnr` et `risk_m` controlent le risk-management. Tester `trail_stop=true` avec `rr_exit=0.5` - `1.0` pour ameliorer les trades gagnants. Les paramètres `fee_mode` et `safety_stop` (voir la section **Paramètres Communs**) s'appliquent uniquement quand `flip=true` (reversal activé).
 
 ---
 
@@ -193,31 +171,6 @@ Stratégie intraday basée sur des bandes de volatilité dynamiques (bruit) cons
 | `stoploss_ladder_step1`    | -0.015 | float  | -0.03 - -0.005 | Ladder SL : seuil 2 (fraction du prix d'entrée)       |
 | `stoploss_ladder_ratio0`   | 0.5    | float  | 0.1 - 0.9      | Ladder SL : fraction de position fermée au seuil 1     |
 | `takeprofit_ladder_step0`  | 0.012  | float  | 0.005 - 0.03   | Ladder TP : seuil 1 (fraction du prix d'entrée)       |
-
-### Paramètres de risk-management / sizing (communs)
-
-| Paramètre                    | Défaut | Type   | Plage suggérée | Description                                         |
-|------------------------------|--------|--------|----------------|-----------------------------------------------------|
-| `max_entry_price`            | 300    | float  | 1 - 1000       | Prix max d'entrée autorisé                          |
-| `max_capital_bucket`         | 300    | float  | 10 - 1000      | Capital max alloué par bucket                       |
-| `initial_capital_bucket`     | 300    | float  | 10 - 1000      | Capital initial du bucket                           |
-| `trade_direction_mode`       | Long & Short | str | Long & Short / Long only / Short only | Direction autorisée |
-| `fee_mode`                   | Parametric: hold until net covers fees | str | 3 modes | Comportement sur signal opposé |
-| `estimated_commission_per_order_long` | 0 | float | 0 - 5 | Commission estimée par ordre LONG |
-| `estimated_commission_per_order_short`| 0 | float | 0 - 5 | Commission estimée par ordre SHORT |
-| `estimated_slippage_per_side_long`    | 0 | float | 0 - 5 | Slippage estimé par côté LONG |
-| `estimated_slippage_per_side_short`   | 0 | float | 0 - 5 | Slippage estimé par côté SHORT |
-| `min_net_profit_after_costs` | 0      | float  | 0 - 20         | Profit net minimal pour reversal (fee_mode)         |
-| `use_net_bracket_exits`      | false  | bool   | true/false     | Activer les sorties TP/SL nettes explicites         |
-| `take_profit_net_percent`    | 10     | float  | 1 - 20         | Take-profit net en % de la valeur d'entrée          |
-| `stop_loss_net_percent`      | 10     | float  | 1 - 20         | Stop-loss net en % de la valeur d'entrée            |
-| `use_safety_stop`            | true   | bool   | true/false     | Activer le safety stop de dernier recours           |
-| `safety_stop_applies_to`     | Short only | str | Both / Long only / Short only | Directions concernées |
-| `safety_stop_mode`           | Net loss only | str | 4 modes | Mode de déclenchement du safety stop |
-| `safety_max_net_loss_mode`   | Cash amount | str | Cash amount / % entry value | Type de seuil de perte |
-| `safety_max_net_loss_cash`   | 50     | float  | 0 - 100        | Perte maximale cash                                 |
-| `safety_max_net_loss_percent`| 0      | float  | 0 - 20         | Perte maximale en % de la valeur d'entrée           |
-| `safety_max_bars_in_trade`   | 0      | int    | 0 - 50         | Nombre max de barres en position (0 = désactivé)    |
 
 **Conseil** : `volatility_multiplier_enter` et `volatility_multiplier_exit` sont les piliers de la stratégie. La contrainte de validation impose `exit < enter`. Utilisez `trade_frequency_bars` pour spécifier le cooldown en nombre de barres si nécessaire (sans fréquence définie, l'évaluation se fait à chaque bougie, évitant tout désalignement de grille). `allow_overnight=true` permet le swing trading (portage overnight) tandis que `use_vwap_filter=false` permet d'assouplir les entrées en évitant le double filtre. Commencez avec `lookback_days=20` et ajustez la paire enter/exit pour calibrer la fréquence de trading. Le mode `exit_mode=time_only` est le plus simple ; `ladder` ou `combined` améliorent la gestion des profits et pertes partiels.
 
@@ -441,6 +394,33 @@ Machine Learning non-paramétrique classant les signaux d'achat/vente par simila
 | `use_dynamic_exits`     | false  | bool  | true/false     | Activer les sorties anticipées lors du déclin du signal|
 
 **Conseil** : Cette stratégie de classification par Machine Learning est très gourmande. Il est vivement conseillé de conserver les 5 features de base (RSI1, WaveTrend, CCI, ADX, RSI2). Optimisez d'abord les paramètres du classifieur KNN (`neighbors_count`) puis activez le lissage de Nadaraya-Watson (`use_kernel_filter = true`) pour lisser l'alpha directionnel.
+
+---
+
+## Paramètres Communs (Sizing, Frais et Safety Stops)
+
+| Paramètre                    | Défaut | Type   | Plage suggérée | Description                                         |
+|------------------------------|--------|--------|----------------|-----------------------------------------------------|
+| `max_entry_price`            | 300.0  | float  | 1 - 1000       | Prix max d'entrée autorisé                          |
+| `max_capital_bucket`         | 300.0  | float  | 10 - 1000      | Capital max alloué par bucket                       |
+| `initial_capital_bucket`     | 300.0  | float  | 10 - 1000      | Capital initial du bucket                           |
+| `trade_direction_mode`       | Long & Short | str | Long & Short / Long only / Short only | Direction de trading autorisée |
+| `fee_mode`                   | Parametric: hold until net covers fees | str | 3 modes | Comportement sur signal opposé (reversal) |
+| `estimated_commission_per_order_long` | 0.0 | float | 0 - 5 | Commission estimée par ordre LONG |
+| `estimated_commission_per_order_short`| 0.0 | float | 0 - 5 | Commission estimée par ordre SHORT (ex: 3.0 pour 3Commas-Bot) |
+| `estimated_slippage_per_side_long`    | 0.0 | float | 0 - 5 | Slippage estimé par côté LONG |
+| `estimated_slippage_per_side_short`   | 0.0 | float | 0 - 5 | Slippage estimé par côté SHORT |
+| `min_net_profit_after_costs` | 0.0    | float  | 0 - 20         | Profit net minimal pour reversal (fee_mode) |
+| `use_net_bracket_exits`      | false  | bool   | true/false     | Activer les sorties TP/SL nettes explicites |
+| `take_profit_net_percent`    | 10.0   | float  | 1 - 20         | Take-profit net en % de la valeur d'entrée |
+| `stop_loss_net_percent`      | 10.0   | float  | 1 - 20         | Stop-loss net en % de la valeur d'entrée |
+| `use_safety_stop`            | true   | bool   | true/false     | Activer le safety stop de dernier recours |
+| `safety_stop_applies_to`     | Short only | str | Both / Long only / Short only | Directions concernées par le safety stop |
+| `safety_stop_mode`           | Net loss only | str | 4 modes | Mode de déclenchement du safety stop |
+| `safety_max_net_loss_mode`   | Cash amount | str | Cash amount / % entry value | Type de seuil de perte |
+| `safety_max_net_loss_cash`   | 50.0   | float  | 0 - 100        | Perte maximale cash |
+| `safety_max_net_loss_percent`| 0.0    | float  | 0 - 20         | Perte maximale en % de la valeur d'entrée |
+| `safety_max_bars_in_trade`   | 0      | int    | 0 - 50         | Nombre max de barres en position (0 = désactivé)    |
 
 ---
 

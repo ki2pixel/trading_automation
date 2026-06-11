@@ -63,10 +63,10 @@ Ce guide détaille la procédure étape par étape pour optimiser les différent
   - *Objectif* : Optimiser le timing et la confirmation de l'entrée.
 
 ### 8. Adaptive Trend Classification
-- **Passe 1 : Logique d'Adaptation Macro**
-  - *À optimiser* : `La`, `De`, `cutout`, `Long_threshold`, `Short_threshold`.
+- **Passe 1 : Logique d'Adaptation Macro & Robustesse**
+  - *À optimiser* : `La`, `De`, `cutout`, `Long_threshold`, `Short_threshold`, `robustness`, `signal_mode`.
   - *À bloquer* : Tous les poids de MA à `1.0` (`ema_w = 1.0`, `hma_w = 1.0`, etc.) et les longueurs à `28` (`ema_len = 28`, etc.).
-  - *Objectif* : Configurer la sensibilité et l'inertie du filtre de tendance adaptatif.
+  - *Objectif* : Configurer la sensibilité et l'inertie du filtre de tendance adaptatif, ainsi que la robustesse du signal.
 - **Passe 2 : Poids & Longueurs des Moyennes Mobiles**
   - *À bloquer* : Les paramètres `La`, `De`, `cutout` et seuils trouvés en Passe 1.
   - *À optimiser* : Poids (`ema_w`, `hma_w`, `wma_w`, `dema_w`, `lsma_w`, `kama_w`) et longueurs (`ema_len`, `hull_len`, `wma_len`, `dema_len`, `lsma_len`, `kama_len`).

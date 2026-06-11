@@ -293,6 +293,42 @@ class NetBracketExitRule(ExitRule):
                 
         return None
 
+class TrailingStopExitRule(ExitRule):
+    def __init__(self, broker: BrokerSimulator, trail_profit_pct: float, trail_loss_pct: float):
+        self.broker = broker
+        self.trail_profit_pct = trail_profit_pct
+        self.trail_loss_pct = trail_loss_pct
+        self.high_water_mark = None
+        
+    def evaluate(self, bar: dict, position: Position) -> ExitAction | None:
+        if position.is_flat:
+            self.high_water_mark = None
+            return None
+            
+        avg_price = position.average_price
+        if pd.isna(avg_price) or avg_price == 0:
+            return None
+            
+        price = bar.get("close", 0.0)
+        side_mult = 1.0 if position.signed_quantity > 0 else -1.0
+        
+        # Calculate current gross profit pct (simplified, ignoring commissions for trailing logic to be fast)
+        current_profit_pct = (price - avg_price) / avg_price * side_mult * 100.0
+        
+        if self.high_water_mark is None:
+            if current_profit_pct >= self.trail_profit_pct:
+                self.high_water_mark = current_profit_pct
+        else:
+            if current_profit_pct > self.high_water_mark:
+                self.high_water_mark = current_profit_pct
+                
+        if self.high_water_mark is not None:
+            drawdown_from_peak = self.high_water_mark - current_profit_pct
+            if drawdown_from_peak >= self.trail_loss_pct:
+                return ExitAction("close", 0.0, f"Trailing SL hit (DD={self.trail_loss_pct}%)", "TrailingStopExitRule")
+                
+        return None
+
 class SafetyStopExitRule(ExitRule):
     def __init__(
         self,

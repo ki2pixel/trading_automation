@@ -34,6 +34,13 @@ class MomentumBasedZigZagConfigOverrides:
     ob: float | None = None
     os: float | None = None
     signal_mode: str | None = None
+    enable_stop_loss: bool | None = None
+    stop_loss_pct: float | None = None
+    enable_take_profit: bool | None = None
+    take_profit_pct: float | None = None
+    enable_trailing_stop: bool | None = None
+    trail_profit_pct: float | None = None
+    trail_loss_pct: float | None = None
     
     max_entry_price: float | None = None
     max_capital_bucket: float | None = None
@@ -280,12 +287,22 @@ def run_momentum_based_zigzag(
 
     # Exit rules
     exit_rules = []
-    if overrides.use_net_bracket_exits:
+    use_bracket = overrides.use_net_bracket_exits or overrides.enable_stop_loss or overrides.enable_take_profit
+    if use_bracket:
         from ..broker import NetBracketExitRule
+        tp = overrides.take_profit_pct if overrides.enable_take_profit else overrides.take_profit_net_percent
+        sl = overrides.stop_loss_pct if overrides.enable_stop_loss else overrides.stop_loss_net_percent
         exit_rules.append(NetBracketExitRule(
             broker,
-            tp_pct=overrides.take_profit_net_percent,
-            sl_pct=overrides.stop_loss_net_percent,
+            tp_pct=tp,
+            sl_pct=sl,
+        ))
+    if overrides.enable_trailing_stop:
+        from ..broker import TrailingStopExitRule
+        exit_rules.append(TrailingStopExitRule(
+            broker,
+            trail_profit_pct=overrides.trail_profit_pct if overrides.trail_profit_pct is not None else 0.5,
+            trail_loss_pct=overrides.trail_loss_pct if overrides.trail_loss_pct is not None else 0.5,
         ))
     if overrides.use_safety_stop if overrides.use_safety_stop is not None else False:
         from ..broker import SafetyStopExitRule

@@ -17,6 +17,7 @@ Stratégies documentées :
 - `hma_crossover/` : Suivi de tendance par croisement de moyennes mobiles de Hull (Stratégie à 1 passe, complétée)
 - `trend_type/` : Trend Type Indicator (Stratégie à 1 passe, complétée)
 - `msl_trend/` : MSL Friendly Trend (Stratégie à 1 passe, complétée)
+- `pivot_retest/` : Pivot Breakout Retest Signals (Passes 1 et 2 complétées)
 - `3commas_bot/` : Croisement de MAs (Passes 1, 2 et 3 complétées)
 - `adaptive_volatility_trend/` : Adaptive Volatility Trend (Passe 1 et 2 complétées)
 - `bjorgum_double_tap/` : Bjorgum Double Tap (Passe 1 complétée, échec de détection d'edge)
@@ -24,6 +25,8 @@ Stratégies documentées :
 - `noise_boundary_intraday/` : Noise Boundary Intraday (Passes 1, 2 et 3 complétées)
 - `range_filter/` : Range Filter (Stratégie à 1 passe, complétée)
 - `smart_trader_geometric/` : Smart Trader Geometric (Passes 1, 2 et 3 complétées)
+- `adaptive_trend_classification/` : Adaptive Trend Classification (Passes 1 et 2 complétées)
+- `momentum_based_zigzag/` : Momentum-based ZigZag avec QQE (Passe 1 complétée)
 
 Chaque stratégie dispose de son propre sous-dossier contenant :
 - Un fichier par passe (ex: `passe_1_signal.md`) qui détaille les résultats de l'optimiseur, les symboles et timeframes performants, et les paramètres retenus.
