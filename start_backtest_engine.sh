@@ -6,6 +6,13 @@
 
 set -e  # Arrêter le script en cas d'erreur
 
+# Charger les variables d'environnement depuis le fichier .env s'il existe
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+fi
+
 # Configuration
 ACTION=""
 HOST="127.0.0.1"
