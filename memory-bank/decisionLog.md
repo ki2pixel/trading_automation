@@ -25,3 +25,11 @@
 ## [2026-06-09 14:05:00] - Vectorisation Native Pandas pour VectorBT
 - **Décision** : Remplacement des appels à des librairies externes inexistantes (comme `talib`) par des opérations natives Pandas (`ewm`, `np.maximum`, `ffill`) dans l'implémentation de l'ATR, de l'ADX et du ZLEMA pour VectorBT.
 - **Justification** : Satisfaire l'exigence absolue de "zéro boucle Python" tout en s'assurant de la portabilité et de l'exécution matricielle immédiate du code, sans dépendre d'une librairie C externe.
+
+## [2026-06-16 13:28:00] - Arbitrage et Modélisation d'Allocation de Capital
+- **Décision** : Développement d'un script d'analyse quantitative (`scripts/analyze_best_performances.py`) traitant l'ensemble des runs parquets des stratégies. Implémentation parallèle du Risk-Parity (inverse du max drawdown) et du Kelly Criterion (fractionnel). Les données de `adaptive_trend_classification` (sans artefacts) ont été volontairement mockées depuis la documentation pour ne pas bloquer le pipeline, avec obligation de réintégration ultérieure.
+- **Justification** : Fournir une comparaison objective entre une allocation défensive (Risk-Parity) et une allocation offensive (Kelly) maximisant la croissance géométrique. Cela permet une prise de décision éclairée pour l'activation en live.
+
+## [2026-06-16 17:06:00] - Générateur de Rapport HTML Customisé
+- **Décision** : Implémentation d'un générateur HTML (intégré directement dans `scripts/analyze_best_performances.py`) plutôt qu'une solution type Jupyter Notebook ou un script externe. Il injecte les données consolidées via `json.dumps` dans le DOM local.
+- **Justification** : Conserver la philosophie UI/UX du projet (calquée sur `optimizer_report.html`) pour offrir un viewer interactif (tris dynamiques, filtres textuels) capable de palier les limites d'affichage du Markdown, sans alourdir la stack par un serveur Node.js / Python.

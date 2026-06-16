@@ -1,0 +1,13 @@
+# MISSION : Arbitrage et Analyse Approfondie des Campagnes d'Optimisation des Stratégies
+
+L'objectif de cette mission est de consolider, analyser et arbitrer l'ensemble des résultats des campagnes d'optimisation documentées dans `docs/optimisation_tracking/` et archivées physiquement dans `reports/local_optimizer/`.
+
+Cette tâche requiert un arbitrage stratégique complet ainsi qu'une analyse quantitative profonde (gains/pertes, drawdowns, rentabilité périodique, corrélations, allocation de capital) via un script d'analyse sur mesure.
+
+## Exigences :
+- Élaboration d'une matrice globale des performances (Stratégies vs Symboles/Timeframes).
+- Développement du script Python d'analyse quantitative sur mesure (`scripts/analyze_best_performances.py`) pour lire les parquets (trades, equity) et les `optimization_config.json`.
+- Extraction et calcul des distributions temporelles de performance (rentabilités, drawdowns). Gérer l'absence de données pour `adaptive_trend_classification`.
+- Analyse des corrélations de positions inter-stratégies (diversification).
+- Modélisation d'allocation optimale de capital (Risk-Parity, Kelly).
+- Production du rapport final consolide `docs/arbitrage_optimisations.md`.
