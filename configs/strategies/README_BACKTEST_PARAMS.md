@@ -386,6 +386,12 @@ Machine Learning non-paramétrique classant les signaux d'achat/vente par simila
 | `use_volatility_filter` | true   | bool  | true/false     | Bloquer les signaux en période de volatilité nulle     |
 | `use_regime_filter`     | true   | bool  | true/false     | Activer le filtrage par régime de tendance macro       |
 | `regime_threshold`      | -0.1   | float | -0.5 - 0.5     | Seuil du filtre de régime macro                        |
+| `use_adx_filter`        | false  | bool  | true/false     | Filtre complémentaire : Exige une forte tendance (ADX) |
+| `adx_threshold`         | 20     | int   | 15 - 30        | Seuil de l'ADX (souvent entre 15 et 30)                |
+| `use_ema_filter`        | false  | bool  | true/false     | Filtre complémentaire : Signaux validés selon l'EMA    |
+| `ema_period`            | 200    | int   | 50 - 200       | Période de l'EMA pour la détection de tendance         |
+| `use_sma_filter`        | false  | bool  | true/false     | Filtre complémentaire : Signaux validés selon la SMA   |
+| `sma_period`            | 200    | int   | 50 - 200       | Période de la SMA pour la détection de tendance        |
 | `use_kernel_filter`     | true   | bool  | true/false     | Activer la validation par régression Nadaraya-Watson  |
 | `kernel_h`              | 8      | int   | 3 - 20         | Largeur de bande (lookback) Nadaraya-Watson            |
 | `kernel_r`              | 8.0    | float | 1.0 - 15.0     | Coefficient de régularisation du Kernel                |
