@@ -44,3 +44,5 @@
 - [2026-06-16 13:28:00] - Mission d'arbitrage et analyse quantitative achevée. Développement du script d'analyse `analyze_best_performances.py` validé. Le rapport global `docs/arbitrage_optimisations.md` a été généré avec 183 setups valides, la matrice de corrélation de positions, et la modélisation d'allocation (Risk-Parity et Kelly). En attente d'instructions.
 - [2026-06-16 17:06:00] - Développement du viewer local interactif : implémentation de la génération du rapport HTML dans `analyze_best_performances.py`. Le fichier interactif `docs/arbitrage_optimisations.html` a été validé. 
 - [2026-06-16 17:25:00] - Extraction et consignation de la sélection finale : Création du document `docs/portfolio_deploiement_immediat.md` regroupant les 37 setups remplissant toutes les conditions de robustesse (PF > 1.5, Sharpe > 1.0, Kelly > 0, Rendement > 0). Mission de consolidation complètement finalisée.
+- [2026-06-16 20:33:00] - Nettoyage et archivage des 7 scripts de développement temporaires de la racine vers le dossier `scratch/`.
+

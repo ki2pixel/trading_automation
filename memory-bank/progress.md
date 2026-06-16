@@ -119,3 +119,5 @@
 - [x] [2026-06-16 13:05:00] - Analyse et consignation de la Passe 3 de la stratégie Lorentzian Classification terminées. Le lissage Kernel (Nadaraya-Watson) a parfaitement fonctionné, réduisant le Drawdown de NVO à -15.10% et boostant les Profit Factors globaux. Stratégie 100% validée. Fichier passe_3_kernel_exits.md généré et synthèse à jour.
 - [x] [2026-06-16 13:28:00] - Mission d'arbitrage et d'analyse approfondie terminée. Développement du script `analyze_best_performances.py` accompli. Matrice des performances, corrélations et allocations (Risk-Parity/Kelly) générées dans `docs/arbitrage_optimisations.md`. Lorentzian Classification.
 - [x] [2026-06-16 20:25:00] - Développement du viewer interactif HTML `docs/arbitrage_optimisations.html` et extraction finale ciblée des 9 meilleures configurations absolues dans `docs/portfolio_deploiement_immediat.md`. Fin globale de la session.
+- [x] [2026-06-16 20:33:00] - Nettoyage et archivage des 7 scripts de développement temporaires de la racine vers le dossier `scratch/`.
+
