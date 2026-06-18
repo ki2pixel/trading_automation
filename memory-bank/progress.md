@@ -1,6 +1,7 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-18 15:56:00] - Implémentation du système de file d'attente multi-symboles et multi-timeframes dans l'UI locale (Alpine.js) avec temporisation asynchrone (batching) sans modification de l'architecture backend SQLite.
 - [x] [2026-06-18 14:36:00] - Implémentation et validation des scripts de validation robustes (`verify_raw_data_1m.py`) et de conversion (`convert_verified_1m_to_parquet.py`) utilisant le multiprocessing (15 workers) et une méthode de lecture résiliente pour corriger la corruption de lignes fusionnées sur 204 fichiers CSV (50M+ de lignes converties au format snappy Parquet avec 68.13% de réduction d'espace).
 - [x] [2026-06-10 02:28:00] - Parallélisation massive du KNN Lorentzian Classification via `numba.prange` et implémentation du coupe-circuit (Early Abandoning) pour accélérer le backtest.
 - [x] [2026-06-10 01:58:00] - Résolution des bottlenecks CPU et corrections de logique ML dans la stratégie Lorentzian Classification (indexation historique, tri de buffer, vectorisation LLVM).
@@ -121,5 +122,14 @@
 - [x] [2026-06-16 13:28:00] - Mission d'arbitrage et d'analyse approfondie terminée. Développement du script `analyze_best_performances.py` accompli. Matrice des performances, corrélations et allocations (Risk-Parity/Kelly) générées dans `docs/arbitrage_optimisations.md`. Lorentzian Classification.
 - [x] [2026-06-16 20:25:00] - Développement du viewer interactif HTML `docs/arbitrage_optimisations.html` et extraction finale ciblée des 9 meilleures configurations absolues dans `docs/portfolio_deploiement_immediat.md`. Fin globale de la session.
 - [x] [2026-06-16 20:33:00] - Nettoyage et archivage des 7 scripts de développement temporaires de la racine vers le dossier `scratch/`.
+- [x] [2026-06-18 15:05:00] - Qualification de 189 nouveaux symboles de marché. Ajout de l'argument --exclude au script screen_candidates.py et génération de reports/screening_report_new_symbols.md. Walkthrough mis à jour.
+- [x] [2026-06-18 15:56:00] - Implémentation du système de file d'attente multi-symboles et multi-timeframes dans l'UI locale (Alpine.js) avec temporisation asynchrone (batching) sans modification de l'architecture backend SQLite.
+- [x] [2026-06-18 19:33:00] - Fin de la campagne d'optimisation HMM Regime Filter (Passe 1 Extension) : 9 662 itérations éligibles traitées sur 59 symboles. 6 nouveaux actifs validés (ABIBEEUR, ACFREUR, DIAITEUR, LXSDEEUR, MRKDEEUR, RIFREUR). Rapport passe_1_signal.md mis à jour.
+- [x] [2026-06-18 19:42:00] - Création et exécution de queue_hmm_campaign_passe2.py pour injecter les 22 jobs d'optimisation de la Passe 2 (confirm_bars 1-5, dom_thresh 0.3-0.8) sur les 7 actifs qualifiés dans la file SQLite.
 - [x] [2026-06-17 00:52:00] - Évaluation technique et plan de validation empirique de l'API Trading 212 (Beta) pour la récupération de cours temps réel. Création de `verify_api_capabilities.py` et rédaction du rapport `evaluation_api_trading212.md`.
+- [x] [2026-06-18 20:30:00] - Analyse et consignation de la Passe 2 (HMM Regime Filter Extension) terminées : mise à jour du rapport `passe_2_regime_filter.md` avec les résultats comparatifs détaillés pour les 6 nouveaux actifs.
+- [x] [2026-06-18 20:46:00] - Conception et exécution de `queue_hmm_campaign_passe3.py` pour lancer 15 jobs de Passe 3 pour l'extension de campagne HMM (excluant NVO, déjà traité le 15 Juin).
+- [x] [2026-06-18 20:50:00] - Analyse et consignation de la Passe 3 (HMM Regime Filter Extension) terminées : amélioration systématique des scores et des drawdowns. Rapports `passe_3_sorties.md` et `synthese_strategie.md` mis à jour avec les 22 configurations finales.
+
+
 

@@ -27,6 +27,8 @@ function optimizerApp() {
       { value: '240', label: '240 min' },
     ],
     timeframeDropdownOpen: false,
+    symbolDropdownOpen: false,
+    symbolSearchQuery: '',
     strategies: [],
     parameters: [],
     schema: [],
@@ -60,7 +62,7 @@ function optimizerApp() {
     bayesianChanged: false,
     form: {
       strategy: '',
-      symbol: '',
+      symbols: [],
       processedDir: 'storage/processed',
       timeframes: ['5'],
       startDate: '',
@@ -222,14 +224,61 @@ function optimizerApp() {
       this.onDatasetChange();
     },
 
+    selectedSymbols() {
+      const selected = new Set(Array.isArray(this.form.symbols) ? this.form.symbols.map(String) : []);
+      const ordered = this.symbols.filter(value => selected.has(value));
+      return ordered.length ? ordered : (this.symbols[0] ? [this.symbols[0]] : []);
+    },
+
+    filteredSymbols() {
+      if (!this.symbolSearchQuery) return this.symbols;
+      const lowerQuery = this.symbolSearchQuery.toLowerCase();
+      return this.symbols.filter(sym => sym.toLowerCase().includes(lowerQuery));
+    },
+
+    symbolSummary() {
+      const sel = this.selectedSymbols();
+      if (sel.length === 0) return 'Aucun';
+      if (sel.length === 1) return sel[0];
+      if (sel.length === this.symbols.length) return 'Tous';
+      return `${sel.length} symboles`;
+    },
+
+    toggleSymbol(sym) {
+      const selected = new Set(this.selectedSymbols());
+      if (selected.has(sym)) {
+        if (selected.size === 1) return;
+        selected.delete(sym);
+      } else {
+        selected.add(sym);
+      }
+      this.form.symbols = this.symbols.filter(s => selected.has(s));
+      this.onSymbolChange();
+    },
+
+    toggleAllSymbols() {
+      const filtered = this.filteredSymbols();
+      const currentSelected = new Set(this.selectedSymbols());
+      const allFilteredSelected = filtered.length > 0 && filtered.every(s => currentSelected.has(s));
+      if (allFilteredSelected) {
+        filtered.forEach(s => currentSelected.delete(s));
+        if (currentSelected.size === 0 && this.symbols.length > 0) currentSelected.add(this.symbols[0]);
+      } else {
+        filtered.forEach(s => currentSelected.add(s));
+      }
+      this.form.symbols = this.symbols.filter(s => currentSelected.has(s));
+      this.onSymbolChange();
+    },
+
 
     async loadSymbols() {
       const processedDir = encodeURIComponent(this.form.processedDir);
       const timeframe = encodeURIComponent(this.selectedTimeframes()[0] || '5');
       const payload = await this.api(`/api/symbols?processed_dir=${processedDir}&timeframe=${timeframe}`);
-      const previous = this.form.symbol;
+      const previous = Array.isArray(this.form.symbols) ? this.form.symbols : [];
       this.symbols = payload.symbols || [];
-      this.form.symbol = this.symbols.includes(previous) ? previous : (this.symbols[0] || '');
+      const validPrevious = previous.filter(s => this.symbols.includes(s));
+      this.form.symbols = validPrevious.length > 0 ? validPrevious : (this.symbols[0] ? [this.symbols[0]] : []);
     },
 
     async onDatasetChange() {
@@ -257,7 +306,9 @@ function optimizerApp() {
       if (this.form.useFullHistory) {
         try {
           const timeframe = encodeURIComponent(this.selectedTimeframes()[0] || '5');
-          const res = await this.api(`/api/dataset-bounds?symbol=${encodeURIComponent(this.form.symbol)}&processed_dir=${encodeURIComponent(this.form.processedDir)}&timeframe_minutes=${timeframe}`);
+          const refSymbol = this.selectedSymbols()[0] || '';
+          if (!refSymbol) return;
+          const res = await this.api(`/api/dataset-bounds?symbol=${encodeURIComponent(refSymbol)}&processed_dir=${encodeURIComponent(this.form.processedDir)}&timeframe_minutes=${timeframe}`);
           if (res.min_date && res.max_date) {
             this.form.startDate = res.min_date;
             this.form.endDate = res.max_date;

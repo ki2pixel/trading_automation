@@ -133,10 +133,12 @@ def process_single_candidate(symbol: str, path: str, timeframes: List[str], base
 
 def main():
     parser = argparse.ArgumentParser(description="Moteur de Screening Statistique Multicritère")
-    parser.add_argument("--max-workers", type=int, default=15, help="Nombre max de workers en parallèle (max 15)")
+    parser.add_argument("--max-workers", type=int, default=8, help="Nombre max de workers en parallèle (max 15)")
     parser.add_argument("--threshold", type=float, default=2.5, help="Seuil de distance de Mahalanobis maximale")
     parser.add_argument("--output-report", type=str, default="reports/screening_report.md", help="Fichier de rapport de sortie")
+    parser.add_argument("--exclude", type=str, default="", help="Liste des symboles à exclure, séparés par des virgules")
     args = parser.parse_args()
+
     
     if not os.path.exists(BASELINES_FILE):
         print(f"Erreur: Le fichier de baselines {BASELINES_FILE} n'existe pas. Veuillez d'abord exécuter generate_baselines.py.")
@@ -156,14 +158,20 @@ def main():
     # Si le symbole a des données 1m, on l'utilise.
     # Si le symbole n'existe qu'en 5m (ex: EVD.DE, FPE.DE), on l'utilise de 5m.
     # Tout doublon resamplé en 5m est ignoré.
+    exclude_symbols = set([s.strip() for s in args.exclude.split(",") if s.strip()])
+    
     candidates = {}
     
     # Ajouter tous les fichiers 1m
     for sym, path in m1_files.items():
+        if sym in exclude_symbols:
+            continue
         candidates[sym] = {"path": path, "src": "1m"}
         
     # Ajouter les fichiers 5m uniquement s'ils n'existent pas en 1m
     for sym, path in m5_files.items():
+        if sym in exclude_symbols:
+            continue
         if sym not in candidates:
             candidates[sym] = {"path": path, "src": "5m"}
             print(f"Symbole uniquement disponible en 5m détecté : {sym}")
@@ -185,7 +193,10 @@ def main():
                 baselines_data
             )] = sym
             
+        total_candidates = len(candidates)
+        completed = 0
         for fut in as_completed(futures):
+            completed += 1
             sym = futures[fut]
             try:
                 res = fut.result()
@@ -193,6 +204,9 @@ def main():
                     all_results.extend(res)
             except Exception as e:
                 print(f"Le worker pour {sym} a échoué avec l'erreur : {e}")
+            
+            if completed % 10 == 0 or completed == total_candidates:
+                print(f"Progression : {completed}/{total_candidates} symboles traités ({(completed/total_candidates)*100:.1f}%)")
 
     # Génération du rapport
     print(f"Analyse des résultats et génération du rapport...")

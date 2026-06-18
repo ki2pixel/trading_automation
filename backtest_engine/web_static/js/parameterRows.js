@@ -139,9 +139,10 @@ window.BacktestOptimizer.parameterRowsMixin = function parameterRowsMixin() {
       const validationError = this.validateParameterRows();
       if (validationError) throw new Error(validationError);
       const timeframe = options.timeframe ?? this.selectedTimeframes()[0] ?? '5';
+      const symbol = options.symbol ?? this.selectedSymbols()[0] ?? '';
       return {
         strategy: this.form.strategy,
-        symbol: this.form.symbol,
+        symbol: symbol,
         processed_dir: this.form.processedDir,
         timeframe_minutes: Number(timeframe || 5),
         start_date: this.form.startDate || null,

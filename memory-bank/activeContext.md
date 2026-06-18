@@ -1,12 +1,11 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Finalisation de la session d'ingestion et de conversion des nouveaux datasets historiques 1 minute en format Parquet canonique.
-- Validation de l'intégrité structurelle, chronologique, mathématique et alignement des métadonnées de 204 fichiers CSV historiques.
+- Clôture de la campagne d'optimisation HMM Regime Filter (Passe 3 complétée) et préparation de la suite.
 
 ## Prochaines Étapes
-- Intégration et raccordement de ces nouveaux datasets 1 minute au moteur de backtesting et d'optimisation (Optuna / VectorBT).
 - Reprise des analyses d'évaluation de cotation temps réel de l'API Trading 212.
+- Lancer la campagne d'optimisation sur une autre stratégie (le cas échéant).
 
 ## Bloquants / Problèmes Actuels
 - Aucun.
@@ -48,4 +47,10 @@
 - [2026-06-16 17:06:00] - Développement du viewer local interactif : implémentation de la génération du rapport HTML dans `analyze_best_performances.py`. Le fichier interactif `docs/arbitrage_optimisations.html` a été validé. 
 - [2026-06-16 17:25:00] - Extraction et consignation de la sélection finale : Création du document `docs/portfolio_deploiement_immediat.md` regroupant les 37 setups remplissant toutes les conditions de robustesse (PF > 1.5, Sharpe > 1.0, Kelly > 0, Rendement > 0). Mission de consolidation complètement finalisée.
 - [2026-06-16 20:33:00] - Nettoyage et archivage des 7 scripts de développement temporaires de la racine vers le dossier `scratch/`.
-
+- [2026-06-18 15:05:00] - Qualification de 189 nouveaux symboles de marché. Ajout de l'argument --exclude au script screen_candidates.py et génération de reports/screening_report_new_symbols.md. Walkthrough mis à jour.
+- [2026-06-18 15:56:00] - Implémentation du système de file d'attente multi-symboles et multi-timeframes dans l'UI locale (Alpine.js) avec temporisation asynchrone (batching) sans modification de l'architecture backend SQLite.
+- [2026-06-18 19:33:00] - Fin de la campagne d'optimisation HMM Regime Filter (Passe 1 Extension) : 9 662 itérations éligibles traitées sur 59 symboles. 6 nouveaux actifs validés (ABIBEEUR, ACFREUR, DIAITEUR, LXSDEEUR, MRKDEEUR, RIFREUR). Rapport passe_1_signal.md mis à jour.
+- [2026-06-18 19:42:00] - Création et exécution du script queue_hmm_campaign_passe2.py pour enfiler 22 jobs de Passe 2 (Filtrage de Régime & Confirmation) sur les 7 symboles qualifiés (NVO, ABIBEEUR, ACFREUR, DIAITEUR, LXSDEEUR, MRKDEEUR, RIFREUR) avec confirm_bars (1-5) et dom_thresh (0.3-0.8).
+- [2026-06-18 20:30:00] - Analyse et consignation de la Passe 2 (HMM Regime Filter Extension) terminées : mise à jour de passe_2_regime_filter.md avec l'analyse comparative des 6 nouveaux actifs.
+- [2026-06-18 20:46:00] - Création et exécution du script queue_hmm_campaign_passe3.py pour injecter les 15 jobs de Passe 3 sur les nouveaux actifs (NVO exclu car déjà optimisé le 15 Juin).
+- [2026-06-18 20:50:00] - Analyse et consignation de la Passe 3 (HMM Regime Filter Extension) terminées : tous les setups affichent une amélioration nette des scores et des drawdowns. Rapports passe_3_sorties.md et synthese_strategie.md mis à jour avec les 22 configurations finales.

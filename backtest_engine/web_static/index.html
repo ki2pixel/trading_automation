@@ -55,13 +55,31 @@
               </template>
             </select>
           </label>
-          <label>Symbole
-            <select x-model="form.symbol" @change="onSymbolChange()">
-              <template x-for="symbol in symbols" :key="symbol">
-                <option :value="symbol" x-text="symbol"></option>
-              </template>
-            </select>
-          </label>
+          <div class="field-label symbol-field">Symbole
+            <div class="dropdown" @click.outside="symbolDropdownOpen = false">
+              <button type="button" class="dropdown-toggle" @click="symbolDropdownOpen = !symbolDropdownOpen"
+                x-text="symbolSummary()"></button>
+              <div class="dropdown-menu" x-show="symbolDropdownOpen" x-cloak style="width: max-content; min-width: 100%;">
+                <div style="padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border-color);">
+                  <input type="text" x-model="symbolSearchQuery" placeholder="Rechercher..." @click.stop style="width: 100%; padding: 0.25rem; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);" />
+                </div>
+                <label class="checkbox-row select-all-row" @click.prevent="toggleAllSymbols()">
+                  <span x-text="selectedSymbols().length === filteredSymbols().length && filteredSymbols().length > 0 ? '☐ Tout désélectionner' : '☑ Tout sélectionner'"></span>
+                </label>
+                <div class="dropdown-divider"></div>
+                <div style="max-height: 250px; overflow-y: auto;">
+                  <template x-for="sym in filteredSymbols()" :key="sym">
+                    <label class="checkbox-row">
+                      <input type="checkbox" :checked="selectedSymbols().includes(sym)"
+                        @change="toggleSymbol(sym)" />
+                      <span x-text="sym"></span>
+                    </label>
+                  </template>
+                  <div x-show="filteredSymbols().length === 0" class="checkbox-row text-xs text-muted">Aucun symbole trouvé</div>
+                </div>
+              </div>
+            </div>
+          </div>
           <label>Dataset canonique
             <input x-model="form.processedDir" @change="onDatasetChange()" />
           </label>
@@ -179,7 +197,9 @@
           <span class="badge" title="Produit de toutes les valeurs saisies, avant déduplication.">Brut: <strong x-text="estimateText('total_iterations')">-</strong></span>
           <span class="badge" title="Combinaisons effectives après déduplication des paramètres inactifs.">Can: <strong x-text="estimateText('canonical_iterations')">-</strong></span>
           <span class="badge" title="Combinaisons exécutables après règles métier.">Valides: <strong x-text="estimateText('valid_iterations')">-</strong></span>
+          <span class="badge" title="Symboles sélectionnés">Sym: <strong x-text="selectedSymbols().length">1</strong></span>
           <span class="badge">Tf: <strong x-text="selectedTimeframes().length">1</strong></span>
+          <span class="badge" title="Total jobs (Symboles x Timeframes)">Jobs: <strong x-text="selectedSymbols().length * selectedTimeframes().length">1</strong></span>
         </div>
         <div class="message warning-box sidebar-msg" x-show="warnings.length" x-text="warnings.join(' · ')"></div>
         <div class="message error-box sidebar-msg" x-show="errorMessage" x-text="errorMessage"></div>

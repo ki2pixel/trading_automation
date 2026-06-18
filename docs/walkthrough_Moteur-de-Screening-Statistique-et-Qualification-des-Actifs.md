@@ -48,3 +48,15 @@ Le script a généré le fichier [screening_report.md](file:///home/kidpixel/tra
 *   **Qualifié** : Le symbole **LOGI** a été validé à **15 minutes** pour la stratégie `hmm_regime_filter` avec une distance de Mahalanobis $D_M = 2.35 \le 2.5$. Son profil statistique est compatible (Hurst $H = 0.50$, ADV = 3 223 M€, 10.5 ans d'historique).
 *   **Exclusion de FPE.DE** : Exclu pour non-respect du critère de liquidité (ADV de 0.42M€ $< 1.0$M€ minimum requis pour l'admission de nouveaux actifs).
 *   **Éligibilité des autres configurations** : Les 8 autres actifs de référence se situent bien dans la zone d'acceptation idéale (distance de Mahalanobis $D_M = 0.00$ sur leur TF/stratégie nominale).
+
+---
+
+## 4. Résultats du Screening des Nouveaux Symboles
+
+Un deuxième screening a été effectué sur l'univers de 189 nouveaux symboles 1m, en excluant les actifs de référence et `LOGI` déjà qualifiés. Le rapport complet est disponible dans [screening_report_new_symbols.md](file:///home/kidpixel/trading_automation_v2/reports/screening_report_new_symbols.md).
+
+**Observations clés :**
+*   **Nombreux actifs qualifiés** : Plus d'une centaine de configurations (symbole/timeframe/stratégie) sont éligibles.
+*   **Dominance de `hmm_regime_filter`** : Un grand nombre d'actifs présentent des distances de Mahalanobis très faibles ($D_M < 1.0$) pour cette stratégie (ex: `rmsfreur`, `mrkdeeur`, `dpwdeeur`, `capfreur`, etc.).
+*   **Stratégie `cybernetic_hilbert`** : Plusieurs actifs se qualifient avec succès pour cette stratégie (ex: `orafreur`, `raceiteur`, `basdeeur`).
+*   Tous les candidats retenus respectent scrupuleusement l'ADV minimum de 1 M€ et possèdent un historique validé de plus d'1 an.

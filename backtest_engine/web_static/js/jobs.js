@@ -18,6 +18,7 @@ window.BacktestOptimizer.jobsMixin = function jobsMixin() {
         this.recommendationsError = '';
         this.resetEquityChart('Optimisation en cours…');
         const timeframes = this.selectedTimeframes();
+        const symbols = this.selectedSymbols();
         let estimatePayload = this.lastEstimate;
         if (!estimatePayload || this.estimateDirty) {
           clearTimeout(this.estimateTimer);
@@ -29,22 +30,31 @@ window.BacktestOptimizer.jobsMixin = function jobsMixin() {
         }
         if (!this.canOptimize()) throw new Error(this.errorMessage || 'Optimisation bloquée par la validation UI.');
         const createdJobs = [];
-        for (const timeframe of timeframes) {
-          const payload = this.collectPayload({ timeframe });
-          const job = await this.api('/api/optimize', { method: 'POST', body: JSON.stringify(payload) });
-          createdJobs.push(job);
+        for (const symbol of symbols) {
+          for (const timeframe of timeframes) {
+            try {
+              const payload = this.collectPayload({ symbol, timeframe });
+              const job = await this.api('/api/optimize', { method: 'POST', body: JSON.stringify(payload) });
+              createdJobs.push(job);
+              // Délai pour ne pas saturer le navigateur/backend en cas de création massive
+              await new Promise(resolve => setTimeout(resolve, 200));
+            } catch (err) {
+              console.error(`Erreur création job pour ${symbol} ${timeframe}:`, err);
+            }
+          }
         }
         const job = createdJobs[0];
-        if (!job) throw new Error('Aucun job créé. Sélectionnez au moins un timeframe.');
+        if (!job) throw new Error('Aucun job créé. Sélectionnez au moins un symbole et un timeframe.');
         this.activeJobIds = createdJobs.map(item => item.id).filter(Boolean);
         this.activeJobId = job.id;
         this.currentJob = job;
+        const totalRequested = symbols.length * timeframes.length;
         this.warnings = [
           ...(estimatePayload?.warnings || []),
-          ...(createdJobs.length > 1 ? [`${createdJobs.length} timeframes sélectionnés: ${createdJobs.length} jobs créés dans la file.`] : []),
+          ...(createdJobs.length > 1 ? [`${totalRequested} combinaisons demandées : ${createdJobs.length} jobs créés avec succès dans la file.`] : []),
         ];
         this.outputText = createdJobs.length > 1
-          ? `Jobs créés: ${createdJobs.map(item => `${item.request?.timeframe_minutes || '?'} min=${String(item.id || '').slice(0, 10)}`).join(' · ')}`
+          ? `Jobs créés:\n${createdJobs.map(item => `${item.request?.symbol || '?'} ${item.request?.timeframe_minutes || '?'}m = ${String(item.id || '').slice(0, 10)}`).join('\n')}`
           : '';
         await this.refreshJobs();
         this.renderJobOutput(job);
