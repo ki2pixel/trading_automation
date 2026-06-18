@@ -49,3 +49,48 @@ Ces actifs sous-performent tous le Buy & Hold ou n'ont aucune itération éligib
 
 L'optimisation de la Passe 1 a permis de valider des paramètres très stables et performants pour **NVO (45m)** et **ZEAL.CO (15m, 45m)**. 
 Les valeurs optimales (`hilbert_smooth_period`, `take_profit_net_percent` et `stop_loss_net_percent`) doivent être figées afin de servir de base pour la Passe 2.
+
+
+## 4. Résultats Campagne d'Extension (Nouveaux Actifs)
+
+### 🟢 Les Sur-Performants (Nouveaux Actifs)
+
+* **LXSDEEUR** : Edge identifié.
+  * **60m (Best)** : Score `+81.7414` (`hilbert_smooth_period: 14`, `take_profit_net_percent: 20.0`, `stop_loss_net_percent: 1.0`). 2927 trades, PF: 1.291, Sharpe: 1.432, Sortino: 1.570.
+
+* **MRKDEEUR** : Edge identifié.
+  * **45m (Best)** : Score `+33.9415` (`hilbert_smooth_period: 12`, `take_profit_net_percent: 9.0`, `stop_loss_net_percent: 1.0`). 3562 trades, PF: 1.296, Sharpe: 1.688, Sortino: 2.050.
+
+### 🔴 Les Rejetés (Nouveaux Actifs)
+
+Ces actifs n'ont produit aucune combinaison rentable par rapport au Buy & Hold ou n'ont pas respecté les critères stricts de la Passe 1 :
+* **AMSESEUR**
+* **BASDEEUR**
+* **BAYNDEEUR**
+* **CAPFREUR**
+* **DGFREUR**
+* **DPWDEEUR**
+* **DSMNLEUR**
+* **EDPPTEUR**
+* **ERGITEUR**
+* **FPFREUR**
+* **GASESEUR**
+* **HNRDEEUR**
+* **IFXDEEUR**
+* **MCFREUR**
+* **MHGNONOK**
+* **ORAFREUR**
+* **PHIANLEUR**
+* **RACEITEUR**
+* **RANDNLEUR**
+* **RBIATEUR**
+* **RDSANLEUR**
+* **RECITEUR**
+* **RENNLEUR**
+* **RMSFREUR**
+* **SRTDEEUR**
+* **STERVFIEUR**
+* **STLNONOK**
+* **TENITEUR**
+* **UMIBEEUR**
+* **VPKNLEUR**

@@ -14,6 +14,8 @@ L'analyse des rapports de l'optimiseur local pour la Passe 3 montre que l'optimi
 
 * **NVO** : Le meilleur score reste à `+149.4814` avec la recommandation `safety_max_bars_in_trade: 0`. Les métriques (Sharpe 1.734, PF 1.356) sont strictement identiques à la Passe 1.
 * **ZEAL.CO** : Le meilleur score reste à `+52.4314` avec la recommandation `safety_max_bars_in_trade: 0`. Les métriques (Sharpe 3.366, PF 1.949) sont strictement identiques à la Passe 1.
+* **LXSDEEUR** : Le meilleur score reste à `+81.7414` avec la recommandation `safety_max_bars_in_trade: 0`. Les métriques (Sharpe 1.432, PF 1.291) sont strictement identiques à la Passe 1.
+* **MRKDEEUR** : Le meilleur score reste à `+33.9415` avec la recommandation `safety_max_bars_in_trade: 0`. Les métriques (Sharpe 1.688, PF 1.296) sont strictement identiques à la Passe 1.
 
 ---
 
