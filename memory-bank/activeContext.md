@@ -1,14 +1,17 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Aucune tâche active.
+- Finalisation de la session d'ingestion et de conversion des nouveaux datasets historiques 1 minute en format Parquet canonique.
+- Validation de l'intégrité structurelle, chronologique, mathématique et alignement des métadonnées de 204 fichiers CSV historiques.
 
 ## Prochaines Étapes
-- Aucune
+- Intégration et raccordement de ces nouveaux datasets 1 minute au moteur de backtesting et d'optimisation (Optuna / VectorBT).
+- Reprise des analyses d'évaluation de cotation temps réel de l'API Trading 212.
 
 ## Bloquants / Problèmes Actuels
 - Aucun.
 
+- [2026-06-18 14:36:00] - Ingestion et conversion des datasets 1 minute : création de verify_raw_data_1m.py et convert_verified_1m_to_parquet.py. Résolution de la corruption de formatage par reconstruction des lignes fusionnées à la volée. 189 fichiers validés et convertis en Parquet (50.1M lignes, gain de 1.95 GB / 68%).
 - [2026-06-09 22:14:00] - Optimisation d'Adaptive Trend Classification : Caching thread-safe des MAs, correction du ratio de sous-échantillonnage de grille, et implémentation du multiprocessing (ProcessPoolExecutor) pour le pré-scan VectorBT. Temps réduit de 8h à 24 secondes avec 4 workers (speedup ~1200x).
 - [2026-06-09 22:30:00] - Optimisation du pré-scan VectorBT de la stratégie trend_type avec multiprocessing (ProcessPoolExecutor). Temps réduit de 96s à 31s.
 - [2026-06-09 22:35:00] - Audit global de toutes les stratégies du registre concernant le pré-scan VectorBT. 9 stratégies parallélisées, 2 stubs ignorés, 5 séquentiels rapides.

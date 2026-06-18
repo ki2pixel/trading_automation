@@ -1,6 +1,7 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-18 14:36:00] - Implémentation et validation des scripts de validation robustes (`verify_raw_data_1m.py`) et de conversion (`convert_verified_1m_to_parquet.py`) utilisant le multiprocessing (15 workers) et une méthode de lecture résiliente pour corriger la corruption de lignes fusionnées sur 204 fichiers CSV (50M+ de lignes converties au format snappy Parquet avec 68.13% de réduction d'espace).
 - [x] [2026-06-10 02:28:00] - Parallélisation massive du KNN Lorentzian Classification via `numba.prange` et implémentation du coupe-circuit (Early Abandoning) pour accélérer le backtest.
 - [x] [2026-06-10 01:58:00] - Résolution des bottlenecks CPU et corrections de logique ML dans la stratégie Lorentzian Classification (indexation historique, tri de buffer, vectorisation LLVM).
 - [x] [2026-06-10 01:21:00] - Court-circuitage (bypass) des pré-scans VectorBT pour les stratégies complexes lorentzian_classification et hmm_regime_filter afin d'éliminer le goulot d'étranglement CPU.
@@ -120,4 +121,5 @@
 - [x] [2026-06-16 13:28:00] - Mission d'arbitrage et d'analyse approfondie terminée. Développement du script `analyze_best_performances.py` accompli. Matrice des performances, corrélations et allocations (Risk-Parity/Kelly) générées dans `docs/arbitrage_optimisations.md`. Lorentzian Classification.
 - [x] [2026-06-16 20:25:00] - Développement du viewer interactif HTML `docs/arbitrage_optimisations.html` et extraction finale ciblée des 9 meilleures configurations absolues dans `docs/portfolio_deploiement_immediat.md`. Fin globale de la session.
 - [x] [2026-06-16 20:33:00] - Nettoyage et archivage des 7 scripts de développement temporaires de la racine vers le dossier `scratch/`.
+- [x] [2026-06-17 00:52:00] - Évaluation technique et plan de validation empirique de l'API Trading 212 (Beta) pour la récupération de cours temps réel. Création de `verify_api_capabilities.py` et rédaction du rapport `evaluation_api_trading212.md`.
 
