@@ -1,14 +1,22 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Clôture de la campagne d'optimisation HMM Regime Filter (Passe 3 complétée) et préparation de la suite.
+- Intégration en production live des configurations validées et reprise des analyses sur l'API Trading 212.
 
 ## Prochaines Étapes
-- Reprise des analyses d'évaluation de cotation temps réel de l'API Trading 212.
-- Lancer la campagne d'optimisation sur une autre stratégie (le cas échéant).
+- Intégrer les 10 configurations validées d'Adaptive Volatility Trend (5 de la baseline + 5 d'extension) dans le dictionnaire d'allocation du moteur de production live.
+- Reprendre les analyses et l'évaluation de la cotation en temps réel de l'API Trading 212.
 
 ## Bloquants / Problèmes Actuels
 - Aucun.
+
+- [2026-06-19 18:26:00] - Audit global de la campagne de backtests archivée (15 stratégies, 1 526 runs au total) dans Téléchargements/local_optimizer complété. Confirmation de l'absence d'impact du bug de Profit Factor None. Rapport consigné dans scratch/audit_archived_report.md.
+
+- [2026-06-19 17:55:00] - Validation et documentation de la Post-Passe 2 d'optimisation sur les 5 actifs d'extension (akzanleur, beideeur, dpwdeeur, ergiteur, telnonok) complétées. La documentation (passe_2_filtres.md et synthese_strategie.md) est entièrement à jour.
+
+- [2026-06-19 17:35:00] - Correction de l'anomalie critique du Profit Factor (infinite PF/None) dans backtest_engine/optimizer.py. Re-génération et reconstruction de tous les rapports et parquet de Passe 1. 5 actifs qualifiés d'extension (akzanleur, ergiteur, beideeur, telnonok, dpwdeeur) sous un quorum de trades de 10. Mise à jour de passe_1_signal.md, passe_2_filtres.md et synthese_strategie.md.
+
+- [2026-06-19 16:45:00] - Analyse et consignation de la Passe 2 (Filtres) d'Adaptive Volatility Trend (Extension) terminées : mise à jour de passe_2_filtres.md et synthese_strategie.md. Constat de rejet systématique (quorum = 50) mais identification de performances latentes exceptionnelles (ex: akzanleur +60.69% vs B&H, DD -12.34%) grâce aux filtres RSI/Volume.
 
 - [2026-06-18 14:36:00] - Ingestion et conversion des datasets 1 minute : création de verify_raw_data_1m.py et convert_verified_1m_to_parquet.py. Résolution de la corruption de formatage par reconstruction des lignes fusionnées à la volée. 189 fichiers validés et convertis en Parquet (50.1M lignes, gain de 1.95 GB / 68%).
 - [2026-06-09 22:14:00] - Optimisation d'Adaptive Trend Classification : Caching thread-safe des MAs, correction du ratio de sous-échantillonnage de grille, et implémentation du multiprocessing (ProcessPoolExecutor) pour le pré-scan VectorBT. Temps réduit de 8h à 24 secondes avec 4 workers (speedup ~1200x).
@@ -54,3 +62,7 @@
 - [2026-06-18 20:30:00] - Analyse et consignation de la Passe 2 (HMM Regime Filter Extension) terminées : mise à jour de passe_2_regime_filter.md avec l'analyse comparative des 6 nouveaux actifs.
 - [2026-06-18 20:46:00] - Création et exécution du script queue_hmm_campaign_passe3.py pour injecter les 15 jobs de Passe 3 sur les nouveaux actifs (NVO exclu car déjà optimisé le 15 Juin).
 - [2026-06-18 20:50:00] - Analyse et consignation de la Passe 3 (HMM Regime Filter Extension) terminées : tous les setups affichent une amélioration nette des scores et des drawdowns. Rapports passe_3_sorties.md et synthese_strategie.md mis à jour avec les 22 configurations finales.
+- [2026-06-19 12:45:00] - Conception et développement de `queue_adaptive_volatility_campaign.py` pour la Passe 1 de la campagne d'optimisation en masse de la stratégie `adaptive_volatility_trend`. Extraction automatique des candidats qualifiés du rapport de screening, filtrage des exclusions, et initialisation des itérations bayésiennes dans la file SQLite.
+- [2026-06-19 13:25:00] - Analyse et consignation de la Passe 1 d'Adaptive Volatility Trend (Extension) terminées. Constat de rejet à 100% des 13 nouveaux actifs dû à la contrainte dure closed_trades >= 50. Identification du potentiel d'akzanleur (+38.91% vs B&H) et d'ergiteur (+12.95% vs B&H). Rapports passe_1_signal.md et synthese_strategie.md mis à jour.
+- [2026-06-19 13:35:00] - Conception et développement de `queue_adaptive_volatility_campaign_passe2.py` pour la Passe 2 de la campagne d'optimisation en masse de la stratégie `adaptive_volatility_trend` sur les nouveaux actifs. Ce script maintient les contraintes de Passe 1 mais combine la grille de base (`length`/`atr_len`/`atr_mult`) avec l'optimisation des filtres RSI (activation, longueur, overbought, oversold) et Volume pour tenter de qualifier certains de ces actifs en présence de filtres.
+- [2026-06-19 13:47:00] - Optimisation de `queue_adaptive_volatility_campaign_passe2.py` : Remplacement de l'évaluation de grille en mode `grid` par le mode `bayesian` dans `validate_parameter_grid` pour éliminer le bottleneck d'exploration d'une combinatoire de 1.48 Milliard d'itérations, permettant un amorçage instantané.

@@ -548,8 +548,12 @@ def _constraint_violations(
 
     if constraints.min_profit_factor is not None:
         profit_factor = _score_value(metrics, "profit_factor")
-        if profit_factor is None or profit_factor < constraints.min_profit_factor:
-            violations.append(f"profit_factor {profit_factor} < min_profit_factor {constraints.min_profit_factor}")
+        winning_trades = _score_value(metrics, "winning_trades") or 0
+        losing_trades = _score_value(metrics, "losing_trades") or 0
+        is_infinite_pf = (profit_factor is None) and (winning_trades > 0) and (losing_trades == 0)
+        if not is_infinite_pf:
+            if profit_factor is None or profit_factor < constraints.min_profit_factor:
+                violations.append(f"profit_factor {profit_factor} < min_profit_factor {constraints.min_profit_factor}")
 
     return violations
 

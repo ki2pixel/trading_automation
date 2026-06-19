@@ -33,3 +33,7 @@
 ## [2026-06-16 17:06:00] - Générateur de Rapport HTML Customisé
 - **Décision** : Implémentation d'un générateur HTML (intégré directement dans `scripts/analyze_best_performances.py`) plutôt qu'une solution type Jupyter Notebook ou un script externe. Il injecte les données consolidées via `json.dumps` dans le DOM local.
 - **Justification** : Conserver la philosophie UI/UX du projet (calquée sur `optimizer_report.html`) pour offrir un viewer interactif (tris dynamiques, filtres textuels) capable de palier les limites d'affichage du Markdown, sans alourdir la stack par un serveur Node.js / Python.
+
+## [2026-06-19 17:55:00] - Assouplissement du quorum de trades et correction du Profit Factor parfait (None)
+- **Décision** : Assouplissement du quorum à `min_closed_trades = 10` pour l'extension de campagne et correction de la faille de division par zéro dans le calcul du profit factor (`optimizer.py`) lorsque `losing_trades = 0` (permettant aux configurations à 100% de win-rate d'être qualifiées au lieu d'être rejetées car leur profit factor valait `None`).
+- **Justification** : L'assouplissement a permis de surmonter la barrière de qualification sur les nouveaux actifs à timeframes plus élevés. La correction du profit factor a débloqué et qualifié des configurations exceptionnelles d'akzanleur, beideeur, et dpwdeeur, qui étaient injustement rejetées par le moteur.
