@@ -10,6 +10,14 @@
 ## Bloquants / Problèmes Actuels
 - Aucun.
 
+- [2026-06-19 19:51:00] - Clôture de la campagne d'extension de la stratégie `momentum_based_zigzag`. Consignation du bypass de la Passe 3 (Trailing Stop) dans `passe_3_signal.md` et mise à jour de la synthèse stratégique `synthese_strategie.md` avec toutes les configurations finales (19 actifs validés).
+- [2026-06-19 19:47:00] - Analyse des résultats de la Passe 2 (Gestion du Risque) pour la campagne d'extension de `momentum_based_zigzag`. Rédaction du rapport `passe_2_signal.md` validant la sur-performance de 8 actifs sur 9 (belgbeeur et daideeur en tête avec des hausses de Sharpe spectaculaires). Recommandation de bypasser la Passe 3 et de conserver la configuration Passe 1 sans SL/TP pour beideeur.
+- [2026-06-19 19:37:00] - Conception et développement de `queue_zigzag_campaign_passe2.py` pour la Passe 2 (Gestion du Risque) de la campagne d'extension de la stratégie `momentum_based_zigzag`. Verrouillage des 9 configurations d'extension validées en Passe 1 et enfilement de la recherche bayésienne sur les brackets TP/SL (initialisation des jobs SQLite).
+
+- [2026-06-19 19:30:00] - Analyse et consignation de la Passe 1 de la stratégie `momentum_based_zigzag` (Campagne d'Extension) terminées. Mise à jour de `passe_1_signal.md` avec les 20 nouveaux actifs candidats (9 qualifiés avec sur-performance vs B&H, belgbeeur en tête avec +79.51%).
+
+- [2026-06-19 19:00:00] - Conception et développement de `queue_zigzag_campaign.py` pour la Passe 1 de la campagne d'extension de la stratégie `momentum_based_zigzag`. Extraction automatique des candidats éligibles du rapport de screening, filtrage des exclusions de la baseline, et initialisation des itérations bayésiennes dans la file SQLite.
+
 - [2026-06-19 18:26:00] - Audit global de la campagne de backtests archivée (15 stratégies, 1 526 runs au total) dans Téléchargements/local_optimizer complété. Confirmation de l'absence d'impact du bug de Profit Factor None. Rapport consigné dans scratch/audit_archived_report.md.
 
 - [2026-06-19 17:55:00] - Validation et documentation de la Post-Passe 2 d'optimisation sur les 5 actifs d'extension (akzanleur, beideeur, dpwdeeur, ergiteur, telnonok) complétées. La documentation (passe_2_filtres.md et synthese_strategie.md) est entièrement à jour.
