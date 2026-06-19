@@ -170,4 +170,8 @@ Cette commande génère deux fichiers de synthèse dans `reports/local_optimizer
 - `global_summary.csv` : Le récapitulatif complet de toutes les configurations recommandées par action.
 - `global_summary.html` : Un tableau interactif et visuel pour comparer facilement les performances de tes différents actifs.
 
+> [!TIP]
+> Si vous gérez un large portefeuille d'actifs à optimiser en plusieurs passes successives (signal brut, brackets de risque), l'exécution de commandes CLI individuelles devient fastidieuse. Référez-vous au guide sur le [Lancement de campagnes d'optimisation en masse](./campaigns.md) pour automatiser ce processus via des files de tâches programmatiques SQLite.
+
 <!-- Guidé par documentation/SKILL.md — sections: Technical Article Structure, Technical Writing Voice, Punctuation Guidelines, Avoiding AI-Generated Feel -->
+

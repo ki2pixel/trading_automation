@@ -10,6 +10,7 @@
 ## Bloquants / Problèmes Actuels
 - Aucun.
 
+- [2026-06-19 20:00:00] - Exécution du workflow `/docs-updater` : Rédaction du guide technique `campaigns.md` pour l'orchestration programmatique de campagnes et la file de tâches SQLite. Mise à jour de l'indexation dans `README.md` et `optimization.md`.
 - [2026-06-19 19:51:00] - Clôture de la campagne d'extension de la stratégie `momentum_based_zigzag`. Consignation du bypass de la Passe 3 (Trailing Stop) dans `passe_3_signal.md` et mise à jour de la synthèse stratégique `synthese_strategie.md` avec toutes les configurations finales (19 actifs validés).
 - [2026-06-19 19:47:00] - Analyse des résultats de la Passe 2 (Gestion du Risque) pour la campagne d'extension de `momentum_based_zigzag`. Rédaction du rapport `passe_2_signal.md` validant la sur-performance de 8 actifs sur 9 (belgbeeur et daideeur en tête avec des hausses de Sharpe spectaculaires). Recommandation de bypasser la Passe 3 et de conserver la configuration Passe 1 sans SL/TP pour beideeur.
 - [2026-06-19 19:37:00] - Conception et développement de `queue_zigzag_campaign_passe2.py` pour la Passe 2 (Gestion du Risque) de la campagne d'extension de la stratégie `momentum_based_zigzag`. Verrouillage des 9 configurations d'extension validées en Passe 1 et enfilement de la recherche bayésienne sur les brackets TP/SL (initialisation des jobs SQLite).

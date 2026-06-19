@@ -19,6 +19,7 @@ Voici comment naviguer dans le moteur selon ce que tu cherches à accomplir :
 
 ### 2. Pousser la stratégie à ses limites
 - **[Optimiser les paramètres](./optimization.md)** : Utilise la recherche exhaustive (Grid Search) ou l'intelligence bayésienne (Optuna) pour trouver automatiquement les meilleurs réglages pour tes indicateurs.
+- **[Lancement de campagnes d'optimisation en masse](./campaigns.md)** : Apprends à automatiser l'enfilement de dizaines de jobs d'optimisation sur ton portefeuille d'actifs via les scripts de file SQLite.
 - **[Éviter le surapprentissage (Walk-Forward WFO)](./walk-forward.md)** : Ne te fais pas piéger par des paramètres "trop parfaits" sur le passé. Applique des fenêtres glissantes et calcule le score de déflation de Sharpe (PBO/DSR).
 - **[Gérer les longs calculs (Job Store)](./job-store.md)** : Comment lancer des optimisations qui durent des heures sans craindre les crashs ou les coupures de courant grâce à la persistence SQLite.
 
@@ -38,3 +39,6 @@ Voici comment naviguer dans le moteur selon ce que tu cherches à accomplir :
 ## Place dans le pipeline
 
 Le moteur de backtest intervient juste après la phase de préparation des données. Il attend des fichiers Parquet propres et ajustés issus de **[build-canonical](./canonical-datasets.md)**. Une fois sa simulation terminée, il génère des rapports dans le dossier `reports/` (sous forme de JSON, CSV, ou pages HTML interactives).
+
+<!-- Guidé par documentation/SKILL.md — sections: README Structure Principles, Avoiding AI-Generated Feel -->
+

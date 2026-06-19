@@ -1,6 +1,7 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-19 20:00:00] - Exécution du workflow `/docs-updater` : Rédaction du guide technique `campaigns.md` pour l'orchestration programmatique de campagnes et la file de tâches SQLite. Mise à jour de l'indexation dans `README.md` et `optimization.md`.
 - [x] [2026-06-18 15:56:00] - Implémentation du système de file d'attente multi-symboles et multi-timeframes dans l'UI locale (Alpine.js) avec temporisation asynchrone (batching) sans modification de l'architecture backend SQLite.
 - [x] [2026-06-18 14:36:00] - Implémentation et validation des scripts de validation robustes (`verify_raw_data_1m.py`) et de conversion (`convert_verified_1m_to_parquet.py`) utilisant le multiprocessing (15 workers) et une méthode de lecture résiliente pour corriger la corruption de lignes fusionnées sur 204 fichiers CSV (50M+ de lignes converties au format snappy Parquet avec 68.13% de réduction d'espace).
 - [x] [2026-06-10 02:28:00] - Parallélisation massive du KNN Lorentzian Classification via `numba.prange` et implémentation du coupe-circuit (Early Abandoning) pour accélérer le backtest.
