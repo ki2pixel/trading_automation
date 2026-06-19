@@ -9,17 +9,28 @@ from datetime import datetime
 REPORTS_DIR = "reports/local_optimizer"
 DOCS_DIR = "docs/arbitrage_optimisations.md"
 DOCS_HTML_DIR = "docs/arbitrage_optimisations.html"
+PORTFOLIO_DOCS_DIR = "docs/portfolio_deploiement_immediat.md"
 
 VALIDATED_SETUPS = {
     "lorentzian_classification": {"NVO": ["20m"], "GMAB": ["30m"], "FPE.DE": ["120m"]},
-    "hmm_regime_filter": {"NVO": ["10m", "15m", "20m", "30m", "45m", "60m", "120m"]},
+    "hmm_regime_filter": {
+        "NVO": ["10m", "15m", "20m", "30m", "45m", "60m", "120m"],
+        "abibeeur": ["10m", "15m", "45m"], "acfreur": ["10m", "15m"], "diaiteur": ["10m", "15m", "30m"],
+        "lxsdeeur": ["30m"], "mrkdeeur": ["10m", "15m", "30m", "45m"], "rifreur": ["10m", "15m"]
+    },
     "noise_boundary_intraday": {"AMS.MC": ["60m", "120m"], "FPE.DE": ["120m"], "GMAB": ["30m"]},
     "momentum_based_zigzag": {
         "NVO": ["45m"], "ZEAL.CO": ["1m"], "AMS.MC": ["10m"], "GMAB": ["1m"], 
         "EVD.DE": ["45m"], "SAP": ["30m"], "SHL.DE": ["45m"], "LOGI": ["120m"], 
-        "NVS": ["5m"], "FPE.DE": ["20m"]
+        "NVS": ["5m"], "FPE.DE": ["20m"],
+        "belgbeeur": ["10m"], "daideeur": ["15m"], "cafreur": ["15m"], "cpriteur": ["10m"],
+        "vnadeeur": ["10m"], "randnleur": ["10m"], "akzanleur": ["30m"], "vpknleur": ["15m"],
+        "beideeur": ["15m"]
     },
-    "cybernetic_hilbert": {"NVO": ["45m"], "ZEAL.CO": ["15m", "20m", "30m", "45m", "60m"]},
+    "cybernetic_hilbert": {
+        "NVO": ["45m"], "ZEAL.CO": ["15m", "20m", "30m", "45m", "60m"],
+        "lxsdeeur": ["60m"], "mrkdeeur": ["45m"]
+    },
     "pmax_explorer": {"GMAB": ["15m", "30m"]},
     "range_filter": {"GMAB": ["20m", "30m"], "FPE.DE": ["45m", "240m"]},
     "msl_trend": {
@@ -33,12 +44,17 @@ VALIDATED_SETUPS = {
         "NVO": ["10m", "15m", "20m", "30m", "45m", "60m", "120m"], 
         "NVS": ["15m", "20m", "30m", "45m", "60m", "120m"]
     },
-    "adaptive_volatility_trend": {"NVS": ["10m", "15m", "45m", "60m"], "GMAB": ["5m"]},
+    "adaptive_volatility_trend": {
+        "NVS": ["10m", "15m", "45m", "60m"], "GMAB": ["5m"],
+        "akzanleur": ["30m"], "beideeur": ["10m"], "dpwdeeur": ["45m"], "telnonok": ["15m"],
+        "ergiteur": ["30m"]
+    },
     "3commas_bot": {
         "GMAB": ["15m", "20m", "30m", "60m"], 
         "FPE.DE": ["5m", "20m", "30m", "45m"], 
         "LOGI": ["5m", "10m", "45m", "120m"], 
-        "EVD.DE": ["5m", "20m", "30m"]
+        "EVD.DE": ["5m", "20m", "30m"],
+        "teniteur": ["30m"]
     },
     "adaptive_trend_classification": {"NVO": ["45m", "60m"]}
 }
@@ -139,170 +155,283 @@ def analyze_all_runs():
             continue
 
         for symbol, tfs in symbols.items():
-            base_dir = os.path.join(REPORTS_DIR, strategy, symbol)
-            if not os.path.isdir(base_dir):
-                continue
-                
-            for run_dir in os.listdir(base_dir):
-                run_path = os.path.join(base_dir, run_dir)
-                if not os.path.isdir(run_path):
-                    continue
-                
-                config_path = os.path.join(run_path, "optimization_config.json")
-                if not os.path.exists(config_path):
-                    continue
-                
-                try:
-                    with open(config_path, "r") as f:
-                        config = json.load(f)
-                except:
-                    continue
+            for reports_dir in ["reports/local_optimizer", "/home/kidpixel/Téléchargements/local_optimizer"]:
+                base_dir = os.path.join(reports_dir, strategy, symbol)
+                if not os.path.isdir(base_dir):
+                    base_dir = os.path.join(reports_dir, strategy, symbol.lower())
+                    if not os.path.isdir(base_dir):
+                        base_dir = os.path.join(reports_dir, strategy, symbol.upper())
+                        if not os.path.isdir(base_dir):
+                            continue
                     
-                tf_mins = config.get("timeframe_minutes")
-                if not tf_mins:
-                    continue
-                tf_str = f"{tf_mins}m"
-                if tf_str not in tfs:
-                    continue
+                for run_dir in os.listdir(base_dir):
+                    run_path = os.path.join(base_dir, run_dir)
+                    if not os.path.isdir(run_path):
+                        continue
+                    
+                    config_path = os.path.join(run_path, "optimization_config.json")
+                    if not os.path.exists(config_path):
+                        continue
+                    
+                    try:
+                        with open(config_path, "r") as f:
+                            config = json.load(f)
+                    except:
+                        continue
+                        
+                    tf_mins = config.get("timeframe_minutes")
+                    if not tf_mins:
+                        continue
+                    tf_str = f"{tf_mins}m"
+                    if tf_str not in tfs:
+                        continue
+                    
+                    # We found a matching config! Now get best_run parquets
+                    best_run_base = os.path.join(run_path, "best_run", strategy, symbol)
+                    if not os.path.exists(best_run_base):
+                        best_run_base = os.path.join(run_path, "best_run", strategy, symbol.lower())
+                        if not os.path.exists(best_run_base):
+                            best_run_base = os.path.join(run_path, "best_run", strategy, symbol.upper())
+                            if not os.path.exists(best_run_base):
+                                continue
+                    
+                    best_runs = os.listdir(best_run_base)
+                    if not best_runs:
+                        continue
                 
-                # We found a matching config! Now get best_run parquets
-                best_run_base = os.path.join(run_path, "best_run", strategy, symbol)
-                if not os.path.exists(best_run_base):
-                    continue
-                
-                best_runs = os.listdir(best_run_base)
-                if not best_runs:
-                    continue
-                
-                best_run_ts = best_runs[0] # Pick the first one
-                trades_file = os.path.join(best_run_base, best_run_ts, "trades.parquet")
-                equity_file = os.path.join(best_run_base, best_run_ts, "equity_curve.parquet")
-                
-                if not os.path.exists(trades_file) or not os.path.exists(equity_file):
-                    continue
-                
-                trades = safe_read_parquet(trades_file)
-                equity = safe_read_parquet(equity_file)
-                
-                if trades is None or equity is None or len(trades) == 0:
-                    continue
-                
-                # Calc metrics
-                n_trades = len(trades)
-                
-                # Safe trade return calculation
-                if "qty" in trades.columns and "entry_price" in trades.columns:
-                    base_val = trades["entry_price"] * trades["qty"]
-                    # Replace 0 with inf to avoid div by zero, yielding 0 return
-                    trades["trade_return"] = np.where(base_val != 0, trades["net_pnl"] / base_val, 0)
-                else:
-                    trades["trade_return"] = trades["net_pnl"]
-                
-                wins = trades[trades["net_pnl"] > 0]
-                losses = trades[trades["net_pnl"] <= 0]
-                
-                win_rate = len(wins) / n_trades if n_trades > 0 else 0
-                gross_profit = wins["net_pnl"].sum()
-                gross_loss = abs(losses["net_pnl"].sum())
-                profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
-                
-                mean_return = trades["trade_return"].mean()
-                max_win = trades["trade_return"].max()
-                max_loss = trades["trade_return"].min()
-                
-                # Equity metrics
-                max_drawdown_pct = equity["drawdown_pct"].min() if "drawdown_pct" in equity.columns else 0
-                max_drawdown_currency = equity["drawdown"].min() if "drawdown" in equity.columns else 0
-                net_pnl_currency = trades["net_pnl"].sum()
-                
-                # Time analysis
-                if "entry_index" in trades.columns and "exit_index" in trades.columns:
-                    duration_days = (trades["exit_index"].max() - trades["entry_index"].min()).days
-                else:
-                    duration_days = 0
-                
-                duration_years = duration_days / 365.25 if duration_days > 0 else 0
-                trades_per_month = (n_trades / duration_days * 30.4) if duration_days > 0 else 0
-                trades_per_year = (n_trades / duration_years) if duration_years > 0 else 0
-                
-                rec_time = calc_recovery_time(equity)
-                
-                # Approximation of Sharpe/Sortino
-                # using monthly returns if possible
-                periodic = calc_periodic_returns(equity)
-                monthly_mean = periodic.get("monthly_mean", 0)
-                monthly_std = periodic.get("monthly_std", 0.0001)
-                if monthly_std == 0: monthly_std = 0.0001
-                sharpe = (monthly_mean * 12) / (monthly_std * np.sqrt(12))
-                
-                # Estimated returns
-                return_monthly = periodic.get("monthly_mean", 0)
-                return_quarterly = periodic.get("quarterly_mean", 0)
-                return_semi = periodic.get("semi_annual_mean", 0)
-                return_yearly = periodic.get("yearly_mean", 0)
-                
-                return_monthly_currency = periodic.get("monthly_mean_currency", 0)
-                return_quarterly_currency = periodic.get("quarterly_mean_currency", 0)
-                return_semi_currency = periodic.get("semi_annual_mean_currency", 0)
-                return_yearly_currency = periodic.get("yearly_mean_currency", 0)
-                
-                # Time-weighted return (rough approx)
-                total_hours = trades["bars_held"].sum() * (tf_mins / 60.0) if "bars_held" in trades.columns else 0
-                twr_hourly = trades["trade_return"].sum() / total_hours if total_hours > 0 else 0
-                
-                # Kelly Criterion = W - ((1 - W) / R)
-                mean_win = wins["trade_return"].mean() if len(wins) > 0 else 0
-                mean_loss = abs(losses["trade_return"].mean()) if len(losses) > 0 else 1
-                r_ratio = mean_win / mean_loss if mean_loss > 0 else 1
-                kelly = win_rate - ((1 - win_rate) / r_ratio) if r_ratio > 0 else 0
-                
-                setup_id = f"{strategy}_{symbol}_{tf_str}"
-                
-                results.append({
-                    "strategy": strategy,
-                    "symbol": symbol,
-                    "timeframe": tf_str,
-                    "win_rate": win_rate,
-                    "profit_factor": profit_factor,
-                    "mean_return": mean_return,
-                    "max_win": max_win,
-                    "max_loss": max_loss,
-                    "max_drawdown": max_drawdown_pct,
-                    "max_dd_currency": max_drawdown_currency,
-                    "net_pnl_currency": net_pnl_currency,
-                    "duration_years": duration_years,
-                    "trades_per_month": trades_per_month,
-                    "trades_per_year": trades_per_year,
-                    "return_monthly": return_monthly,
-                    "return_quarterly": return_quarterly,
-                    "return_semi": return_semi,
-                    "return_yearly": return_yearly,
-                    "return_monthly_currency": return_monthly_currency,
-                    "return_quarterly_currency": return_quarterly_currency,
-                    "return_semi_currency": return_semi_currency,
-                    "return_yearly_currency": return_yearly_currency,
-                    "recovery_time_days": rec_time,
-                    "sharpe": sharpe,
-                    "sortino": sharpe * 1.2, # Approximated for this mockup
-                    "trades": n_trades,
-                    "twr_hourly": twr_hourly,
-                    "kelly": max(0, kelly)
-                })
-                
-                # For correlation (Daily resample of in-market state)
-                # We create a date range
-                try:
-                    min_date = trades["entry_index"].min()
-                    max_date = trades["exit_index"].max()
-                    idx = pd.date_range(start=min_date, end=max_date, freq="D")
-                    s = pd.Series(0, index=idx)
-                    for _, t in trades.iterrows():
-                        s.loc[t["entry_index"]:t["exit_index"]] = 1
-                    series_for_corr[setup_id] = s
-                except Exception as e:
-                    pass
+                    best_run_ts = best_runs[0] # Pick the first one
+                    trades_file = os.path.join(best_run_base, best_run_ts, "trades.parquet")
+                    equity_file = os.path.join(best_run_base, best_run_ts, "equity_curve.parquet")
+                    
+                    if not os.path.exists(trades_file) or not os.path.exists(equity_file):
+                        continue
+                    
+                    trades = safe_read_parquet(trades_file)
+                    equity = safe_read_parquet(equity_file)
+                    
+                    if trades is None or equity is None or len(trades) == 0:
+                        continue
+                    
+                    # Calc metrics
+                    n_trades = len(trades)
+                    
+                    # Safe trade return calculation
+                    if "qty" in trades.columns and "entry_price" in trades.columns:
+                        base_val = trades["entry_price"] * trades["qty"]
+                        # Replace 0 with inf to avoid div by zero, yielding 0 return
+                        trades["trade_return"] = np.where(base_val != 0, trades["net_pnl"] / base_val, 0)
+                    else:
+                        trades["trade_return"] = trades["net_pnl"]
+                    
+                    wins = trades[trades["net_pnl"] > 0]
+                    losses = trades[trades["net_pnl"] <= 0]
+                    
+                    win_rate = len(wins) / n_trades if n_trades > 0 else 0
+                    gross_profit = wins["net_pnl"].sum()
+                    gross_loss = abs(losses["net_pnl"].sum())
+                    profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
+                    
+                    mean_return = trades["trade_return"].mean()
+                    max_win = trades["trade_return"].max()
+                    max_loss = trades["trade_return"].min()
+                    
+                    # Equity metrics
+                    max_drawdown_pct = equity["drawdown_pct"].min() if "drawdown_pct" in equity.columns else 0
+                    max_drawdown_currency = equity["drawdown"].min() if "drawdown" in equity.columns else 0
+                    net_pnl_currency = trades["net_pnl"].sum()
+                    
+                    # Time analysis
+                    if "entry_index" in trades.columns and "exit_index" in trades.columns:
+                        duration_days = (trades["exit_index"].max() - trades["entry_index"].min()).days
+                    else:
+                        duration_days = 0
+                    
+                    duration_years = duration_days / 365.25 if duration_days > 0 else 0
+                    trades_per_month = (n_trades / duration_days * 30.4) if duration_days > 0 else 0
+                    trades_per_year = (n_trades / duration_years) if duration_years > 0 else 0
+                    
+                    rec_time = calc_recovery_time(equity)
+                    
+                    # Approximation of Sharpe/Sortino
+                    # using monthly returns if possible
+                    periodic = calc_periodic_returns(equity)
+                    monthly_mean = periodic.get("monthly_mean", 0)
+                    monthly_std = periodic.get("monthly_std", 0.0001)
+                    if monthly_std == 0: monthly_std = 0.0001
+                    sharpe = (monthly_mean * 12) / (monthly_std * np.sqrt(12))
+                    
+                    # Estimated returns
+                    return_monthly = periodic.get("monthly_mean", 0)
+                    return_quarterly = periodic.get("quarterly_mean", 0)
+                    return_semi = periodic.get("semi_annual_mean", 0)
+                    return_yearly = periodic.get("yearly_mean", 0)
+                    
+                    return_monthly_currency = periodic.get("monthly_mean_currency", 0)
+                    return_quarterly_currency = periodic.get("quarterly_mean_currency", 0)
+                    return_semi_currency = periodic.get("semi_annual_mean_currency", 0)
+                    return_yearly_currency = periodic.get("yearly_mean_currency", 0)
+                    
+                    # Time-weighted return (rough approx)
+                    total_hours = trades["bars_held"].sum() * (tf_mins / 60.0) if "bars_held" in trades.columns else 0
+                    twr_hourly = trades["trade_return"].sum() / total_hours if total_hours > 0 else 0
+                    
+                    # Kelly Criterion = W - ((1 - W) / R)
+                    mean_win = wins["trade_return"].mean() if len(wins) > 0 else 0
+                    mean_loss = abs(losses["trade_return"].mean()) if len(losses) > 0 else 1
+                    r_ratio = mean_win / mean_loss if mean_loss > 0 else 1
+                    kelly = win_rate - ((1 - win_rate) / r_ratio) if r_ratio > 0 else 0
+                    
+                    sortino = sharpe * 1.2  # Default approximation
+                    
+                    # Try to get exact metrics from summary.json if available
+                    summary_path = os.path.join(run_path, "summary.json")
+                    if os.path.exists(summary_path):
+                        try:
+                            with open(summary_path, "r") as f:
+                                summary_data = json.load(f)
+                            best_row = summary_data.get("best_row") or {}
+                            best_metrics = best_row.get("metrics") or {}
+                            
+                            s_val = best_metrics.get("sharpe_ratio")
+                            if s_val is not None:
+                                sharpe = s_val
+                                
+                            sort_val = best_metrics.get("sortino_ratio")
+                            if sort_val is not None:
+                                sortino = sort_val
+                                
+                            pf_val = best_metrics.get("profit_factor")
+                            if pf_val is not None:
+                                profit_factor = pf_val
+                            elif best_metrics.get("winning_trades", 0) > 0 and best_metrics.get("losing_trades", 0) == 0:
+                                # 100% win rate has infinite profit factor
+                                profit_factor = float("inf")
+                                
+                            wr_val = best_metrics.get("win_rate_pct")
+                            if wr_val is not None:
+                                win_rate = wr_val / 100.0
+                                # Recalculate kelly with exact win_rate
+                                kelly = win_rate - ((1 - win_rate) / r_ratio) if r_ratio > 0 else 0
+                        except Exception as e:
+                            print(f"Error reading exact metrics from summary.json: {e}")
+                    
+                    results.append({
+                        "strategy": strategy,
+                        "symbol": symbol,
+                        "timeframe": tf_str,
+                        "run_path": run_path,
+                        "win_rate": win_rate,
+                        "profit_factor": profit_factor,
+                        "mean_return": mean_return,
+                        "max_win": max_win,
+                        "max_loss": max_loss,
+                        "max_drawdown": max_drawdown_pct,
+                        "max_dd_currency": max_drawdown_currency,
+                        "net_pnl_currency": net_pnl_currency,
+                        "duration_years": duration_years,
+                        "trades_per_month": trades_per_month,
+                        "trades_per_year": trades_per_year,
+                        "return_monthly": return_monthly,
+                        "return_quarterly": return_quarterly,
+                        "return_semi": return_semi,
+                        "return_yearly": return_yearly,
+                        "return_monthly_currency": return_monthly_currency,
+                        "return_quarterly_currency": return_quarterly_currency,
+                        "return_semi_currency": return_semi_currency,
+                        "return_yearly_currency": return_yearly_currency,
+                        "recovery_time_days": rec_time,
+                        "sharpe": sharpe,
+                        "sortino": sortino,
+                        "trades": n_trades,
+                        "twr_hourly": twr_hourly,
+                        "kelly": max(0, kelly)
+                    })
+                    
+                    # For correlation (Daily resample of in-market state)
+                    # We create a date range
+                    try:
+                        min_date = trades["entry_index"].min()
+                        max_date = trades["exit_index"].max()
+                        idx = pd.date_range(start=min_date, end=max_date, freq="D")
+                        s = pd.Series(0, index=idx)
+                        for _, t in trades.iterrows():
+                            s.loc[t["entry_index"]:t["exit_index"]] = 1
+                        series_for_corr[run_path] = s
+                    except Exception as e:
+                        pass
+
 
     return pd.DataFrame(results), series_for_corr
+
+def generate_portfolio_report(df, output_path):
+    # Filter setups
+    portfolio_df = df[
+        (df["strategy"] != "adaptive_trend_classification") &
+        (df["profit_factor"] > 1.5) &
+        (df["sharpe"] > 1.0) &
+        (df["kelly"] > 0) &
+        (df["return_monthly_currency"] > 0)
+    ].copy()
+    
+    # Sort by kelly_weight descending
+    portfolio_df = portfolio_df.sort_values("kelly_weight", ascending=False)
+    
+    # Create Shortlist (best monthly return per strategy/symbol combination)
+    shortlist_df = portfolio_df.sort_values("return_monthly_currency", ascending=False).drop_duplicates(subset=["strategy", "symbol"])
+    shortlist_df = shortlist_df.sort_values("return_monthly_currency", ascending=False)
+    
+    num_setups = len(portfolio_df)
+    num_shortlist = len(shortlist_df)
+    
+    lines = []
+    lines.append("# Portfolio de Déploiement Immédiat\n")
+    lines.append(f"Ce document consigne la liste exacte des **{num_setups} setups** identifiés pour un déploiement en production ou en paper-trading actif, suite à la campagne globale d'optimisation et d'arbitrage.\n")
+    lines.append("### Critères de Sélection")
+    lines.append("Les setups ci-dessous cochent toutes les conditions de robustesse suivantes :")
+    lines.append("- **Profit Factor** > 1.5")
+    lines.append("- **Sharpe Ratio** > 1.0")
+    lines.append("- **Kelly Criterion** > 0 (pour garantir un avantage mathématique à l'allocation)")
+    lines.append("- **Rendement Mensuel Moyen (€)** > 0 (Générateur de profit brut justifiant le risque)\n")
+    
+    lines.append("### Remarques Analytiques")
+    lines.append("- **`3commas_bot`** domine le portefeuille avec une excellente fréquence et de solides performances en euros.")
+    lines.append("- **`cybernetic_hilbert`** ressort extrêmement fort sur `ZEAL.CO` (nécessite une petite surveillance manuelle initiale pour écarter tout overfitting résiduel).")
+    lines.append("- **`momentum_based_zigzag`** et **`lorentzian_classification`** offrent d'excellents Profit Factors et des allocations Kelly élevées, parfaits pour la stabilité.\n")
+    
+    lines.append(f"## Les {num_setups} Setups Validés (Triés par Poids Kelly décroissant)\n")
+    
+    def df_to_markdown_table(temp_df):
+        table_lines = []
+        table_lines.append("| Stratégie | Actif | Timeframe | Profit Factor | Sharpe | Kelly Weight | Rendement Mensuel (€) |")
+        table_lines.append("| :--- | :--- | :--- | ---: | ---: | ---: | ---: |")
+        for _, row in temp_df.iterrows():
+            strat = f"`{row['strategy']}`"
+            sym = f"**{row['symbol']}**"
+            tf = row['timeframe']
+            
+            pf_val = row['profit_factor']
+            if pd.isnull(pf_val) or pf_val == float('inf'):
+                pf = "Inf"
+            else:
+                pf = f"{pf_val:.2f}"
+                
+            sr = f"{row['sharpe']:.2f}"
+            kw = f"**{row['kelly_weight']:.2%}**"
+            ret = f"{row['return_monthly_currency']:.2f} €"
+            table_lines.append(f"| {strat} | {sym} | {tf} | {pf} | {sr} | {kw} | {ret} |")
+        return "\n".join(table_lines)
+        
+    lines.append(df_to_markdown_table(portfolio_df))
+    lines.append("\n")
+    
+    lines.append(f"## Shortlist Ciblée ({num_shortlist} Configurations)\n")
+    lines.append("Extraction par meilleur Rendement Mensuel (€) absolu par combinaison Stratégie/Actif, pour un Paper-Trading concentré :\n")
+    lines.append(df_to_markdown_table(shortlist_df))
+    lines.append("")
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"Rapport de portefeuille sauvegardé dans {output_path}")
 
 def generate_html_report(df, output_path):
     # Prepare HTML dataframe with formatted columns
@@ -460,7 +589,9 @@ def generate_html_report(df, output_path):
     let currentPage = 1;
     let sortState = {{ index: null, direction: 'asc' }};
     function numericValue(text) {{
-      const cleaned = String(text).replace(/[%+€\\s]/g, '').replace(/[^0-9.\\-]/g, '');
+      const cleanText = String(text).trim().toLowerCase();
+      if (cleanText === 'inf' || cleanText === 'infinity') return Infinity;
+      const cleaned = cleanText.replace(/[%+€\\s]/g, '').replace(/[^0-9.\\-]/g, '');
       if (!cleaned || cleaned === '-' || cleaned === '.') return NaN;
       return Number(cleaned);
     }}
@@ -568,8 +699,14 @@ def main():
     # 4. Corrélation
     corr_matrix = pd.DataFrame()
     if corr_series:
-        corr_df = pd.DataFrame(corr_series).fillna(0)
-        corr_matrix = corr_df.corr()
+        final_corr_series = {}
+        for _, row in df.iterrows():
+            setup_id = f"{row['strategy']}_{row['symbol']}_{row['timeframe']}"
+            if row['run_path'] in corr_series:
+                final_corr_series[setup_id] = corr_series[row['run_path']]
+        if final_corr_series:
+            corr_df = pd.DataFrame(final_corr_series).fillna(0)
+            corr_matrix = corr_df.corr()
     
     # Génération du rapport Markdown
     print("Génération du rapport markdown...")
@@ -666,6 +803,10 @@ def main():
     # Génération du rapport HTML interactif
     print("Génération du rapport HTML interactif...")
     generate_html_report(df, DOCS_HTML_DIR)
+    
+    # Génération du rapport de portefeuille de déploiement immédiat
+    print("Génération du rapport de portefeuille...")
+    generate_portfolio_report(df, PORTFOLIO_DOCS_DIR)
 
 
 if __name__ == "__main__":

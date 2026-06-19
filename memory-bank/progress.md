@@ -1,6 +1,10 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-19 22:15:00] - Résolution de l'anomalie de scope des variables dans `scripts/analyze_best_performances.py` et consolidation des configurations baseline + extensions, qualifiant 50 setups dans le portefeuille de déploiement immédiat.
+- [x] [2026-06-19 22:00:00] - Ajustement du script d'analyse pour extraire les métriques réelles depuis les `summary.json`. Correction des gaps de Sharpe pour les setups de faible fréquence, réintégration de 5 extensions d'Adaptive Volatility Trend et alignement du portefeuille de déploiement (19 setups validés).
+- [x] [2026-06-19 21:45:00] - Mise à jour et automatisation du portefeuille de déploiement immédiat : intégration des setups d'extension, support de la recherche de répertoires insensible à la casse et génération automatisée du rapport `portfolio_deploiement_immediat.md` (11 setups validés, 10 en shortlist).
+- [x] [2026-06-19 20:00:15] - Nettoyage et allègement de `activeContext.md` : conservation des 10 dernières entrées récentes et archivage des 48 anciennes entrées dans `archives/activeContext_history.md`.
 - [x] [2026-06-19 20:00:00] - Exécution du workflow `/docs-updater` : Rédaction du guide technique `campaigns.md` pour l'orchestration programmatique de campagnes et la file de tâches SQLite. Mise à jour de l'indexation dans `README.md` et `optimization.md`.
 - [x] [2026-06-18 15:56:00] - Implémentation du système de file d'attente multi-symboles et multi-timeframes dans l'UI locale (Alpine.js) avec temporisation asynchrone (batching) sans modification de l'architecture backend SQLite.
 - [x] [2026-06-18 14:36:00] - Implémentation et validation des scripts de validation robustes (`verify_raw_data_1m.py`) et de conversion (`convert_verified_1m_to_parquet.py`) utilisant le multiprocessing (15 workers) et une méthode de lecture résiliente pour corriger la corruption de lignes fusionnées sur 204 fichiers CSV (50M+ de lignes converties au format snappy Parquet avec 68.13% de réduction d'espace).
