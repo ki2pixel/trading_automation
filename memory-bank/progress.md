@@ -130,6 +130,13 @@
 - [x] [2026-06-18 20:30:00] - Analyse et consignation de la Passe 2 (HMM Regime Filter Extension) terminées : mise à jour du rapport `passe_2_regime_filter.md` avec les résultats comparatifs détaillés pour les 6 nouveaux actifs.
 - [x] [2026-06-18 20:46:00] - Conception et exécution de `queue_hmm_campaign_passe3.py` pour lancer 15 jobs de Passe 3 pour l'extension de campagne HMM (excluant NVO, déjà traité le 15 Juin).
 - [x] [2026-06-18 20:50:00] - Analyse et consignation de la Passe 3 (HMM Regime Filter Extension) terminées : amélioration systématique des scores et des drawdowns. Rapports `passe_3_sorties.md` et `synthese_strategie.md` mis à jour avec les 22 configurations finales.
-
-
+- [x] [2026-06-18 22:30:00] - Conception et développement de `queue_3commas_campaign.py` pour la Passe 1 de la campagne 3commas_bot, avec filtrage des 10 actifs de baseline et préparation des jobs d'optimisation bayésienne en base SQLite.
+- [x] [2026-06-19 00:46:00] - Analyse et consignation de la Passe 1 (3commas_bot Extension) terminées : mise à jour du rapport `passe_1_signal.md` avec la validation du nouvel actif TENITEUR.
+- [x] [2026-06-19 01:03:00] - Analyse et consignation de la Passe 2 (3commas_bot Extension) pour TENITEUR : validation de l'asymétrie Risk-Management (TP 0.5 / SL 0.8) générant 75% de Win Rate. Mise à jour de `passe_2_risk.md`.
+- [x] [2026-06-19 01:17:00] - Création et exécution de `queue_3commas_passe2_swing.py` pour relancer la Passe 2 avec l'ajout de l'optimisation du paramètre `swing_lookback` (15 jobs générés, 2116 itérations bayésiennes par job).
+- [x] [2026-06-19 01:28:00] - Analyse et consignation de la Passe 2.1 (`swing_lookback`) terminées. Constat de la rareté des edges convergents (10 échecs sur 15). Découverte d'une correction majeure sur LOGI 120m grâce à un `swing` de 9 (Sortino passant de 0.53 à 0.76). Rapport `passe_2_risk.md` mis à jour avec ces observations clés.
+- [x] [2026-06-19 01:36:00] - Création et exécution de `queue_3commas_passe3_trail.py` pour la Passe 3 (Trailing Stop). Injection de 16 jobs en mode Grid Exhaustif (96 itérations par job) afin d'isoler l'impact de `trail_stop_size` sur les setups figés des passes précédentes.
+- [x] [2026-06-19 02:06:00] - Analyse et consignation de la Passe 3 terminées : mise à jour du rapport `passe_3_trailing.md` démontrant le rejet de la stratégie vis-à-vis du trailing stop (échec sur 13 configurations sur 15 et redondance sur LOGI 120m). Fin de la campagne d'optimisation `3commas_bot` avec les paramètres P2/P2.1 validés pour la production.
+  - *Mise à jour* : Ajout du rerun manuel pour `TENITEUR` (Sortino dégradé de -17.57%), confirmant l'échec global du Trailing Stop.
+- [x] [2026-06-19 02:14:00] - Mise à jour du document final `synthese_strategie.md` pour refléter les paramètres de production (Moyennes Mobiles Passe 1, TP/SL Passe 2, Swing Lookback Passe 2.1, et désactivation totale du Trailing Stop).
 

@@ -60,3 +60,24 @@ Ces actifs n'ont pas démontré de viabilité avec cette logique de croisement b
 
 Pour la **Passe 2 (Risk-Management et Ratios de Profit)**, l'optimisation doit se concentrer exclusivement sur les actifs de la catégorie **Edge Fort (🟢)**.
 Les couples de moyennes mobiles identifiés pour ces actifs devront être figés en dur pour éviter le sur-apprentissage et réduire l'espace de recherche. Les variables à optimiser lors de la prochaine étape incluront les niveaux de stop loss, take profit (ratios risk/reward) et les paramètres de filtres additionnels si nécessaire.
+
+---
+
+## 4. Résultats Extension de Campagne (18 Juin 2026)
+
+L'extension de campagne sur les nouveaux actifs screenés a généré un total de **461 itérations éligibles**. La stratégie s'est révélée très sélective sur cette cohorte, la grande majorité des candidats ne parvenant pas à franchir les contraintes strictes imposées (notamment le minimum de trades et la rentabilité requise).
+
+### 🟢 Edge Fort (Sortino > 0.50)
+* **TENITEUR** : Score 0.7379 sur 30m (`HEMA 5` / `SMA 38`) [223 itérations éligibles]
+
+### 🟡 Neutres / Modérés (Sortino 0.30 à 0.49)
+*Aucun actif dans cette catégorie.*
+
+### 🔴 Rejetés (Absence d'edge - Sortino < 0.30 ou 0 itération)
+* **PHIANLEUR** (Max 0.2852 sur 45m), **MRKDEEUR** (Max 0.2475 sur 45m), **ABIBEEUR** (Max 0.0000), **AIFREUR** (Max 0.0000), **AKZANLEUR** (Max 0.0000), **BEIDEEUR** (Max 0.0000), **BNFREUR** (Max 0.0000), **CAPFREUR** (Max 0.0000), **COVDEEUR** (Max 0.0000), **DIAITEUR** (Max 0.0000), **DPWDEEUR** (Max 0.0000), **DSMNLEUR** (Max 0.0000), **EDPPTEUR** (Max 0.0000), **ELI1VFIEUR** (Max 0.0000), **ERGITEUR** (Max 0.0000), **HEN3DEEUR** (Max 0.0000), **HNRDEEUR** (Max 0.0000), **ITXESEUR** (Max 0.0000), **MBITEUR** (Max 0.0000), **MHGNONOK** (Max 0.0000), **ORKNONOK** (Max 0.0000), **RECITEUR** (Max 0.0000), **RMSFREUR** (Max 0.0000), **STERVFIEUR** (Max 0.0000), **TELNONOK** (Max 0.0000), **TRNITEUR** (Max 0.0000), **VIEFREUR** (Max 0.0000), **VPKNLEUR** (Max 0.0000). Rejetés.
+
+---
+
+## 5. Mise à jour des Recommandations pour la Passe 2
+
+Pour la **Passe 2**, nous intégrons le nouvel actif validé **TENITEUR** à la liste des actifs qualifiés. Les paramètres de base devront être figés sur `HEMA 5` et `SMA 38` pour cet actif.
