@@ -76,6 +76,8 @@ class Trading212Client:
                     time.sleep(wait_time)
                     continue
                     
+                if response.status_code >= 400:
+                    print(f"[Trading212Client] API Error Response ({response.status_code}): {response.text}")
                 response.raise_for_status()
                 return response
                 

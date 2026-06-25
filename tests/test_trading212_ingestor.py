@@ -411,3 +411,26 @@ def test_run_ingestor_web_app():
     resp_prices = get_prices()
     # Then: Prices are returned
     assert resp_prices == {"AAPL": 150.0}
+
+
+def test_bootstrapper_env_quantity(mock_client):
+    resolver = Trading212TickerResolver(mock_client)
+    # Given: T212_BOOTSTRAP_QTY is set in environment
+    with patch.dict(os.environ, {"T212_BOOTSTRAP_QTY": "0.015"}):
+        bootstrapper = Trading212Bootstrapper(mock_client, resolver)
+        # Then: micro_qty is resolved to the env value
+        assert bootstrapper.micro_qty == 0.015
+
+
+def test_tracker_env_threshold(mock_client):
+    # Given: T212_MICRO_POSITION_THRESHOLD is set in environment
+    with patch.dict(os.environ, {"T212_MICRO_POSITION_THRESHOLD": "0.005"}):
+        tracker = Trading212PositionTracker(mock_client)
+        # Then: micro_threshold matches env value
+        assert tracker.micro_threshold == 0.005
+
+    # Given: Only T212_BOOTSTRAP_QTY is set in environment
+    with patch.dict(os.environ, {"T212_BOOTSTRAP_QTY": "0.02"}):
+        tracker = Trading212PositionTracker(mock_client)
+        # Then: micro_threshold falls back to T212_BOOTSTRAP_QTY value
+        assert tracker.micro_threshold == 0.02

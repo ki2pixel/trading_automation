@@ -43,12 +43,29 @@ Dans l'onglet **Environment** de votre service Render, ajoutez les variables sui
 | `T212_ENV` | `demo` ou `live` | Environnement Trading 212 (`demo` par défaut). |
 | `T212_INGESTOR_MODE` | `web` ou `worker` | Mode de service (`worker` par défaut). Utilisez `web` pour exposer l'API FastAPI. |
 | `T212_BOOTSTRAP` | `true` ou `false` | Activer le bootstrap automatique des micro-positions au lancement (`false` par défaut). |
+| `T212_BOOTSTRAP_QTY` | `0.0001` (à ajuster) | Taille par défaut d'une micro-position de bootstrap. Augmentez à `0.01` ou `0.1` si les ordres sont rejetés avec un code d'erreur 400. |
+| `T212_MICRO_POSITION_THRESHOLD` | (Optionnel) | Seuil de filtrage du tracker pour masquer les positions de bootstrap (s'aligne automatiquement sur `T212_BOOTSTRAP_QTY` si non défini). |
 | `T212_POLLING_INTERVAL` | `60` | Intervalle en secondes entre chaque récupération de prix. |
 | `T212_PRICE_CACHE_PATH` | `/app/cache/t212_prices.json` | Chemin interne du cache (laissé par défaut dans Docker). |
 
 ### Si vous utilisez le mode `Web Service` :
 - Render détectera automatiquement le port `8080` exposé par le Dockerfile.
 - Configurez le **Health Check Path** (chemin de vérification de santé) sur : `/health`.
+
+---
+
+## Diagnostic & Résolution d'Erreurs Communes (Erreur 400 sur orders/market)
+
+Si vous activez `T212_BOOTSTRAP=true` et observez des erreurs du type :
+`[Trading212Client] Request failed after 3 attempts: 400 Client Error: Bad Request`
+
+Cela indique généralement que l'ordre de bootstrap a été rejeté par Trading 212 pour l'une des raisons suivantes :
+1. **Valeur minimale d'ordre non atteinte** : Trading 212 impose souvent un montant d'ordre minimum de 1.00 unité de votre devise de compte (ex : €1.00 ou £1.00). Si la quantité de `0.0001` action d'un actif vaut moins de €1.00 (ex : 0.0001 * €25 = €0.0025), l'ordre est rejeté.
+2. **Précision de quantité invalide** : Certains instruments n'autorisent pas 4 décimales de précision.
+
+**Solution** :
+Ajustez la variable `T212_BOOTSTRAP_QTY` dans l'onglet **Environment** de Render à une valeur supérieure (par exemple `0.01` ou `0.1` selon les prix de vos actifs cibles) de sorte que la valeur totale de l'ordre dépasse le minimum requis de 1.00.
+
 
 ---
 

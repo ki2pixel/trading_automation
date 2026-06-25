@@ -1,3 +1,4 @@
+import os
 from typing import Set, List
 from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.trading212.resolver import Trading212TickerResolver
@@ -8,7 +9,10 @@ class Trading212Bootstrapper:
     def __init__(self, client: Trading212Client, resolver: Trading212TickerResolver):
         self.client = client
         self.resolver = resolver
-        self.micro_qty = 0.0001
+        try:
+            self.micro_qty = float(os.getenv("T212_BOOTSTRAP_QTY") or "0.0001")
+        except (ValueError, TypeError):
+            self.micro_qty = 0.0001
 
     def get_target_tickers(self) -> Set[str]:
         """Resolves all 21 target assets to their exact T212 tickers."""

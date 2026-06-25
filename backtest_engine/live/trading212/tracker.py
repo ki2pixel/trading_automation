@@ -1,12 +1,19 @@
-from typing import List, Dict, Any
+import os
+from typing import List, Dict, Any, Optional
 from backtest_engine.live.trading212.client import Trading212Client
 
 class Trading212PositionTracker:
     """Position tracker wrapper that excludes micro-positions used for price monitoring."""
 
-    def __init__(self, client: Trading212Client, micro_threshold: float = 0.0001):
+    def __init__(self, client: Trading212Client, micro_threshold: Optional[float] = None):
         self.client = client
-        self.micro_threshold = micro_threshold
+        if micro_threshold is not None:
+            self.micro_threshold = micro_threshold
+        else:
+            try:
+                self.micro_threshold = float(os.getenv("T212_MICRO_POSITION_THRESHOLD") or os.getenv("T212_BOOTSTRAP_QTY") or "0.0001")
+            except (ValueError, TypeError):
+                self.micro_threshold = 0.0001
 
     def get_real_positions(self) -> List[Dict[str, Any]]:
         """Retrieves open positions from Trading 212 and filters out micro-positions of quantity <= 0.0001."""
