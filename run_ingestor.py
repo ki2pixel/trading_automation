@@ -40,6 +40,22 @@ def health_check():
 
 @app.get("/prices")
 def get_prices():
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        try:
+            import psycopg2
+            prices = {}
+            with psycopg2.connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT ticker, price FROM trading212_prices")
+                    rows = cur.fetchall()
+                    for ticker, price in rows:
+                        prices[ticker] = float(price)
+            return prices
+        except Exception as e:
+            print(f"[Runner] Failed to fetch prices from PostgreSQL: {e}")
+            # Fallback to local JSON cache below
+            
     if ingestor is None:
         return {}
     return ingestor.read_cache()

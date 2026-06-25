@@ -47,6 +47,13 @@ Dans l'onglet **Environment** de votre service Render, ajoutez les variables sui
 | `T212_MICRO_POSITION_THRESHOLD` | (Optionnel) | Seuil de filtrage du tracker pour masquer les positions de bootstrap (s'aligne automatiquement sur `T212_BOOTSTRAP_QTY` si non défini). |
 | `T212_POLLING_INTERVAL` | `60` | Intervalle en secondes entre chaque récupération de prix. |
 | `T212_PRICE_CACHE_PATH` | `/app/cache/t212_prices.json` | Chemin interne du cache (laissé par défaut dans Docker). |
+| `DATABASE_URL` | `postgresql://...` | **Secret** - (Optionnel) URL de connexion PostgreSQL (ex: Supabase) pour persister les prix en dehors du stockage éphémère du conteneur. |
+
+### Persistance optionnelle avec PostgreSQL (ex: Supabase)
+Si la variable d'environnement `DATABASE_URL` est fournie :
+- Le service initialise automatiquement une table nommée `trading212_prices` au démarrage.
+- Toutes les 60 secondes (ou selon l'intervalle configuré), l'ingesteur écrit les prix à la fois dans le cache JSON local et dans PostgreSQL (`UPSERT`).
+- L'endpoint `/prices` lit directement les données depuis PostgreSQL pour garantir la fraîcheur de l'information (avec repli sur le cache local JSON en cas d'erreur de base de données).
 
 ### Si vous utilisez le mode `Web Service` :
 - Render détectera automatiquement le port `8080` exposé par le Dockerfile.

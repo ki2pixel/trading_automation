@@ -10,6 +10,37 @@ class Trading212PriceIngestor:
     def __init__(self, client: Trading212Client, cache_path: Optional[str] = None):
         self.client = client
         self.cache_path = cache_path or os.getenv("T212_PRICE_CACHE_PATH") or "/tmp/t212_prices.json"
+        self._init_db()
+
+    def _get_db_connection(self):
+        """Returns a PostgreSQL connection if DATABASE_URL is configured."""
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return None
+        import psycopg2
+        return psycopg2.connect(db_url)
+
+    def _init_db(self) -> None:
+        """Creates the prices table if DATABASE_URL is set."""
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            if conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS trading212_prices (
+                            ticker VARCHAR(50) PRIMARY KEY,
+                            price NUMERIC(15, 6) NOT NULL,
+                            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    conn.commit()
+                print("[PriceIngestor] PostgreSQL prices table initialized.")
+        except Exception as e:
+            print(f"[PriceIngestor] Failed to initialize PostgreSQL table: {e}")
+        finally:
+            if conn:
+                conn.close()
 
     def poll_and_cache(self) -> Dict[str, float]:
         """Polls open positions, extracts current prices, and saves them to the cache file."""
@@ -45,9 +76,9 @@ class Trading212PriceIngestor:
         return prices
 
     def _write_cache(self, prices: Dict[str, float]) -> None:
-        """Writes price dictionary to the JSON cache file."""
+        """Writes price dictionary to the JSON cache file and database."""
+        # 1. Write to local JSON file
         try:
-            # Atomic write using a temp file
             temp_path = f"{self.cache_path}.tmp"
             os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
             with open(temp_path, "w") as f:
@@ -55,6 +86,27 @@ class Trading212PriceIngestor:
             os.replace(temp_path, self.cache_path)
         except Exception as e:
             print(f"[PriceIngestor] Failed to write price cache: {e}")
+
+        # 2. Write to PostgreSQL (if DATABASE_URL is set)
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            if conn:
+                with conn.cursor() as cur:
+                    for ticker, price in prices.items():
+                        cur.execute("""
+                            INSERT INTO trading212_prices (ticker, price, updated_at)
+                            VALUES (%s, %s, CURRENT_TIMESTAMP)
+                            ON CONFLICT (ticker)
+                            DO UPDATE SET price = EXCLUDED.price, updated_at = CURRENT_TIMESTAMP;
+                        """, (ticker, price))
+                    conn.commit()
+                print(f"[PriceIngestor] Successfully updated {len(prices)} prices in PostgreSQL.")
+        except Exception as e:
+            print(f"[PriceIngestor] Failed to write to PostgreSQL cache: {e}")
+        finally:
+            if conn:
+                conn.close()
 
     def read_cache(self) -> Dict[str, float]:
         """Reads cached prices from the JSON file."""
