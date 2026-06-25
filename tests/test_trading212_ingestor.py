@@ -356,3 +356,58 @@ def test_tracker_filtering(mock_client):
     assert len(micro_pos) == 2
     assert micro_pos[0]["instrument"]["ticker"] == "TIMd_EQ"
     assert micro_pos[1]["instrument"]["ticker"] == "NOVCd_EQ"
+
+
+# =====================================================================
+# DEPLOYMENT & INTEGRATION TESTS
+# =====================================================================
+
+def test_ingestor_env_cache_path(mock_client):
+    # Given: T212_PRICE_CACHE_PATH is set in environment
+    with patch.dict(os.environ, {"T212_PRICE_CACHE_PATH": "/tmp/custom_env_path.json"}):
+        # When: Ingestor is initialized without explicit cache_path
+        ingestor = Trading212PriceIngestor(mock_client)
+        # Then: cache_path matches env var
+        assert ingestor.cache_path == "/tmp/custom_env_path.json"
+
+
+def test_ingestor_graceful_shutdown(mock_client, tmp_path):
+    # Given: Price ingestor
+    cache_file = str(tmp_path / "prices.json")
+    ingestor = Trading212PriceIngestor(mock_client, cache_path=cache_file)
+    mock_client.get_positions = MagicMock(return_value=[])
+
+    # When: Running loop, but a thread sets _running = False or we interrupt immediately
+    # We mock poll_and_cache to change _running to False to simulate signal received
+    original_poll = ingestor.poll_and_cache
+    def mock_poll():
+        ingestor._running = False
+        return original_poll()
+        
+    ingestor.poll_and_cache = mock_poll
+
+    # start_loop should terminate immediately after one poll
+    ingestor.start_loop(interval_seconds=1)
+    
+    # Then: Loop stops cleanly without hanging
+    assert ingestor._running is False
+
+
+def test_run_ingestor_web_app():
+    from run_ingestor import health_check, get_prices
+    import run_ingestor
+    
+    # Given: We mock run_ingestor's ingestor instance
+    mock_ing = MagicMock()
+    mock_ing.read_cache.return_value = {"AAPL": 150.0}
+    run_ingestor.ingestor = mock_ing
+    
+    # When: Calling health_check
+    resp_health = health_check()
+    # Then: Health is OK
+    assert resp_health == {"status": "healthy"}
+    
+    # When: Calling get_prices
+    resp_prices = get_prices()
+    # Then: Prices are returned
+    assert resp_prices == {"AAPL": 150.0}

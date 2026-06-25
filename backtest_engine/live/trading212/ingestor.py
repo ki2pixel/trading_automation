@@ -7,9 +7,9 @@ from backtest_engine.live.trading212.client import Trading212Client
 class Trading212PriceIngestor:
     """Tâche d'ingestion de prix pour récupérer les cotations via positions."""
 
-    def __init__(self, client: Trading212Client, cache_path: str = "/tmp/t212_prices.json"):
+    def __init__(self, client: Trading212Client, cache_path: Optional[str] = None):
         self.client = client
-        self.cache_path = cache_path
+        self.cache_path = cache_path or os.getenv("T212_PRICE_CACHE_PATH") or "/tmp/t212_prices.json"
 
     def poll_and_cache(self) -> Dict[str, float]:
         """Polls open positions, extracts current prices, and saves them to the cache file."""
@@ -70,15 +70,32 @@ class Trading212PriceIngestor:
     def start_loop(self, interval_seconds: int = 60) -> None:
         """Starts a blocking loop that polls prices at the specified interval."""
         print(f"[PriceIngestor] Starting polling loop. Interval: {interval_seconds}s")
-        while True:
+        import signal
+        self._running = True
+
+        def handle_signal(signum, frame):
+            print(f"[PriceIngestor] Received signal {signum}. Stopping loop gracefully...")
+            self._running = False
+
+        try:
+            signal.signal(signal.SIGTERM, handle_signal)
+            signal.signal(signal.SIGINT, handle_signal)
+        except ValueError:
+            # Fallback if not running in the main thread
+            pass
+
+        while self._running:
             try:
                 self.poll_and_cache()
-            except KeyboardInterrupt:
-                print("[PriceIngestor] Polling loop stopped by user.")
-                break
             except Exception as e:
                 print(f"[PriceIngestor] Unexpected error in polling loop: {e}")
-            time.sleep(interval_seconds)
+            
+            # Sleep in 1-second increments to respond to signals quickly
+            for _ in range(interval_seconds):
+                if not self._running:
+                    break
+                time.sleep(1)
+        print("[PriceIngestor] Polling loop stopped cleanly.")
 
 if __name__ == "__main__":
     # Executable entry point for manual validation

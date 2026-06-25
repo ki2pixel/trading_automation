@@ -1,15 +1,17 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Intégration en production live des configurations validées et reprise des analyses sur l'API Trading 212.
+- Aucun. Session terminée avec succès.
 
 ## Prochaines Étapes
 - Intégrer les 10 configurations validées d'Adaptive Volatility Trend (5 de la baseline + 5 d'extension) dans le dictionnaire d'allocation du moteur de production live.
-- Reprendre les analyses et l'évaluation de la cotation en temps réel de l'API Trading 212.
+- Connecter les 35 configurations de trading de la shortlist au cache de prix local de l'ingesteur Trading 212 (`/tmp/t212_prices.json`).
 
 ## Bloquants / Problèmes Actuels
 - Aucun.
 
+
+- [2026-06-25 14:19:00] - Conception et développement de l'ingesteur de prix Trading 212 (Price Ingestor) basé sur la méthode du Portfolio Hack. Mappage EUR validé des 21 actifs de la Shortlist, routine de bootstrap automatique des micro-positions (0.0001 action), polling toutes les 60s avec mise en cache dans `/tmp/t212_prices.json`, et filtrage des micro-positions par le tracker. Validation complète par tests Pytest (16 tests passed).
 
 - [2026-06-19 22:15:00] - Résolution de l'anomalie critique de scope des variables lors de l'arbitrage. Re-génération complète des rapports de performance consolidant les campagnes active et archivée (269 setups valides identifiés, 50 setups qualifiés pour déploiement immédiat). Validation de la configuration momentum_based_zigzag pour NVO en 45m.
 

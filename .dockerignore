@@ -1,0 +1,34 @@
+# Exclude git/github metadata
+.git
+.github
+
+# Exclude local configurations and keys
+.env
+*.local
+secrets.*
+
+# Exclude python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.venv
+venv
+env
+
+# Exclude documentation and local reports
+docs
+reports
+debug
+financial_datasets
+trading_view_sample_report
+aggregated_metrics.json
+
+# Exclude system/IDE files
+.DS_Store
+.agents
+.windsurf
+.shrimp_task_manager
+*.desktop
+*.sh
