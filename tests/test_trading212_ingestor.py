@@ -434,3 +434,45 @@ def test_tracker_env_threshold(mock_client):
         tracker = Trading212PositionTracker(mock_client)
         # Then: micro_threshold falls back to T212_BOOTSTRAP_QTY value
         assert tracker.micro_threshold == 0.02
+
+
+@patch("backtest_engine.live.trading212.client.Trading212Client.place_market_order")
+def test_bootstrapper_adaptive_retry_precision(mock_place, mock_client):
+    resolver = Trading212TickerResolver(mock_client)
+    bootstrapper = Trading212Bootstrapper(mock_client, resolver)
+    
+    from requests.exceptions import HTTPError
+    
+    # 1st response: min-quantity-exceeded
+    resp_min_qty = MagicMock()
+    resp_min_qty.status_code = 400
+    resp_min_qty.json.return_value = {
+        "type": "/api-errors/min-quantity-exceeded",
+        "detail": "must trade at least 0.04016064"
+    }
+    err_min_qty = HTTPError(response=resp_min_qty)
+    
+    # 2nd response: quantity-precision-mismatch
+    resp_precision = MagicMock()
+    resp_precision.status_code = 400
+    resp_precision.json.return_value = {
+        "type": "/api-errors/quantity-precision-mismatch",
+        "detail": "invalid quantity precision 3"
+    }
+    err_precision = HTTPError(response=resp_precision)
+    
+    # 3rd response: success
+    resp_success = {"id": 999, "status": "NEW"}
+    
+    mock_place.side_effect = [err_min_qty, err_precision, resp_success]
+    
+    # When: we place adaptive market order
+    res = bootstrapper._place_adaptive_market_order("TW10d_EQ", 0.0001)
+    
+    # Then: it succeeds and returns the success dict after 3 calls
+    assert res == resp_success
+    assert mock_place.call_count == 3
+    
+    mock_place.assert_any_call("TW10d_EQ", 0.0001)
+    mock_place.assert_any_call("TW10d_EQ", 0.04016164)
+    mock_place.assert_any_call("TW10d_EQ", 0.041)

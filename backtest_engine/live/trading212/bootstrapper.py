@@ -1,5 +1,5 @@
 import os
-from typing import Set, List
+from typing import Set, List, Dict, Any
 from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.trading212.resolver import Trading212TickerResolver
 
@@ -70,38 +70,59 @@ class Trading212Bootstrapper:
                 
             print(f"[Bootstrapper] Ticker {ticker} is missing. Placing micro market buy order of {self.micro_qty} shares...")
             try:
-                result = self.client.place_market_order(ticker, self.micro_qty)
+                result = self._place_adaptive_market_order(ticker, self.micro_qty)
                 print(f"[Bootstrapper] Placed market order for {ticker}: ID {result.get('id')} - Status {result.get('status')}")
                 placed_tickers.append(ticker)
             except Exception as e:
-                retry_success = False
-                # Try to extract the minimum quantity if the order failed due to min-quantity-exceeded
-                if hasattr(e, "response") and e.response is not None and e.response.status_code == 400:
-                    try:
-                        err_data = e.response.json()
-                        err_type = err_data.get("type", "")
-                        err_detail = err_data.get("detail", "")
-                        
-                        if "min-quantity" in err_type or "must trade at least" in err_detail:
-                            import re
-                            match = re.search(r"must trade at least ([\d\.]+)", err_detail)
-                            if match:
-                                min_qty = float(match.group(1))
-                                # Add epsilon and round to 8 decimals
-                                adaptive_qty = round(min_qty + 1e-6, 8)
-                                print(f"[Bootstrapper] Order for {ticker} rejected with min-quantity limit. Retrying with adaptive quantity: {adaptive_qty} shares...")
-                                result = self.client.place_market_order(ticker, adaptive_qty)
-                                print(f"[Bootstrapper] Placed adaptive market order for {ticker}: ID {result.get('id')} - Status {result.get('status')}")
-                                placed_tickers.append(ticker)
-                                retry_success = True
-                    except Exception as retry_err:
-                        print(f"[Bootstrapper] Adaptive retry failed for {ticker}: {retry_err}")
-                
-                if not retry_success:
-                    print(f"[Bootstrapper] Failed to place order for {ticker}: {e}")
+                print(f"[Bootstrapper] Failed to place order for {ticker}: {e}")
                 
         print(f"[Bootstrapper] Bootstrap complete. Placed {len(placed_tickers)} new micro-position orders.")
         return placed_tickers
+
+    def _place_adaptive_market_order(self, ticker: str, quantity: float, precision: int = 8, depth: int = 0) -> Dict[str, Any]:
+        """Places a market order and dynamically adapts to quantity/precision limits on errors."""
+        if depth > 3:
+            raise RuntimeError(f"Max adaptive order retries exceeded for {ticker}")
+        
+        qty = round(quantity, precision)
+        
+        try:
+            return self.client.place_market_order(ticker, qty)
+        except Exception as e:
+            if hasattr(e, "response") and e.response is not None and e.response.status_code == 400:
+                try:
+                    err_data = e.response.json()
+                    err_type = err_data.get("type", "")
+                    err_detail = err_data.get("detail", "")
+                    
+                    # Case 1: Quantity is too small (Min Order Value limit)
+                    if "min-quantity" in err_type or "must trade at least" in err_detail:
+                        import re
+                        match = re.search(r"must trade at least ([\d\.]+)", err_detail)
+                        if match:
+                            min_qty = float(match.group(1))
+                            target_qty = min_qty + 1e-6
+                            print(f"[Bootstrapper] Ticker {ticker} needs larger quantity. Re-trying with target_qty={target_qty}...")
+                            return self._place_adaptive_market_order(ticker, target_qty, precision, depth + 1)
+                            
+                    # Case 2: Precision mismatch
+                    if "quantity-precision" in err_type or "invalid quantity precision" in err_detail:
+                        import re
+                        match = re.search(r"invalid quantity precision (\d+)", err_detail)
+                        if match:
+                            allowed_precision = int(match.group(1))
+                            print(f"[Bootstrapper] Ticker {ticker} has quantity precision limit of {allowed_precision}. Re-rounding...")
+                            
+                            import math
+                            factor = 10 ** allowed_precision
+                            target_qty = math.ceil(quantity * factor) / factor
+                            
+                            return self._place_adaptive_market_order(ticker, target_qty, allowed_precision, depth + 1)
+                            
+                except Exception as inner_err:
+                    print(f"[Bootstrapper] Inner adaptive logic failed for {ticker}: {inner_err}")
+            
+            raise e
 
 if __name__ == "__main__":
     # Executable entry point for manual validation
