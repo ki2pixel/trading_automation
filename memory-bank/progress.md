@@ -1,6 +1,7 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-25 17:00:00] - Intégration de PostgreSQL (Supabase) comme couche de cache optionnelle pour Trading 212 Price Ingestor. Double écriture (JSON local + PostgreSQL via UPSERT), lecture directe depuis PostgreSQL sur l'endpoint /prices avec repli automatique en cas d'erreur de base de données. Extension de la suite de tests unitaires à 27 tests validés (100% de réussite) couvrant la base de données. Documentation de déploiement mise à jour.
 - [x] [2026-06-25 14:19:00] - Conception et développement de l'ingesteur de prix Trading 212 (Price Ingestor) basé sur la méthode du Portfolio Hack. Mappage EUR validé des 21 actifs de la Shortlist, routine de bootstrap automatique des micro-positions (0.0001 action), polling toutes les 60s avec mise en cache dans `/tmp/t212_prices.json`, et filtrage des micro-positions par le tracker. Validation complète par 16 tests unitaires avec 100% de succès.
 - [x] [2026-06-19 22:15:00] - Résolution de l'anomalie de scope des variables dans `scripts/analyze_best_performances.py` et consolidation des configurations baseline + extensions, qualifiant 50 setups dans le portefeuille de déploiement immédiat.
 - [x] [2026-06-19 22:00:00] - Ajustement du script d'analyse pour extraire les métriques réelles depuis les `summary.json`. Correction des gaps de Sharpe pour les setups de faible fréquence, réintégration de 5 extensions d'Adaptive Volatility Trend et alignement du portefeuille de déploiement (19 setups validés).

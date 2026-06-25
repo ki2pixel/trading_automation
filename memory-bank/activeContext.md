@@ -11,6 +11,8 @@
 - Aucun.
 
 
+- [2026-06-25 17:00:00] - Intégration de PostgreSQL (Supabase) comme couche de cache optionnelle pour Trading 212 Price Ingestor. Double écriture (JSON local + PostgreSQL via UPSERT), lecture directe depuis PostgreSQL sur l'endpoint /prices avec repli automatique en cas d'erreur de base de données. Extension de la suite de tests unitaires à 27 tests validés (100% de réussite) couvrant la base de données. Documentation de déploiement mise à jour.
+
 - [2026-06-25 14:19:00] - Conception et développement de l'ingesteur de prix Trading 212 (Price Ingestor) basé sur la méthode du Portfolio Hack. Mappage EUR validé des 21 actifs de la Shortlist, routine de bootstrap automatique des micro-positions (0.0001 action), polling toutes les 60s avec mise en cache dans `/tmp/t212_prices.json`, et filtrage des micro-positions par le tracker. Validation complète par tests Pytest (16 tests passed).
 
 - [2026-06-19 22:15:00] - Résolution de l'anomalie critique de scope des variables lors de l'arbitrage. Re-génération complète des rapports de performance consolidant les campagnes active et archivée (269 setups valides identifiés, 50 setups qualifiés pour déploiement immédiat). Validation de la configuration momentum_based_zigzag pour NVO en 45m.
