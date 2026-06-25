@@ -58,5 +58,83 @@
     "open": "09:00",
     "close": "17:30",
     "tz_offset": "+01:00"
+  },
+  "dpwdeeur": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "teniteur": {
+    "exchange": "ITALIAN_STOCK_EXCHANGE",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "akzanleur": {
+    "exchange": "EURONEXT_AMSTERDAM",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "daideeur": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "mrkdeeur": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "vnadeeur": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "acfreur": {
+    "exchange": "EURONEXT_PARIS",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "lxsdeeur": {
+    "exchange": "XETRA",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "randnleur": {
+    "exchange": "EURONEXT_AMSTERDAM",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "rifreur": {
+    "exchange": "EURONEXT_PARIS",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "abibeeur": {
+    "exchange": "EURONEXT_BRUSSELS",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "belgbeeur": {
+    "exchange": "EURONEXT_BRUSSELS",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
+  },
+  "cafreur": {
+    "exchange": "EURONEXT_PARIS",
+    "open": "09:00",
+    "close": "17:30",
+    "tz_offset": "+01:00"
   }
 }

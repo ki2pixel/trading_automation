@@ -13,6 +13,13 @@ if [ -f .env ]; then
     set +a
 fi
 
+# Activer l'environnement virtuel local s'il existe
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+elif [ -d "venv" ]; then
+    source venv/bin/activate
+fi
+
 # Configuration
 ACTION=""
 HOST="127.0.0.1"
@@ -20,7 +27,15 @@ PORT="8765"
 REPO_ROOT="."
 
 # Redirect optimizer/backtest reports via BACKTEST_REPORTS_DIR env var
-export BACKTEST_REPORTS_DIR="${BACKTEST_REPORTS_DIR:-/mnt/venv_ext4/trading_automation_v2/reports}"
+DEFAULT_REPORTS_DIR="/mnt/venv_ext4/trading_automation_v2/reports"
+if [ -z "${BACKTEST_REPORTS_DIR}" ]; then
+    if mkdir -p "$DEFAULT_REPORTS_DIR" 2>/dev/null && [ -w "$DEFAULT_REPORTS_DIR" ]; then
+        export BACKTEST_REPORTS_DIR="$DEFAULT_REPORTS_DIR"
+    else
+        echo -e "\033[1;33m[WARNING]\033[0m Répertoire par défaut non accessible (/mnt/venv_ext4). Utilisation du dossier local ./reports."
+        export BACKTEST_REPORTS_DIR="./reports"
+    fi
+fi
 export NUMBA_CPU_FEATURES="-avx512f,+avx2"
 OUTPUT_DIR="$BACKTEST_REPORTS_DIR/local_optimizer"
 
