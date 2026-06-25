@@ -11,26 +11,26 @@ URL = f"https://{API_HOST}/v2/chart/price"
 
 # Ticker Mapping: Trading 212 -> MarketFlow format (EXCHANGE:SYMBOL)
 TICKER_MAPPING = {
-    "ZEAL.CO": "GETTEX:ZEAL.CO",  # Or XETRA:TIMA if GETTEX is not supported
-    "NVO": "XETRA:NVO",
-    "EVD.DE": "XETRA:EVD.DE",
+    "ZEAL.CO": "LSX:ZEAL24",  # Zeal Network
+    "NVO": "FWB:NVO",
+    "EVD.DE": "FWB:EVD",
     "GMAB": "NASDAQ:GMAB",
-    "FPE.DE": "XETRA:FPE.DE",
-    "SAP": "XETRA:SAP",
-    "NVS": "XETRA:NVS",
+    "FPE.DE": "FWB:FPE",
+    "SAP": "FWB:SAP",
+    "NVS": "FWB:NVS",
     "AMS.MC": "BME:AMS",
-    "dpwdeeur": "XETRA:DPW",
+    "dpwdeeur": "FWB:DPW",
     "teniteur": "MIL:TEN",
     "akzanleur": "EURONEXT:AKZA",
-    "daideeur": "XETRA:MBG",
-    "mrkdeeur": "XETRA:MRK",
-    "vnadeeur": "XETRA:VNA",
+    "daideeur": "FWB:MBG",
+    "mrkdeeur": "FWB:MRK",
+    "vnadeeur": "FWB:VNA",
     "acfreur": "EURONEXT:AC",
-    "lxsdeeur": "XETRA:LXS",
+    "lxsdeeur": "FWB:LXS",
     "randnleur": "EURONEXT:RAND",
     "rifreur": "EURONEXT:RI",
     "abibeeur": "EURONEXT:ABI",
-    "belgbeeur": "EURONEXT:BELG",
+    "belgbeeur": "EURONEXT:PROX", # Proximus
     "cafreur": "EURONEXT:CA"
 }
 
