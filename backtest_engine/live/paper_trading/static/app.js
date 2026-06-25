@@ -79,7 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 tr.innerHTML = `
                     <td>${conf.id}</td>
                     <td><strong>${conf.strategy_name}</strong></td>
-                    <td>${conf.asset} (${conf.timeframe})</td>
+                    <td>${conf.asset}</td>
+                    <td>${conf.timeframe}</td>
                     <td>${formatCurrency(conf.initial_capital)}</td>
                     <td>${formatCurrency(conf.initial_capital_bucket)}</td>
                     <td>${formatCurrency(conf.max_capital_bucket)}</td>
