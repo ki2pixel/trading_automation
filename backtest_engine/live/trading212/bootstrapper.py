@@ -74,7 +74,31 @@ class Trading212Bootstrapper:
                 print(f"[Bootstrapper] Placed market order for {ticker}: ID {result.get('id')} - Status {result.get('status')}")
                 placed_tickers.append(ticker)
             except Exception as e:
-                print(f"[Bootstrapper] Failed to place order for {ticker}: {e}")
+                retry_success = False
+                # Try to extract the minimum quantity if the order failed due to min-quantity-exceeded
+                if hasattr(e, "response") and e.response is not None and e.response.status_code == 400:
+                    try:
+                        err_data = e.response.json()
+                        err_type = err_data.get("type", "")
+                        err_detail = err_data.get("detail", "")
+                        
+                        if "min-quantity" in err_type or "must trade at least" in err_detail:
+                            import re
+                            match = re.search(r"must trade at least ([\d\.]+)", err_detail)
+                            if match:
+                                min_qty = float(match.group(1))
+                                # Add epsilon and round to 8 decimals
+                                adaptive_qty = round(min_qty + 1e-6, 8)
+                                print(f"[Bootstrapper] Order for {ticker} rejected with min-quantity limit. Retrying with adaptive quantity: {adaptive_qty} shares...")
+                                result = self.client.place_market_order(ticker, adaptive_qty)
+                                print(f"[Bootstrapper] Placed adaptive market order for {ticker}: ID {result.get('id')} - Status {result.get('status')}")
+                                placed_tickers.append(ticker)
+                                retry_success = True
+                    except Exception as retry_err:
+                        print(f"[Bootstrapper] Adaptive retry failed for {ticker}: {retry_err}")
+                
+                if not retry_success:
+                    print(f"[Bootstrapper] Failed to place order for {ticker}: {e}")
                 
         print(f"[Bootstrapper] Bootstrap complete. Placed {len(placed_tickers)} new micro-position orders.")
         return placed_tickers

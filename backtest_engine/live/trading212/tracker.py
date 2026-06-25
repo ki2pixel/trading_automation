@@ -11,12 +11,12 @@ class Trading212PositionTracker:
             self.micro_threshold = micro_threshold
         else:
             try:
-                self.micro_threshold = float(os.getenv("T212_MICRO_POSITION_THRESHOLD") or os.getenv("T212_BOOTSTRAP_QTY") or "0.0001")
+                self.micro_threshold = float(os.getenv("T212_MICRO_POSITION_THRESHOLD") or os.getenv("T212_BOOTSTRAP_QTY") or "0.2")
             except (ValueError, TypeError):
-                self.micro_threshold = 0.0001
+                self.micro_threshold = 0.2
 
     def get_real_positions(self) -> List[Dict[str, Any]]:
-        """Retrieves open positions from Trading 212 and filters out micro-positions of quantity <= 0.0001."""
+        """Retrieves open positions from Trading 212 and filters out micro-positions."""
         try:
             positions = self.client.get_positions()
         except Exception as e:
@@ -25,19 +25,9 @@ class Trading212PositionTracker:
             
         real_positions = []
         for pos in positions:
-            quantity = pos.get("quantity")
-            if quantity is not None:
-                try:
-                    qty = float(quantity)
-                    # Skip micro monitoring positions (quantity <= threshold)
-                    # Note: Using a small tolerance for floating point comparisons
-                    if qty > self.micro_threshold + 1e-9:
-                        real_positions.append(pos)
-                except (ValueError, TypeError):
-                    # In case parsing fails, keep it in real positions as a safety fallback
-                    real_positions.append(pos)
-            else:
-                real_positions.append(pos)
+            if self._is_micro_position(pos):
+                continue
+            real_positions.append(pos)
                 
         return real_positions
 
@@ -51,12 +41,34 @@ class Trading212PositionTracker:
             
         micro_positions = []
         for pos in positions:
-            quantity = pos.get("quantity")
-            if quantity is not None:
+            if self._is_micro_position(pos):
+                micro_positions.append(pos)
+        return micro_positions
+
+    def _is_micro_position(self, pos: Dict[str, Any]) -> bool:
+        """Helper to determine if a position is a micro monitoring position."""
+        quantity = pos.get("quantity")
+        if quantity is None:
+            return False
+            
+        try:
+            qty = float(quantity)
+        except (ValueError, TypeError):
+            return False
+
+        # 1. Quantity-based check
+        if qty <= self.micro_threshold + 1e-9:
+            return True
+
+        # 2. Value-based check (under 2.0 units of account currency)
+        wallet_impact = pos.get("walletImpact")
+        if wallet_impact and isinstance(wallet_impact, dict):
+            val = wallet_impact.get("currentValue")
+            if val is not None:
                 try:
-                    qty = float(quantity)
-                    if qty <= self.micro_threshold + 1e-9:
-                        micro_positions.append(pos)
+                    if float(val) < 2.0:
+                        return True
                 except (ValueError, TypeError):
                     pass
-        return micro_positions
+
+        return False
