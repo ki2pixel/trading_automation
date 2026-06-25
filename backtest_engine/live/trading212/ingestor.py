@@ -34,6 +34,17 @@ class Trading212PriceIngestor:
                             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                         );
                     """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS trading212_candles_1m (
+                            ticker VARCHAR(50),
+                            timestamp_minute TIMESTAMP WITH TIME ZONE,
+                            open NUMERIC(15, 6) NOT NULL,
+                            high NUMERIC(15, 6) NOT NULL,
+                            low NUMERIC(15, 6) NOT NULL,
+                            close NUMERIC(15, 6) NOT NULL,
+                            PRIMARY KEY (ticker, timestamp_minute)
+                        );
+                    """)
                     conn.commit()
                 print("[PriceIngestor] PostgreSQL prices table initialized.")
         except Exception as e:
@@ -100,8 +111,23 @@ class Trading212PriceIngestor:
                             ON CONFLICT (ticker)
                             DO UPDATE SET price = EXCLUDED.price, updated_at = CURRENT_TIMESTAMP;
                         """, (ticker, price))
+                        
+                        # UPSERT for 1m continuous pseudo-candles
+                        cur.execute("""
+                            INSERT INTO trading212_candles_1m (ticker, timestamp_minute, open, high, low, close)
+                            VALUES (%s, date_trunc('minute', CURRENT_TIMESTAMP), %s, %s, %s, %s)
+                            ON CONFLICT (ticker, timestamp_minute)
+                            DO UPDATE SET 
+                                high = GREATEST(trading212_candles_1m.high, EXCLUDED.high),
+                                low = LEAST(trading212_candles_1m.low, EXCLUDED.low),
+                                close = EXCLUDED.close;
+                        """, (ticker, price, price, price, price))
+                        
+                    # Auto-cleanup: keep only last 24h
+                    cur.execute("DELETE FROM trading212_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '24 hours'")
+                    
                     conn.commit()
-                print(f"[PriceIngestor] Successfully updated {len(prices)} prices in PostgreSQL.")
+                print(f"[PriceIngestor] Successfully updated {len(prices)} prices and 1m candles in PostgreSQL.")
         except Exception as e:
             print(f"[PriceIngestor] Failed to write to PostgreSQL cache: {e}")
         finally:
