@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Trading Engine | Trading Automation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <h2>Paper<span>Trader</span></h2>
+            </div>
+            <nav class="nav-menu">
+                <a href="#dashboard" class="nav-item active" data-target="dashboard">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+                    Dashboard
+                </a>
+                <a href="#configs" class="nav-item" data-target="configs">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Configurations
+                </a>
+                <a href="#transactions" class="nav-item" data-target="transactions">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                    Transactions
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-header">
+                <div class="header-title">
+                    <h1>Overview</h1>
+                    <p class="subtitle">Live Paper Trading Metrics</p>
+                </div>
+                <div class="system-status">
+                    <div class="status-indicator active"></div>
+                    <span>Engine Online</span>
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <section id="dashboard" class="view-section active">
+                <!-- KPI Cards -->
+                <div class="kpi-grid">
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-title">Total NAV</div>
+                        <div class="kpi-value" id="kpi-nav">€0.00</div>
+                    </div>
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-title">Cash Balance</div>
+                        <div class="kpi-value" id="kpi-cash">€0.00</div>
+                    </div>
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-title">Allocated</div>
+                        <div class="kpi-value" id="kpi-allocated">€0.00</div>
+                    </div>
+                    <div class="kpi-card glass-panel highlight">
+                        <div class="kpi-title">Open PnL</div>
+                        <div class="kpi-value" id="kpi-pnl">€0.00</div>
+                    </div>
+                </div>
+
+                <!-- Positions Table -->
+                <div class="data-table-container glass-panel mt-4">
+                    <div class="table-header">
+                        <h3>Open Positions</h3>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Asset</th>
+                                <th>Strategy</th>
+                                <th>Qty</th>
+                                <th>Avg Price</th>
+                                <th>Current Price</th>
+                                <th>PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="positions-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Configurations View -->
+            <section id="configs" class="view-section">
+                <div class="data-table-container glass-panel">
+                    <div class="table-header">
+                        <h3>Strategy Configurations</h3>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Strategy</th>
+                                <th>Asset</th>
+                                <th>Timeframe</th>
+                                <th>Initial Cap</th>
+                                <th>Initial Bucket</th>
+                                <th>Max Bucket</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="configs-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Transactions View -->
+            <section id="transactions" class="view-section">
+                <div class="data-table-container glass-panel">
+                    <div class="table-header">
+                        <h3>Transaction History</h3>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Asset</th>
+                                <th>Strategy</th>
+                                <th>Action</th>
+                                <th>Qty</th>
+                                <th>Price</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactions-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content glass-panel">
+            <span class="close-modal">&times;</span>
+            <h3 id="modal-title">Edit Configuration</h3>
+            <form id="config-form">
+                <input type="hidden" id="edit-id">
+                <div class="form-group">
+                    <label>Initial Capital (€)</label>
+                    <input type="number" id="edit-initial-cap" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Initial Capital Bucket (€)</label>
+                    <input type="number" id="edit-initial-bucket" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Max Capital Bucket (€)</label>
+                    <input type="number" id="edit-max-bucket" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Max Entry Price (€)</label>
+                    <input type="number" id="edit-max-entry" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="edit-is-active"> Is Active
+                    </label>
+                </div>
+                <button type="submit" class="btn-primary">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -56,3 +56,14 @@ jobs:
             curl -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
             echo "Render deployment triggered successfully."
           fi
+
+      - name: Trigger Paper Trader Render Deployment
+        if: success()
+        run: |
+          if [ -z "${{ secrets.RENDER_PAPER_TRADER_DEPLOY_HOOK_URL }}" ]; then
+            echo "WARNING: RENDER_PAPER_TRADER_DEPLOY_HOOK_URL secret is not set."
+          else
+            echo "Triggering Paper Trader Render deployment..."
+            curl -f -X POST "${{ secrets.RENDER_PAPER_TRADER_DEPLOY_HOOK_URL }}"
+            echo "Paper Trader Render deployment triggered successfully."
+          fi
