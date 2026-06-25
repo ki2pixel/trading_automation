@@ -24,7 +24,8 @@ jobs:
 
       - name: Convert repository name to lowercase
         run: |
-          echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/trading212-price-ingestor" | tr '[:upper:]' '[:lower:]' >> $GITHUB_ENV
+          IMAGE_NAME_LOWER=$(echo "ghcr.io/${{ github.repository_owner }}/trading212-price-ingestor" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=${IMAGE_NAME_LOWER}" >> $GITHUB_ENV
 
       - name: Log in to GitHub Container Registry (GHCR)
         uses: docker/login-action@v3
