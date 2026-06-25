@@ -51,6 +51,10 @@ app = FastAPI(title="Paper Trading Dashboard API", lifespan=lifespan)
 # Include API endpoints
 app.include_router(paper_trading_router)
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
 # Mount static files for the frontend dashboard
 static_dir = os.path.join(os.path.dirname(__file__), "backtest_engine/live/paper_trading/static")
 # Create static directory dynamically if not exists (should be created by now)
