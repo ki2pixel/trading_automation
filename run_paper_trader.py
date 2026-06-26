@@ -62,6 +62,17 @@ def health_check():
 def keep_alive():
     return {"status": "alive", "timestamp": time.time()}
 
+@app.get("/status")
+def status():
+    global engine
+    if engine is None:
+        return {"status": "error", "message": "Engine not initialized"}
+    return {
+        "status": "online",
+        "t212_client_active": engine.t212_client is not None,
+        "database_url_configured": bool(engine.db_url),
+    }
+
 # Mount static files for the frontend dashboard
 static_dir = os.path.join(os.path.dirname(__file__), "backtest_engine/live/paper_trading/static")
 # Create static directory dynamically if not exists (should be created by now)
