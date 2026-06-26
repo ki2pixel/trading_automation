@@ -11,13 +11,13 @@ URL = f"https://{API_HOST}/v2/chart/price"
 
 # Ticker Mapping: Trading 212 -> MarketFlow format (EXCHANGE:SYMBOL)
 TICKER_MAPPING = {
-    "ZEAL.CO": "LSX:ZEAL24",  # Zeal Network
-    "NVO": "FWB:NVO",
+    "ZEAL.CO": "FWB:TIMA",  # Zeal Network
+    "NVO": "NYSE:NVO",
     "EVD.DE": "FWB:EVD",
     "GMAB": "NASDAQ:GMAB",
     "FPE.DE": "FWB:FPE",
     "SAP": "FWB:SAP",
-    "NVS": "FWB:NVS",
+    "NVS": "NYSE:NVS",
     "AMS.MC": "BME:AMS",
     "dpwdeeur": "FWB:DPW",
     "teniteur": "MIL:TEN",
