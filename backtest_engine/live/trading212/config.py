@@ -3,8 +3,22 @@ import os
 class Trading212Config:
     """Configuration loader for the Trading 212 API integration."""
 
-    def __init__(self, dotenv_path: str = "/home/kidpixel/trading_automation-main/.env"):
-        self.dotenv_path = dotenv_path
+    def __init__(self, dotenv_path: str = None):
+        # Try to load using python-dotenv if available
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
+
+        if dotenv_path is None:
+            if os.path.exists(".env"):
+                self.dotenv_path = ".env"
+            else:
+                self.dotenv_path = "/home/kidpixel/trading_automation-main/.env"
+        else:
+            self.dotenv_path = dotenv_path
+
         self._load_dotenv()
         
         self.api_key_id = os.getenv("T212_API_KEY_ID")
