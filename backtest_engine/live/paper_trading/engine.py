@@ -14,6 +14,18 @@ class PaperTradingEngine:
         self.market_hours = self._load_market_hours()
         self._running = False
 
+        # Initialize Trading 212 Client resiliently
+        from backtest_engine.live.trading212.config import Trading212Config
+        from backtest_engine.live.trading212.client import Trading212Client
+        try:
+            config = Trading212Config()
+            config.validate()
+            self.t212_client = Trading212Client(config)
+            print("[PaperTrader] Trading 212 API client successfully initialized.")
+        except Exception as e:
+            print(f"[PaperTrader] Trading 212 credentials not configured or invalid, running in local-only mode: {e}")
+            self.t212_client = None
+
     def _load_market_hours(self):
         try:
             with open(self.market_hours_path, 'r') as f:
@@ -83,6 +95,19 @@ class PaperTradingEngine:
         
         try:
             with conn.cursor() as cur:
+                # If Trading 212 Client is active, fetch real-time cash balance and update DB
+                if getattr(self, "t212_client", None) is not None:
+                    try:
+                        summary = self.t212_client.get_account_summary()
+                        if summary and "totalValue" in summary:
+                            api_cash = Decimal(str(summary["totalValue"]))
+                            cur.execute(
+                                "UPDATE paper_portfolio_balance SET cash_balance = %s, last_updated = CURRENT_TIMESTAMP",
+                                (api_cash,)
+                            )
+                    except Exception as api_err:
+                        print(f"[PaperTrader] Failed to fetch account summary from Trading 212 API: {api_err}")
+
                 # Get current cash balance
                 cur.execute("SELECT cash_balance FROM paper_portfolio_balance LIMIT 1")
                 row = cur.fetchone()

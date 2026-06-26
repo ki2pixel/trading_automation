@@ -119,3 +119,8 @@ class Trading212Client:
         }
         response = self._request("POST", "/equity/orders/market", json_data=payload)
         return response.json()
+
+    def get_account_summary(self) -> Dict[str, Any]:
+        """Retrieves trading account details including cash and investments."""
+        response = self._request("GET", "/equity/account/summary")
+        return response.json()

@@ -105,3 +105,119 @@ class TestPaperTradingEngine:
         
         assert "UPDATE paper_strategy_configs" in args[0]
         assert args[1] == (2000.0, 500.0, 1500.0, 50.0, False, 1)
+
+    def test_update_portfolio_nav_active_api(self):
+        # GIVEN: A database connection returning initial balances, and an active Trading 212 Client returning a total value
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        
+        queries = {}
+        def mock_execute(query, params=None):
+            queries[query] = params
+            
+        mock_cursor.execute = MagicMock(side_effect=mock_execute)
+        
+        def mock_fetchone():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT cash_balance" in last_query:
+                return [4995.58]
+            if "SELECT current_price" in last_query:
+                return [150.0]
+            return None
+
+        def mock_fetchall():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT id, asset, qty, entry_price" in last_query:
+                return [(1, "AAPL", 10, 100.0)]
+            return []
+            
+        mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
+        mock_cursor.fetchall = MagicMock(side_effect=mock_fetchall)
+
+        engine = PaperTradingEngine(db_url="sqlite:///:memory:")
+        engine.t212_client = MagicMock()
+        engine.t212_client.get_account_summary.return_value = {
+            "cash": {"availableToTrade": 4872.03, "reservedForOrders": 0, "inPies": 0},
+            "totalValue": 4995.58
+        }
+        engine.is_market_open = MagicMock(return_value=True)
+
+        with patch('backtest_engine.live.connection.get_redis_client', return_value=None):
+            # WHEN: _update_portfolio_nav is executed
+            engine._update_portfolio_nav(mock_conn)
+
+        # THEN:
+        # 1. Trading 212 Client summary should be requested
+        engine.t212_client.get_account_summary.assert_called_once()
+        
+        # 2. Local DB cash_balance should be updated with API's totalValue
+        update_calls = [
+            call[0] for call in mock_cursor.execute.call_args_list 
+            if "UPDATE paper_portfolio_balance SET cash_balance" in call[0][0]
+        ]
+        assert len(update_calls) == 1
+        from decimal import Decimal
+        assert update_calls[0][1] == (Decimal('4995.58'),)
+
+        # 3. Total NAV should be updated in DB (cash_balance 4995.58 + position value 10 * 150.0 = 6495.58)
+        nav_update_calls = [
+            call[0] for call in mock_cursor.execute.call_args_list 
+            if "UPDATE paper_portfolio_balance SET total_nav" in call[0][0]
+        ]
+        assert len(nav_update_calls) == 1
+        assert nav_update_calls[0][1] == (Decimal('6495.58'),)
+
+    def test_update_portfolio_nav_fallback_local(self):
+        # GIVEN: A database connection returning a local cash balance, and no Trading 212 Client (None)
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        
+        queries = {}
+        def mock_execute(query, params=None):
+            queries[query] = params
+            
+        mock_cursor.execute = MagicMock(side_effect=mock_execute)
+        
+        def mock_fetchone():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT cash_balance" in last_query:
+                return [100000.00]
+            if "SELECT current_price" in last_query:
+                return [150.0]
+            return None
+
+        def mock_fetchall():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT id, asset, qty, entry_price" in last_query:
+                return [(1, "AAPL", 10, 100.0)]
+            return []
+            
+        mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
+        mock_cursor.fetchall = MagicMock(side_effect=mock_fetchall)
+
+        engine = PaperTradingEngine(db_url="sqlite:///:memory:")
+        engine.t212_client = None
+        engine.is_market_open = MagicMock(return_value=True)
+
+        with patch('backtest_engine.live.connection.get_redis_client', return_value=None):
+            # WHEN: _update_portfolio_nav is executed
+            engine._update_portfolio_nav(mock_conn)
+
+        # THEN:
+        # 1. No query to UPDATE cash_balance should be performed
+        update_calls = [
+            call[0] for call in mock_cursor.execute.call_args_list 
+            if "UPDATE paper_portfolio_balance SET cash_balance" in call[0][0]
+        ]
+        assert len(update_calls) == 0
+
+        # 2. Total NAV should be updated in DB using the local cash balance (cash_balance 100000.00 + position value 10 * 150.0 = 101500.0)
+        nav_update_calls = [
+            call[0] for call in mock_cursor.execute.call_args_list 
+            if "UPDATE paper_portfolio_balance SET total_nav" in call[0][0]
+        ]
+        assert len(nav_update_calls) == 1
+        from decimal import Decimal
+        assert nav_update_calls[0][1] == (Decimal('101500.0'),)
