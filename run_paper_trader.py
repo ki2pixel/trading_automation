@@ -17,11 +17,15 @@ background_task = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global background_task
+    global background_task, engine
     
     # Run DB schema check/seed
     print("[PaperTrader] Initializing database...")
     await asyncio.to_thread(init_db)
+
+    # Initialize engine if not already initialized
+    if engine is None:
+        engine = PaperTradingEngine()
 
     polling_interval = int(os.getenv("PAPER_TRADER_POLLING_INTERVAL", "60"))
     if engine is not None:
