@@ -188,9 +188,331 @@ class PaperTradingEngine:
         
         try:
             with get_db_connection() as conn:
+                # 1. Update NAV and active position prices
                 self._update_portfolio_nav(conn)
+                # 2. Evaluate active strategies and execute signals
+                self._evaluate_and_execute_strategies(conn)
         except Exception as e:
             print(f"[PaperTrader] Error in run_cycle: {e}")
+
+    def _evaluate_and_execute_strategies(self, conn):
+        """
+        Evaluate active strategy configurations on recent price history and execute trade signals.
+        """
+        from backtest_engine.strategy_registry import StrategyRegistry
+        from decimal import Decimal
+        from datetime import datetime, timezone
+        
+        # 1. Fetch active configurations
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, strategy_name, asset, timeframe, kelly_weight, 
+                       initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params
+                FROM paper_strategy_configs
+                WHERE is_active = TRUE
+            """)
+            configs = cur.fetchall()
+            
+        for config_id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params in configs:
+            # Check market hours
+            if not self.is_market_open(asset):
+                continue
+                
+            # Check if we have an active position for this strategy + asset
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, qty, entry_price FROM paper_positions 
+                    WHERE asset = %s AND strategy_name = %s LIMIT 1
+                """, (asset, strategy_name))
+                position_row = cur.fetchone()
+                
+            has_position = position_row is not None
+            
+            # Fetch 1m candles for this asset (up to 7 days = 10080 minutes)
+            # Fetch only what's necessary (let's say 10000 bars)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT timestamp_minute, open, high, low, close
+                    FROM trading212_candles_1m
+                    WHERE ticker = %s
+                    ORDER BY timestamp_minute ASC
+                    LIMIT 10000
+                """, (asset,))
+                candle_rows = cur.fetchall()
+                
+            if len(candle_rows) < 10:
+                # Not enough history
+                continue
+                
+            # Convert to DataFrame
+            import pandas as pd
+            df_1m = pd.DataFrame(candle_rows, columns=["timestamp_minute", "open", "high", "low", "close"])
+            # Convert prices to floats for VectorBT
+            for col in ["open", "high", "low", "close"]:
+                df_1m[col] = df_1m[col].astype(float)
+            df_1m.set_index("timestamp_minute", inplace=True)
+            df_1m.index = pd.to_datetime(df_1m.index)
+            if df_1m.index.tzinfo is None:
+                df_1m.index = df_1m.index.tz_localize('UTC')
+            else:
+                df_1m.index = df_1m.index.tz_convert('UTC')
+                
+            # Resample to strategy's timeframe
+            rule = timeframe.replace("m", "min").replace("h", "H")
+            df_aggregated = df_1m.resample(rule).agg({
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last"
+            }).dropna()
+            df_aggregated["volume"] = 0.0 # dummy volume
+            
+            if len(df_aggregated) < 2:
+                continue
+                
+            # Get latest closed bar (the one before the very last in-progress bar)
+            last_closed_bar = df_aggregated.iloc[-2]
+            last_closed_time = df_aggregated.index[-2]
+            
+            # Let's run the strategy signals on the aggregated data
+            try:
+                strat_info = StrategyRegistry.get(strategy_name)
+                # Parse config overrides
+                overrides = strat_info.overrides_from_mapping_function(indicator_params)
+                
+                # Run backtest_engine's strategy execution
+                # We disable full metrics to be super fast
+                run_result = strat_info.run_function(
+                    data=df_aggregated,
+                    symbol=asset,
+                    overrides=overrides,
+                    initial_capital=float(initial_capital_bucket),
+                    timeframe_minutes=timeframe,
+                    compute_full_metrics=False
+                )
+                
+                # Check signals on the last closed bar
+                result_bars = run_result.bars
+                
+                # Find the index corresponding to our last closed bar
+                last_closed_result = result_bars.loc[last_closed_time]
+                
+                long_entry_signal = bool(last_closed_result.get('long_entry', False))
+                long_exit_signal = bool(last_closed_result.get('long_exit', False))
+                
+            except Exception as strat_err:
+                print(f"[PaperTrader] Error running strategy {strategy_name} for {asset}: {strat_err}")
+                continue
+                
+            # Fetch current live price (Redis first, then Postgres)
+            from backtest_engine.live.connection import get_redis_client
+            redis_client = get_redis_client()
+            current_price = None
+            if redis_client:
+                try:
+                    redis_val = redis_client.get(f"price:{asset}")
+                    if redis_val is not None:
+                        current_price = Decimal(str(redis_val))
+                except Exception as re:
+                    print(f"[PaperTrader] Redis read error: {re}")
+            if current_price is None:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT price FROM trading212_prices WHERE ticker = %s", (asset,))
+                    price_row = cur.fetchone()
+                    if price_row:
+                        current_price = Decimal(str(price_row[0]))
+            if current_price is None:
+                # No price available
+                continue
+                
+            if not has_position:
+                # Evaluate Entry (Long Only)
+                if long_entry_signal:
+                    # Check maximum entry price rule
+                    if current_price > Decimal(str(max_entry_price)):
+                        print(f"[PaperTrader] Entry rejected for {asset}: price ({current_price}) exceeds max_entry_price ({max_entry_price})")
+                        continue
+                        
+                    # Calculate quantity to buy
+                    # First fetch total portfolio NAV and cash balance
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT cash_balance, total_nav FROM paper_portfolio_balance LIMIT 1")
+                        balance_row = cur.fetchone()
+                        
+                    if not balance_row:
+                        continue
+                    cash_balance = Decimal(str(balance_row[0]))
+                    total_nav = Decimal(str(balance_row[1]))
+                    
+                    # Kelly sizing: notional value = NAV * kelly_weight
+                    kelly_size_cash = total_nav * Decimal(str(kelly_weight))
+                    
+                    # Capital allocated = min(Kelly Size, cash_balance, initial_capital_bucket)
+                    allocated_cash = min(kelly_size_cash, cash_balance, Decimal(str(initial_capital_bucket)))
+                    if allocated_cash <= 0:
+                        continue
+                        
+                    qty = allocated_cash / current_price
+                    # Handle fractional precision
+                    qty_precision = indicator_params.get("quantity_precision", 6)
+                    qty = round(qty, qty_precision)
+                    if qty <= 0:
+                        continue
+                        
+                    actual_cost = qty * current_price
+                    if actual_cost > cash_balance:
+                        # Safety adjust
+                        qty = cash_balance / current_price
+                        qty = round(qty, qty_precision)
+                        actual_cost = qty * current_price
+                        if qty <= 0:
+                            continue
+                            
+                    # Execute BUY
+                    try:
+                        with conn.cursor() as cur:
+                            # 1. Insert position
+                            cur.execute("""
+                                INSERT INTO paper_positions (asset, strategy_name, qty, entry_price, current_price, pnl, updated_at)
+                                VALUES (%s, %s, %s, %s, %s, 0, CURRENT_TIMESTAMP)
+                            """, (asset, strategy_name, qty, current_price, current_price))
+                            
+                            # 2. Deduct cash
+                            cur.execute("""
+                                UPDATE paper_portfolio_balance 
+                                SET cash_balance = cash_balance - %s, 
+                                    allocated_balance = allocated_balance + %s,
+                                    last_updated = CURRENT_TIMESTAMP
+                            """, (actual_cost, actual_cost))
+                            
+                            # 3. Log transaction
+                            cur.execute("""
+                                INSERT INTO paper_transactions (asset, strategy_name, action, qty, price, total_value, timestamp)
+                                VALUES (%s, %s, 'BUY', %s, %s, %s, CURRENT_TIMESTAMP)
+                            """, (asset, strategy_name, qty, current_price, actual_cost))
+                            
+                        conn.commit()
+                        print(f"[PaperTrader] Executed virtual BUY for {asset} ({strategy_name}): {qty} units @ {current_price} € (Cost: {actual_cost} €)")
+                    except Exception as db_err:
+                        print(f"[PaperTrader] Database error executing BUY: {db_err}")
+                        conn.rollback()
+            else:
+                # Evaluate Exit
+                pos_id, qty, entry_price = position_row
+                qty = Decimal(str(qty))
+                entry_price = Decimal(str(entry_price))
+                
+                # Check exit triggers
+                trigger_exit = False
+                exit_reason = ""
+                
+                # 1. Check strategy's custom long_exit signal
+                if long_exit_signal:
+                    trigger_exit = True
+                    exit_reason = "Strategy Exit Signal"
+                    
+                # 2. Check Broker ExitRules (fixed/net brackets, trailing stops, safety stops)
+                if not trigger_exit:
+                    from backtest_engine.broker import BrokerSimulator, BrokerConfig, Position as BrokerPosition
+                    
+                    broker_config = BrokerConfig(
+                        account_currency=indicator_params.get("account_currency", "EUR"),
+                        asset_currency=indicator_params.get("asset_currency", "EUR"),
+                        point_value=indicator_params.get("point_value", 1.0)
+                    )
+                    broker = BrokerSimulator(broker_config)
+                    broker.cash = float(qty * entry_price)
+                    from backtest_engine.broker import _OpenPositionEntry
+                    broker._open_entry = _OpenPositionEntry(
+                        timestamp=last_closed_time, 
+                        order_id="dummy_entry", 
+                        remaining_commission=0.0
+                    )
+                    broker.position = BrokerPosition(signed_quantity=float(qty), average_price=float(entry_price))
+                    
+                    exit_rules = []
+                    # Brackets (SL / TP)
+                    use_bracket = indicator_params.get("use_net_bracket_exits", False) or indicator_params.get("enable_stop_loss", False) or indicator_params.get("enable_take_profit", False)
+                    if use_bracket:
+                        from backtest_engine.broker import NetBracketExitRule
+                        tp = indicator_params.get("take_profit_pct") if indicator_params.get("enable_take_profit") else indicator_params.get("take_profit_net_percent")
+                        sl = indicator_params.get("stop_loss_pct") if indicator_params.get("enable_stop_loss") else indicator_params.get("stop_loss_net_percent")
+                        exit_rules.append(NetBracketExitRule(
+                            broker,
+                            tp_pct=tp,
+                            sl_pct=sl,
+                        ))
+                    # Trailing Stop
+                    if indicator_params.get("enable_trailing_stop", False):
+                        from backtest_engine.broker import TrailingStopExitRule
+                        exit_rules.append(TrailingStopExitRule(
+                            broker,
+                            trail_profit_pct=indicator_params.get("trail_profit_pct", 0.5),
+                            trail_loss_pct=indicator_params.get("trail_loss_pct", 0.5),
+                        ))
+                    # Safety Stop
+                    if indicator_params.get("use_safety_stop", False):
+                        from backtest_engine.broker import SafetyStopExitRule
+                        exit_rules.append(SafetyStopExitRule(
+                            broker,
+                            applies_to=indicator_params.get("safety_stop_applies_to", "Both"),
+                            mode=indicator_params.get("safety_stop_mode", "Net loss only"),
+                            max_loss_mode=indicator_params.get("safety_max_net_loss_mode", "Cash amount"),
+                            max_loss_cash=indicator_params.get("safety_max_net_loss_cash"),
+                            max_loss_pct=indicator_params.get("safety_max_net_loss_percent"),
+                            max_bars=indicator_params.get("safety_max_bars_in_trade", 0),
+                        ))
+                    
+                    if exit_rules:
+                        from backtest_engine.broker import ExitOrchestrator
+                        broker.exit_orchestrator = ExitOrchestrator(exit_rules)
+                        
+                        # We evaluate on the last closed bar
+                        bar_dict = last_closed_bar.to_dict()
+                        bar_dict["timestamp"] = last_closed_time
+                        
+                        # We also evaluate on the current live price for immediate SL/TP
+                        live_bar_dict = bar_dict.copy()
+                        live_bar_dict["close"] = float(current_price)
+                        live_bar_dict["timestamp"] = datetime.now(timezone.utc)
+                        
+                        closed_action = broker.exit_orchestrator.evaluate(bar_dict, broker.position)
+                        live_action = broker.exit_orchestrator.evaluate(live_bar_dict, broker.position)
+                        
+                        action = closed_action or live_action
+                        if action:
+                            trigger_exit = True
+                            exit_reason = f"{action.rule_name}: {action.comment}"
+                            
+                if trigger_exit:
+                    # Execute SELL
+                    actual_revenue = qty * current_price
+                    pnl = actual_revenue - (qty * entry_price)
+                    
+                    try:
+                        with conn.cursor() as cur:
+                            # 1. Remove position
+                            cur.execute("DELETE FROM paper_positions WHERE id = %s", (pos_id,))
+                            
+                            # 2. Add cash back and remove allocated balance
+                            cur.execute("""
+                                UPDATE paper_portfolio_balance 
+                                SET cash_balance = cash_balance + %s,
+                                    allocated_balance = GREATEST(0, allocated_balance - %s),
+                                    last_updated = CURRENT_TIMESTAMP
+                            """, (actual_revenue, qty * entry_price))
+                            
+                            # 3. Log transaction
+                            cur.execute("""
+                                INSERT INTO paper_transactions (asset, strategy_name, action, qty, price, total_value, timestamp)
+                                VALUES (%s, %s, 'SELL', %s, %s, %s, CURRENT_TIMESTAMP)
+                            """, (asset, strategy_name, qty, current_price, actual_revenue))
+                            
+                        conn.commit()
+                        print(f"[PaperTrader] Executed virtual SELL for {asset} ({strategy_name}) [Reason: {exit_reason}]: {qty} units @ {current_price} € (PnL: {pnl} €)")
+                    except Exception as db_err:
+                        print(f"[PaperTrader] Database error executing SELL: {db_err}")
+                        conn.rollback()
 
     def start_loop(self, interval_seconds=60):
         self._running = True

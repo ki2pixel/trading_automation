@@ -165,8 +165,8 @@ class Trading212PriceIngestor:
                                     close = EXCLUDED.close;
                             """, (ticker, price, price, price, price))
                             
-                        # Auto-cleanup: keep only last 24h
-                        cur.execute("DELETE FROM trading212_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '24 hours'")
+                        # Auto-cleanup: keep only last 7 days
+                        cur.execute("DELETE FROM trading212_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '7 days'")
                         
                         conn.commit()
                     print(f"[PriceIngestor] Successfully updated {len(prices)} prices and 1m candles in PostgreSQL.")

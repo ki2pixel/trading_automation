@@ -25,6 +25,7 @@ class ConfigUpdate(BaseModel):
     max_capital_bucket: float
     max_entry_price: float
     is_active: bool
+    indicator_params: dict | None = None
 
 
 # Helper functions for threadpool execution
@@ -73,7 +74,7 @@ def _get_configs_sync():
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT id, strategy_name, asset, timeframe, kelly_weight, 
-                       initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, is_active
+                       initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, is_active, indicator_params
                 FROM paper_strategy_configs
                 ORDER BY id ASC
             """)
@@ -83,20 +84,34 @@ def _get_configs_sync():
                     "id": r[0], "strategy_name": r[1], "asset": r[2], "timeframe": r[3],
                     "kelly_weight": float(r[4]), "initial_capital": float(r[5]),
                     "initial_capital_bucket": float(r[6]), "max_capital_bucket": float(r[7]),
-                    "max_entry_price": float(r[8]), "is_active": r[9]
+                    "max_entry_price": float(r[8]), "is_active": r[9],
+                    "indicator_params": r[10] if r[10] else {}
                 } for r in rows
             ]
 
 def _update_config_sync(config_id: int, payload: ConfigUpdate):
+    import json
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE paper_strategy_configs 
-                SET initial_capital = %s, initial_capital_bucket = %s, 
-                    max_capital_bucket = %s, max_entry_price = %s, is_active = %s
-                WHERE id = %s
-            """, (payload.initial_capital, payload.initial_capital_bucket, 
-                  payload.max_capital_bucket, payload.max_entry_price, payload.is_active, config_id))
+            if payload.indicator_params is not None:
+                params_json = json.dumps(payload.indicator_params)
+                cur.execute("""
+                    UPDATE paper_strategy_configs 
+                    SET initial_capital = %s, initial_capital_bucket = %s, 
+                        max_capital_bucket = %s, max_entry_price = %s, is_active = %s,
+                        indicator_params = %s
+                    WHERE id = %s
+                """, (payload.initial_capital, payload.initial_capital_bucket, 
+                      payload.max_capital_bucket, payload.max_entry_price, payload.is_active,
+                      params_json, config_id))
+            else:
+                cur.execute("""
+                    UPDATE paper_strategy_configs 
+                    SET initial_capital = %s, initial_capital_bucket = %s, 
+                        max_capital_bucket = %s, max_entry_price = %s, is_active = %s
+                    WHERE id = %s
+                """, (payload.initial_capital, payload.initial_capital_bucket, 
+                      payload.max_capital_bucket, payload.max_entry_price, payload.is_active, config_id))
             conn.commit()
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Config not found")

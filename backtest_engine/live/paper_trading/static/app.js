@@ -141,6 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('edit-max-bucket').value = conf.max_capital_bucket;
         document.getElementById('edit-max-entry').value = conf.max_entry_price;
         document.getElementById('edit-is-active').checked = conf.is_active;
+        document.getElementById('edit-indicator-params').value = JSON.stringify(conf.indicator_params || {}, null, 2);
         modal.style.display = 'flex';
     };
 
@@ -150,12 +151,23 @@ document.addEventListener('DOMContentLoaded', () => {
     form.onsubmit = async (e) => {
         e.preventDefault();
         const id = document.getElementById('edit-id').value;
+        
+        let indicatorParams = {};
+        try {
+            const rawVal = document.getElementById('edit-indicator-params').value.trim();
+            indicatorParams = rawVal ? JSON.parse(rawVal) : {};
+        } catch (err) {
+            alert('Invalid JSON in Indicator Parameters.');
+            return;
+        }
+
         const payload = {
             initial_capital: parseFloat(document.getElementById('edit-initial-cap').value),
             initial_capital_bucket: parseFloat(document.getElementById('edit-initial-bucket').value),
             max_capital_bucket: parseFloat(document.getElementById('edit-max-bucket').value),
             max_entry_price: parseFloat(document.getElementById('edit-max-entry').value),
-            is_active: document.getElementById('edit-is-active').checked
+            is_active: document.getElementById('edit-is-active').checked,
+            indicator_params: indicatorParams
         };
 
         try {

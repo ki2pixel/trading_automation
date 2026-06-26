@@ -221,3 +221,94 @@ class TestPaperTradingEngine:
         assert len(nav_update_calls) == 1
         from decimal import Decimal
         assert nav_update_calls[0][1] == (Decimal('101500.0'),)
+
+    @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
+    @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
+    def test_evaluate_and_execute_strategies_buy_signal(self, mock_strat_registry_get, mock_get_redis_client):
+        # GIVEN: An active strategy config, market open, no position, and a buy signal from strategy
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        
+        # Mock database responses for configurations, positions, candles, balance
+        from datetime import datetime, timezone
+        from decimal import Decimal
+        import pandas as pd
+        
+        def mock_fetchone():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT id, qty, entry_price FROM paper_positions" in last_query:
+                return None # No position open
+            if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+                return [10000.0, 10000.0] # 10k cash and nav
+            if "SELECT price FROM trading212_prices" in last_query:
+                return [10.0] # live price is 10.0
+            return None
+
+        # Return mock candles (at least 15 minutes of candles)
+        mock_candles = [
+            (datetime(2023, 10, 4, 12, i, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
+            for i in range(30)
+        ]
+
+        def mock_fetchall():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT id, strategy_name, asset, timeframe" in last_query:
+                # Active config
+                return [(1, "momentum_based_zigzag", "ZEAL.CO", "15m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
+            if "SELECT timestamp_minute, open, high, low, close" in last_query:
+                return mock_candles
+            return []
+
+        mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
+        mock_cursor.fetchall = MagicMock(side_effect=mock_fetchall)
+
+        # Mock StrategyRegistry run_function to return a Buy signal
+        mock_strat_info = MagicMock()
+        mock_strat_registry_get.return_value = mock_strat_info
+        
+        # We need run_result.bars to contain a long_entry at the last closed time
+        # Let's align the times
+        df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
+        df_1m.set_index("timestamp_minute", inplace=True)
+        df_aggregated = df_1m.resample("15min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+        
+        last_closed_time = df_aggregated.index[-2]
+        
+        result_bars = df_aggregated.copy()
+        result_bars["long_entry"] = False
+        result_bars.loc[last_closed_time, "long_entry"] = True # Set Buy signal
+        
+        mock_run_result = MagicMock()
+        mock_run_result.bars = result_bars
+        mock_strat_info.run_function.return_value = mock_run_result
+        mock_strat_info.overrides_from_mapping_function.return_value = MagicMock()
+
+        engine = PaperTradingEngine(db_url="sqlite:///:memory:")
+        engine.is_market_open = MagicMock(return_value=True)
+
+        # WHEN: _evaluate_and_execute_strategies is executed
+        engine._evaluate_and_execute_strategies(mock_conn)
+
+        # THEN:
+        # 1. The strategy registry should be queried for "momentum_based_zigzag"
+        mock_strat_registry_get.assert_called_once_with("momentum_based_zigzag")
+        
+        # 2. A buy order should be written to the database (10% Kelly of 10k NAV = 1000 EUR allocated, 100 units @ 10.0 EUR)
+        buy_calls = [
+            call[0] for call in mock_cursor.execute.call_args_list
+            if "INSERT INTO paper_positions" in call[0][0]
+        ]
+        assert len(buy_calls) == 1
+        assert "ZEAL.CO" in buy_calls[0][1]
+        assert buy_calls[0][1][2] == 100.0 # qty
+        assert buy_calls[0][1][3] == Decimal('10.0') # entry_price
+
+        # 3. Cash balance should be deducted
+        cash_deduct_calls = [
+            call[0] for call in mock_cursor.execute.call_args_list
+            if "UPDATE paper_portfolio_balance" in call[0][0]
+        ]
+        assert len(cash_deduct_calls) == 1
+        assert cash_deduct_calls[0][1] == (Decimal('1000.0'), Decimal('1000.0'))
+
