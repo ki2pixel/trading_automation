@@ -62,9 +62,35 @@ class Trading212PriceIngestor:
             print(f"[PriceIngestor] Error fetching positions: {e}")
             return self.read_cache()
             
+        # Translation map: Internal T212 API tickers -> User's frontend/warmup tickers
+        TICKER_TRANSLATION = {
+            'TIMd_EQ': 'ZEAL.CO',
+            'NOVCd_EQ': 'NVO',
+            'EVDd_EQ': 'EVD.DE',
+            'GE9d_EQ': 'GMAB',
+            'FPEd_EQ': 'FPE.DE',
+            'SAPd_EQ': 'SAP',
+            'NOTd1_EQ': 'NVS',
+            'AMSe_EQ': 'AMS.MC',
+            'DPWd_EQ': 'dpwdeeur',
+            'TW10d_EQ': 'teniteur',
+            'AKZAa_EQ': 'akzanleur',
+            'DAId_EQ': 'daideeur',
+            'MRKd_EQ': 'mrkdeeur',
+            'VNAd_EQ': 'vnadeeur',
+            'ACp_EQ': 'acfreur',
+            'LXSd_EQ': 'lxsdeeur',
+            'RANDa_EQ': 'randnleur',
+            'RUIp_EQ': 'rifreur',
+            'ABI_BE_EQ': 'abibeeur',
+            'PROX_BE_EQ': 'belgbeeur',
+            'CAp_EQ': 'cafreur'
+        }
+            
         prices: Dict[str, float] = {}
         for pos in positions:
-            ticker = pos.get("instrument", {}).get("ticker")
+            raw_ticker = pos.get("instrument", {}).get("ticker")
+            ticker = TICKER_TRANSLATION.get(raw_ticker, raw_ticker)
             
             # Extract price. API can return currentPrice or price depending on schema.
             # Fallback values from position schema: currentPrice, averagePricePaid, etc.
