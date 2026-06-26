@@ -71,7 +71,29 @@ def fetch_candles(mf_symbol, range_limit=1440):
         print(f"[WarmUp] Erreur API pour {mf_symbol} : {e}")
         return []
 
+def get_t212_current_price(t212_ticker, conn):
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT price FROM trading212_prices WHERE ticker = %s", (t212_ticker,))
+            row = cur.fetchone()
+            if row:
+                return float(row[0])
+    except Exception as e:
+        print(f"[WarmUp] Erreur récupération prix live pour {t212_ticker}: {e}")
+    return None
+
 def parse_and_insert(t212_ticker, candles, conn):
+    live_price = get_t212_current_price(t212_ticker, conn)
+    ratio = 1.0
+    
+    if live_price and len(candles) > 0:
+        for c in reversed(candles):
+            last_close = float(c.get("close", 0))
+            if last_close > 0:
+                ratio = live_price / last_close
+                print(f"[WarmUp] Ratio d'ajustement de {ratio:.4f} pour {t212_ticker} (Live: {live_price}, API: {last_close})")
+                break
+
     with conn.cursor() as cur:
         inserted = 0
         for candle in candles:
@@ -91,10 +113,10 @@ def parse_and_insert(t212_ticker, candles, conn):
                 else:
                     continue
                 
-                open_val = float(candle.get("open", 0))
-                high_val = float(candle.get("high", 0))
-                low_val = float(candle.get("low", 0))
-                close_val = float(candle.get("close", 0))
+                open_val = float(candle.get("open", 0)) * ratio
+                high_val = float(candle.get("high", 0)) * ratio
+                low_val = float(candle.get("low", 0)) * ratio
+                close_val = float(candle.get("close", 0)) * ratio
                 
                 if open_val == 0:
                     continue
@@ -102,7 +124,12 @@ def parse_and_insert(t212_ticker, candles, conn):
                 cur.execute("""
                     INSERT INTO trading212_candles_1m (ticker, timestamp_minute, open, high, low, close)
                     VALUES (%s, date_trunc('minute', %s::timestamptz), %s, %s, %s, %s)
-                    ON CONFLICT (ticker, timestamp_minute) DO NOTHING;
+                    ON CONFLICT (ticker, timestamp_minute) 
+                    DO UPDATE SET 
+                        open = EXCLUDED.open, 
+                        high = EXCLUDED.high, 
+                        low = EXCLUDED.low, 
+                        close = EXCLUDED.close;
                 """, (t212_ticker, dt, open_val, high_val, low_val, close_val))
                 
                 inserted += 1
