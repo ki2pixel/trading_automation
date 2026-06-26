@@ -75,7 +75,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
             data.forEach(conf => {
                 const tr = document.createElement('tr');
-                const activeBadge = conf.is_active ? '<span class="badge active">Active</span>' : '<span class="badge inactive">Inactive</span>';
+                let statusBadge = '';
+                if (conf.status === 'active') {
+                    statusBadge = '<span class="badge active">Active</span>';
+                } else if (conf.status === 'inactive') {
+                    statusBadge = '<span class="badge inactive">Inactive</span>';
+                } else if (conf.status === 'waiting_data') {
+                    statusBadge = '<span class="badge warning">En attente</span>';
+                } else if (conf.status === 'error') {
+                    statusBadge = '<span class="badge error">Erreur</span>';
+                } else {
+                    statusBadge = `<span class="badge inactive">${conf.status || 'Inactive'}</span>`;
+                }
+
                 tr.innerHTML = `
                     <td>${conf.id}</td>
                     <td><strong>${conf.strategy_name}</strong></td>
@@ -84,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${formatCurrency(conf.initial_capital)}</td>
                     <td>${formatCurrency(conf.initial_capital_bucket)}</td>
                     <td>${formatCurrency(conf.max_capital_bucket)}</td>
-                    <td>${activeBadge}</td>
+                    <td>${statusBadge}</td>
                     <td><button class="btn-edit" data-conf='${JSON.stringify(conf)}'>Edit</button></td>
                 `;
                 tbody.appendChild(tr);

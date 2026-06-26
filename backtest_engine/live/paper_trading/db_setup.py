@@ -438,6 +438,12 @@ def init_db():
                         UNIQUE(strategy_name, asset, timeframe)
                     )
                 """)
+                
+                # Add run_status column if it doesn't exist
+                cur.execute("""
+                    ALTER TABLE paper_strategy_configs 
+                    ADD COLUMN IF NOT EXISTS run_status VARCHAR(50) DEFAULT 'active'
+                """)
 
                 # Seed the strategy configs
                 for config in SEED_CONFIGS:

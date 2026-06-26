@@ -1,6 +1,7 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-26 18:01:00] - Ajout de l'indicateur visuel pour le statut des stratégies sur le frontend : Les configurations en attente de données historiques (warmup) affichent désormais le badge orange "En attente", et les configurations en erreur affichent le badge violet "Erreur". Réalignement des tests unitaires (7/7 tests passés).
 - [x] [2026-06-26 13:43:00] - Résolution des incohérences de tickers Trading 212 : Filtrage de sécurité dans `ingestor.py` contre les tickers non autorisés. Réécriture de `db_cleanup.py` en un script dynamique de nettoyage Postgres et Redis. Suppression réussie de 4 lignes de prix et 588 bougies obsolètes dans PostgreSQL, et de 6 clés non autorisées dans Redis. Régénération de `debug/trading212_prices_rows.json` (21 tickers restants).
 - [x] [2026-06-26 13:28:00] - Résolution du spin-down Render : implémentation de l'endpoint `/keep-alive` avec timestamp dynamique dans run_ingestor.py et run_paper_trader.py. Création du script keep_alive.gs sous Google_Apps_Script/ et validation locale par tests unitaires (2/2 passés).
 - [x] [2026-06-26 13:13:00] - Nettoyage complet des 21 tickers obsolètes bruts de la base PostgreSQL (tables trading212_prices et trading212_candles_1m) suite à l'introduction du dictionnaire de traduction dans le commit ab00bdf.

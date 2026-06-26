@@ -251,6 +251,8 @@ h1, h2, h3, h4 {
 }
 .badge.active { background: rgba(16, 185, 129, 0.2); color: var(--success); }
 .badge.inactive { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+.badge.warning { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+.badge.error { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
 
 .btn-edit {
     background: rgba(59, 130, 246, 0.2);

@@ -104,7 +104,7 @@ class TestPaperTradingEngine:
         args, kwargs = mock_cursor.execute.call_args
         
         assert "UPDATE paper_strategy_configs" in args[0]
-        assert args[1] == (2000.0, 500.0, 1500.0, 50.0, False, 1)
+        assert args[1] == (2000.0, 500.0, 1500.0, 50.0, False, 'inactive', 1)
 
     def test_update_portfolio_nav_active_api(self):
         # GIVEN: A database connection returning initial balances, and an active Trading 212 Client returning a total value

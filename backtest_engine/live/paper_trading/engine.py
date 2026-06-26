@@ -241,7 +241,13 @@ class PaperTradingEngine:
                 candle_rows = cur.fetchall()
                 
             if len(candle_rows) < 10:
-                # Not enough history
+                # Not enough history (Warmup)
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("UPDATE paper_strategy_configs SET run_status = 'waiting_data' WHERE id = %s", (config_id,))
+                    conn.commit()
+                except Exception as e:
+                    print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
                 continue
                 
             # Convert to DataFrame
@@ -268,6 +274,12 @@ class PaperTradingEngine:
             df_aggregated["volume"] = 0.0 # dummy volume
             
             if len(df_aggregated) < 2:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("UPDATE paper_strategy_configs SET run_status = 'waiting_data' WHERE id = %s", (config_id,))
+                    conn.commit()
+                except Exception as e:
+                    print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
                 continue
                 
             # Get latest closed bar (the one before the very last in-progress bar)
@@ -300,8 +312,19 @@ class PaperTradingEngine:
                 long_entry_signal = bool(last_closed_result.get('long_entry', False))
                 long_exit_signal = bool(last_closed_result.get('long_exit', False))
                 
+                # Success - Set status to active
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE paper_strategy_configs SET run_status = 'active' WHERE id = %s", (config_id,))
+                conn.commit()
+                
             except Exception as strat_err:
                 print(f"[PaperTrader] Error running strategy {strategy_name} for {asset}: {strat_err}")
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("UPDATE paper_strategy_configs SET run_status = 'error' WHERE id = %s", (config_id,))
+                    conn.commit()
+                except Exception as e:
+                    print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
                 continue
                 
             # Fetch current live price (Redis first, then Postgres)
