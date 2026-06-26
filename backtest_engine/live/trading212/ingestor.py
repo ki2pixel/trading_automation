@@ -92,7 +92,10 @@ class Trading212PriceIngestor:
         prices: Dict[str, float] = {}
         for pos in positions:
             raw_ticker = pos.get("instrument", {}).get("ticker")
-            ticker = TICKER_TRANSLATION.get(raw_ticker, raw_ticker)
+            if raw_ticker not in TICKER_TRANSLATION:
+                print(f"[PriceIngestor] Ignoring unauthorized raw ticker: {raw_ticker}")
+                continue
+            ticker = TICKER_TRANSLATION[raw_ticker]
             
             # Extract price. API can return currentPrice or price depending on schema.
             # Fallback values from position schema: currentPrice, averagePricePaid, etc.
@@ -100,7 +103,7 @@ class Trading212PriceIngestor:
             if price is None:
                 price = pos.get("price")
                 
-            if ticker and price is not None:
+            if price is not None:
                 try:
                     prices[ticker] = float(price)
                 except (ValueError, TypeError):

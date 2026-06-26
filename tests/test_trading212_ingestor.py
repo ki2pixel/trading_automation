@@ -327,6 +327,28 @@ def test_ingestor_empty(mock_client, tmp_path):
     assert not os.path.exists(cache_file)
 
 
+def test_ingestor_ignores_unauthorized(mock_client, tmp_path):
+    # Given: Price ingestor with mock positions including an unauthorized one
+    cache_file = str(tmp_path / "prices.json")
+    ingestor = Trading212PriceIngestor(mock_client, cache_path=cache_file)
+    
+    mock_positions = [
+        {"instrument": {"ticker": "SAPd_EQ"}, "currentPrice": 185.5},
+        {"instrument": {"ticker": "SAP_US_EQ"}, "price": 149.6}
+    ]
+    mock_client.get_positions = MagicMock(return_value=mock_positions)
+
+    # When: Running poll and cache
+    prices = ingestor.poll_and_cache()
+
+    # Then: SAP_US_EQ is ignored, only SAP is processed
+    assert prices == {"SAP": 185.5}
+    assert os.path.exists(cache_file)
+    with open(cache_file, "r") as f:
+        cached_data = json.load(f)
+    assert cached_data == {"SAP": 185.5}
+
+
 # =====================================================================
 # POSITION TRACKER TESTS
 # =====================================================================
