@@ -31,11 +31,11 @@ SEED_CONFIGS = [
             "ob": 82.0,
             "os": 10.0,
             "signal_mode": "Close",
-            "enable_stop_loss": true,
+            "enable_stop_loss": True,
             "stop_loss_pct": 0.5,
-            "enable_take_profit": true,
+            "enable_take_profit": True,
             "take_profit_pct": 11.9,
-            "enable_trailing_stop": false
+            "enable_trailing_stop": False
         }
     },
     {
@@ -51,7 +51,7 @@ SEED_CONFIGS = [
             "rnr": 1.2,
             "risk_m": 0.8,
             "swing_lookback": 5,
-            "trail_stop": false
+            "trail_stop": False
         }
     },
     {
@@ -67,7 +67,7 @@ SEED_CONFIGS = [
             "rnr": 0.5,
             "risk_m": 2.5,
             "swing_lookback": 5,
-            "trail_stop": false
+            "trail_stop": False
         }
     },
     {
@@ -83,7 +83,7 @@ SEED_CONFIGS = [
             "rnr": 1.0,
             "risk_m": 1.5,
             "swing_lookback": 5,
-            "trail_stop": false
+            "trail_stop": False
         }
     },
     {
@@ -95,11 +95,11 @@ SEED_CONFIGS = [
             "length": 45,
             "atr_len": 10,
             "atr_mult": 3.9,
-            "use_rsi": true,
+            "use_rsi": True,
             "rsi_len": 10,
             "rsi_OB": 76.0,
             "rsi_OS": 40.0,
-            "use_vol": false
+            "use_vol": False
         }
     },
     {
@@ -115,7 +115,7 @@ SEED_CONFIGS = [
             "rnr": 0.5,
             "risk_m": 0.8,
             "swing_lookback": 5,
-            "trail_stop": false
+            "trail_stop": False
         }
     },
     {
@@ -127,11 +127,11 @@ SEED_CONFIGS = [
             "length": 25,
             "atr_len": 12,
             "atr_mult": 3.5,
-            "use_rsi": true,
+            "use_rsi": True,
             "rsi_len": 7,
             "rsi_OB": 80.0,
             "rsi_OS": 34.0,
-            "use_vol": true
+            "use_vol": True
         }
     },
     {
@@ -146,11 +146,11 @@ SEED_CONFIGS = [
             "ob": 89.0,
             "os": 10.0,
             "signal_mode": "Close",
-            "enable_stop_loss": true,
+            "enable_stop_loss": True,
             "stop_loss_pct": 0.5,
-            "enable_take_profit": true,
+            "enable_take_profit": True,
             "take_profit_pct": 7.8,
-            "enable_trailing_stop": false
+            "enable_trailing_stop": False
         }
     },
     {
@@ -165,11 +165,11 @@ SEED_CONFIGS = [
             "ob": 79.0,
             "os": 18.0,
             "signal_mode": "Live",
-            "enable_stop_loss": true,
+            "enable_stop_loss": True,
             "stop_loss_pct": 4.8,
-            "enable_take_profit": true,
+            "enable_take_profit": True,
             "take_profit_pct": 13.4,
-            "enable_trailing_stop": false
+            "enable_trailing_stop": False
         }
     },
     {
@@ -184,7 +184,7 @@ SEED_CONFIGS = [
             "stick": 0.9,
             "confirm_bars": 2,
             "dom_thresh": 0.3,
-            "use_safety_stop": true,
+            "use_safety_stop": True,
             "take_profit_net_percent": 4.0,
             "stop_loss_net_percent": 1.0
         }
@@ -201,11 +201,11 @@ SEED_CONFIGS = [
             "ob": 66.0,
             "os": 35.0,
             "signal_mode": "Live",
-            "enable_stop_loss": true,
+            "enable_stop_loss": True,
             "stop_loss_pct": 0.5,
-            "enable_take_profit": true,
+            "enable_take_profit": True,
             "take_profit_pct": 15.0,
-            "enable_trailing_stop": false
+            "enable_trailing_stop": False
         }
     },
     {
@@ -220,11 +220,11 @@ SEED_CONFIGS = [
             "ob": 76.0,
             "os": 20.0,
             "signal_mode": "Live",
-            "enable_stop_loss": true,
+            "enable_stop_loss": True,
             "stop_loss_pct": 0.7,
-            "enable_take_profit": true,
+            "enable_take_profit": True,
             "take_profit_pct": 14.7,
-            "enable_trailing_stop": false
+            "enable_trailing_stop": False
         }
     },
     {
@@ -239,7 +239,7 @@ SEED_CONFIGS = [
             "stick": 0.6,
             "confirm_bars": 2,
             "dom_thresh": 0.5,
-            "use_safety_stop": true,
+            "use_safety_stop": True,
             "take_profit_net_percent": 18.0,
             "stop_loss_net_percent": 1.0
         }
@@ -256,7 +256,7 @@ SEED_CONFIGS = [
             "stick": 0.6,
             "confirm_bars": 1,
             "dom_thresh": 0.3,
-            "use_safety_stop": true,
+            "use_safety_stop": True,
             "take_profit_net_percent": 20.0,
             "stop_loss_net_percent": 1.0
         }
@@ -273,11 +273,11 @@ SEED_CONFIGS = [
             "ob": 73.0,
             "os": 28.0,
             "signal_mode": "Live",
-            "enable_stop_loss": true,
+            "enable_stop_loss": True,
             "stop_loss_pct": 5.0,
-            "enable_take_profit": true,
+            "enable_take_profit": True,
             "take_profit_pct": 13.4,
-            "enable_trailing_stop": false
+            "enable_trailing_stop": False
         }
     },
     {
@@ -292,7 +292,7 @@ SEED_CONFIGS = [
             "stick": 0.9,
             "confirm_bars": 5,
             "dom_thresh": 0.7,
-            "use_safety_stop": false,
+            "use_safety_stop": False,
             "take_profit_net_percent": 20.0,
             "stop_loss_net_percent": 2.0
         }
@@ -309,7 +309,7 @@ SEED_CONFIGS = [
             "stick": 0.6,
             "confirm_bars": 2,
             "dom_thresh": 0.5,
-            "use_safety_stop": true,
+            "use_safety_stop": True,
             "take_profit_net_percent": 20.0,
             "stop_loss_net_percent": 1.0
         }
@@ -326,11 +326,11 @@ SEED_CONFIGS = [
             "ob": 90.0,
             "os": 24.0,
             "signal_mode": "Live",
-            "enable_stop_loss": true,
+            "enable_stop_loss": True,
             "stop_loss_pct": 0.5,
-            "enable_take_profit": true,
+            "enable_take_profit": True,
             "take_profit_pct": 4.6,
-            "enable_trailing_stop": false
+            "enable_trailing_stop": False
         }
     },
     {
@@ -345,11 +345,11 @@ SEED_CONFIGS = [
             "ob": 82.0,
             "os": 23.0,
             "signal_mode": "Close",
-            "enable_stop_loss": true,
+            "enable_stop_loss": True,
             "stop_loss_pct": 0.9,
-            "enable_take_profit": true,
+            "enable_take_profit": True,
             "take_profit_pct": 8.4,
-            "enable_trailing_stop": false
+            "enable_trailing_stop": False
         }
     },
     {
