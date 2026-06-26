@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+import time
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -50,6 +51,10 @@ app.include_router(paper_trading_router)
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.get("/keep-alive")
+def keep_alive():
+    return {"status": "alive", "timestamp": time.time()}
 
 # Mount static files for the frontend dashboard
 static_dir = os.path.join(os.path.dirname(__file__), "backtest_engine/live/paper_trading/static")

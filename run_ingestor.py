@@ -1,6 +1,7 @@
 import os
 import sys
 import threading
+import time
 from fastapi import FastAPI
 import uvicorn
 
@@ -40,6 +41,10 @@ background_task = None
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.get("/keep-alive")
+def keep_alive():
+    return {"status": "alive", "timestamp": time.time()}
 
 @app.get("/prices")
 def get_prices():

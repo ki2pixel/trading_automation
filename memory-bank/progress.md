@@ -1,6 +1,8 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-26 13:28:00] - Résolution du spin-down Render : implémentation de l'endpoint `/keep-alive` avec timestamp dynamique dans run_ingestor.py et run_paper_trader.py. Création du script keep_alive.gs sous Google_Apps_Script/ et validation locale par tests unitaires (2/2 passés).
+- [x] [2026-06-26 13:13:00] - Nettoyage complet des 21 tickers obsolètes bruts de la base PostgreSQL (tables trading212_prices et trading212_candles_1m) suite à l'introduction du dictionnaire de traduction dans le commit ab00bdf.
 - [x] [2026-06-26 12:40:00] - Mise en œuvre du Connection Pooling PostgreSQL (via ThreadedConnectionPool de psycopg2) pour optimiser les performances réseau et soulager la base Supabase.
 - [x] [2026-06-26 12:35:00] - Intégration de Redis (Upstash) comme cache distribué partagé de prix temps réel entre l'Ingestor et le Paper Trading Engine.
 - [x] [2026-06-26 12:30:00] - Migration complète vers l'asynchronisme : refactoring des routes FastAPI (api.py) en async def (avec threads I/O gérés via asyncio.to_thread) et des boucles de polling (Ingestor et Engine) en tâches de fond asyncio.
