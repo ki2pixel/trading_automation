@@ -49,16 +49,9 @@ def fetch_candles(mf_symbol, range_limit=1440):
     }
     
     try:
-        response = requests.get(URL, headers=headers, params=querystring, timeout=10)
+        response = requests.get(URL, headers=headers, params=querystring, timeout=30)
         response.raise_for_status()
         data = response.json()
-        
-        # The exact response schema depends on the API, usually it's an array of objects or an object with 'data'
-        # Assuming typical OHLCV response from MarketFlow v2
-        # If response structure is known, adjust here. 
-        # Typically: {"data": [{"timestamp": 1234567890, "open": 100, "high": 105, "low": 95, "close": 102}, ...]}
-        # Or array of arrays: [[timestamp, open, high, low, close, volume], ...]
-        # We will parse the array assuming it's in data
         
         candles = data.get("data", [])
         if not candles and isinstance(data, list):
@@ -91,8 +84,10 @@ def parse_and_insert(t212_ticker, candles, conn):
             last_close = float(c.get("close", 0))
             if last_close > 0:
                 ratio = live_price / last_close
-                print(f"[WarmUp] Ratio d'ajustement de {ratio:.4f} pour {t212_ticker} (Live: {live_price}, API: {last_close})")
+                print(f"[WarmUp] Ratio d'ajustement de {ratio:.4f} appliqué pour {t212_ticker} (Live: {live_price}, API: {last_close})")
                 break
+    else:
+        print(f"[WarmUp] Aucun prix live trouvé dans la BDD pour {t212_ticker}, ratio 1.0 utilisé.")
 
     with conn.cursor() as cur:
         inserted = 0
