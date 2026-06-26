@@ -305,11 +305,11 @@ def test_ingestor_success(mock_client, tmp_path):
     prices = ingestor.poll_and_cache()
 
     # Then: Prices are resolved, stored in dictionary, and cached to file
-    assert prices == {"SAPd_EQ": 185.5, "TIMd_EQ": 25.2}
+    assert prices == {"SAP": 185.5, "ZEAL.CO": 25.2}
     assert os.path.exists(cache_file)
     with open(cache_file, "r") as f:
         cached_data = json.load(f)
-    assert cached_data == {"SAPd_EQ": 185.5, "TIMd_EQ": 25.2}
+    assert cached_data == {"SAP": 185.5, "ZEAL.CO": 25.2}
 
 
 def test_ingestor_empty(mock_client, tmp_path):
@@ -393,9 +393,14 @@ def test_ingestor_graceful_shutdown(mock_client, tmp_path):
     assert ingestor._running is False
 
 
-def test_run_ingestor_web_app():
+@patch("run_ingestor.get_redis_client")
+@patch("run_ingestor.get_db_connection")
+def test_run_ingestor_web_app(mock_get_db_conn, mock_get_redis):
     from run_ingestor import health_check, get_prices
     import run_ingestor
+    
+    mock_get_redis.return_value = None
+    mock_get_db_conn.side_effect = Exception("DB disabled in tests")
     
     # Given: We mock run_ingestor's ingestor instance
     mock_ing = MagicMock()
@@ -491,51 +496,49 @@ def test_ingestor_postgres_init_no_db_url(mock_connect, mock_client):
         mock_connect.assert_not_called()
 
 
-@patch("psycopg2.connect")
-def test_ingestor_postgres_init_success(mock_connect, mock_client):
+@patch("backtest_engine.live.trading212.ingestor.get_db_connection")
+def test_ingestor_postgres_init_success(mock_get_db_conn, mock_client):
     # Given: DATABASE_URL is set and connection is successful
     mock_conn = MagicMock()
     mock_cur = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
-    mock_connect.return_value = mock_conn
+    mock_get_db_conn.return_value.__enter__.return_value = mock_conn
 
     with patch.dict(os.environ, {"DATABASE_URL": "postgresql://mock_url"}):
         ingestor = Trading212PriceIngestor(mock_client)
-        # Then: psycopg2.connect is called with the URL
-        mock_connect.assert_called_once_with("postgresql://mock_url")
+        # Then: get_db_connection is called
+        mock_get_db_conn.assert_called_once()
         # And: table creation query is executed
-        mock_cur.execute.assert_called_once()
-        assert "CREATE TABLE IF NOT EXISTS trading212_prices" in mock_cur.execute.call_args[0][0]
-        # And: connection commits and closes
+        mock_cur.execute.assert_called()
+        assert "CREATE TABLE IF NOT EXISTS trading212_prices" in mock_cur.execute.call_args_list[0][0][0]
+        # And: connection commits
         mock_conn.commit.assert_called_once()
-        mock_conn.close.assert_called_once()
 
 
-@patch("psycopg2.connect")
-def test_ingestor_postgres_init_failure(mock_connect, mock_client):
+@patch("backtest_engine.live.trading212.ingestor.get_db_connection")
+def test_ingestor_postgres_init_failure(mock_get_db_conn, mock_client):
     # Given: DATABASE_URL is set, but connection fails
-    mock_connect.side_effect = Exception("Connection failed")
+    mock_get_db_conn.side_effect = RuntimeError("DATABASE_URL not configured")
 
     with patch.dict(os.environ, {"DATABASE_URL": "postgresql://mock_url"}):
         # When: initializing the ingestor, it should not crash
         ingestor = Trading212PriceIngestor(mock_client)
-        # Then: psycopg2.connect is called
-        mock_connect.assert_called_once_with("postgresql://mock_url")
+        # Then: get_db_connection is called
+        mock_get_db_conn.assert_called_once()
 
 
-@patch("psycopg2.connect")
-def test_ingestor_postgres_write(mock_connect, mock_client):
+@patch("backtest_engine.live.trading212.ingestor.get_db_connection")
+def test_ingestor_postgres_write(mock_get_db_conn, mock_client):
     # Given: DATABASE_URL is set
     mock_conn = MagicMock()
     mock_cur = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
-    mock_connect.return_value = mock_conn
+    mock_get_db_conn.return_value.__enter__.return_value = mock_conn
 
-    # Setup ingestor with DATABASE_URL disabled initially so initialization doesn't use the mock,
-    # or let's use it and reset mock calls.
+    # Setup ingestor with DATABASE_URL disabled initially so initialization doesn't use the mock
     with patch.dict(os.environ, {"DATABASE_URL": "postgresql://mock_url"}):
         ingestor = Trading212PriceIngestor(mock_client)
-        mock_connect.reset_mock()
+        mock_get_db_conn.reset_mock()
         mock_cur.execute.reset_mock()
         mock_conn.commit.reset_mock()
         
@@ -544,12 +547,12 @@ def test_ingestor_postgres_write(mock_connect, mock_client):
         ingestor._write_cache(prices)
         
         # Then: it writes to PostgreSQL
-        assert mock_connect.call_count == 1
-        assert mock_cur.execute.call_count == 2
+        assert mock_get_db_conn.call_count == 1
+        assert mock_cur.execute.call_count == 5
         
         # Verify the UPSERT statement is formatted correctly
         call_args_list = mock_cur.execute.call_args_list
-        assert len(call_args_list) == 2
+        assert len(call_args_list) == 5
         
         # Check first query
         first_query = call_args_list[0][0][0]
@@ -559,15 +562,18 @@ def test_ingestor_postgres_write(mock_connect, mock_client):
         assert "DO UPDATE SET price = EXCLUDED.price" in first_query
         assert first_params == ("AAPL", 150.0)
         
-        # And connection commits and closes
+        # And connection commits
         mock_conn.commit.assert_called_once()
-        mock_conn.close.assert_called_once()
 
 
-@patch("psycopg2.connect")
-def test_run_ingestor_postgres_read(mock_connect):
+@patch("run_ingestor.get_redis_client")
+@patch("run_ingestor.get_db_connection")
+def test_run_ingestor_postgres_read(mock_get_db_conn, mock_get_redis):
     import run_ingestor
     from run_ingestor import get_prices
+    
+    # Ensure Redis client is None (fallback to DB)
+    mock_get_redis.return_value = None
     
     # Mock ingestor fallback just in case
     mock_ing = MagicMock()
@@ -579,19 +585,17 @@ def test_run_ingestor_postgres_read(mock_connect):
     mock_cur = MagicMock()
     mock_cur.fetchall.return_value = [("AAPL", 155.0), ("MSFT", 305.0)]
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
-    # Context manager protocol on connection
-    mock_conn.__enter__.return_value = mock_conn
-    mock_connect.return_value = mock_conn
+    mock_get_db_conn.return_value.__enter__.return_value = mock_conn
     
     with patch.dict(os.environ, {"DATABASE_URL": "postgresql://mock_url"}):
         res = get_prices()
         assert res == {"AAPL": 155.0, "MSFT": 305.0}
-        mock_connect.assert_called_once_with("postgresql://mock_url")
+        mock_get_db_conn.assert_called_once()
         mock_cur.execute.assert_called_once_with("SELECT ticker, price FROM trading212_prices")
         
     # Case 2: DATABASE_URL is set, but DB query fails (should fallback to cache)
-    mock_connect.reset_mock()
-    mock_connect.side_effect = Exception("DB error")
+    mock_get_db_conn.reset_mock()
+    mock_get_db_conn.side_effect = Exception("DB error")
     with patch.dict(os.environ, {"DATABASE_URL": "postgresql://mock_url"}):
         res = get_prices()
         # Should fallback to local JSON cache

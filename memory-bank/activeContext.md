@@ -4,13 +4,13 @@
 - Aucun. Session terminée avec succès.
 
 ## Prochaines Étapes
-- Intégrer les 10 configurations validées d'Adaptive Volatility Trend (5 de la baseline + 5 d'extension) dans le dictionnaire d'allocation du moteur de production live.
-- Connecter les 35 configurations de trading de la shortlist au cache de prix local de l'ingesteur Trading 212 (`/tmp/t212_prices.json`).
+- Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les nouvelles données saines.
 
 ## Bloquants / Problèmes Actuels
-- Aucun.
+- Aucun. L'ingesteur tourne correctement 24h/24 grâce à Pulsetic, le problème des tickers T212 API est réglé, et les stratégies sont prêtes à être activées avec des flux temps réel continus.
 
-
+- [2026-06-26 12:40:00] - Clôture de session de remédiation technique. Implémentation du Connection Pooling PostgreSQL (ThreadedConnectionPool) et intégration d'Upstash Redis pour découpler la synchronisation distribuée des prix. Migration de l'ensemble de l'architecture FastAPI (routes de api.py) et des boucles de polling (Ingestor et Engine) vers de l'asynchronisme complet (async/await, asyncio). Mise en place de fuseaux horaires IANA dynamiques via zoneinfo pour is_market_open. Tous les tests unitaires et d'intégration (31/31) ont été réalignés et passent à 100%.
+- [2026-06-26 12:00:00] - Clôture de session. Résolution des problèmes d'architecture et de données live pour le Paper Trading. Ajustement du timezone de GMAB sur XETRA (+01:00) au lieu du NASDAQ. Mise en place d'une translation de tickers "à la volée" dans l'ingesteur pour réconcilier les symboles internes de l'API Trading 212 avec ceux du frontend. Validation du comportement perpétuel de la base de données 1m qui rend la routine `marketflow_warmup.py` caduque en présence de pings externes (Pulsetic).
 - [2026-06-25 17:00:00] - Intégration de PostgreSQL (Supabase) comme couche de cache optionnelle pour Trading 212 Price Ingestor. Double écriture (JSON local + PostgreSQL via UPSERT), lecture directe depuis PostgreSQL sur l'endpoint /prices avec repli automatique en cas d'erreur de base de données. Extension de la suite de tests unitaires à 27 tests validés (100% de réussite) couvrant la base de données. Documentation de déploiement mise à jour.
 
 - [2026-06-25 14:19:00] - Conception et développement de l'ingesteur de prix Trading 212 (Price Ingestor) basé sur la méthode du Portfolio Hack. Mappage EUR validé des 21 actifs de la Shortlist, routine de bootstrap automatique des micro-positions (0.0001 action), polling toutes les 60s avec mise en cache dans `/tmp/t212_prices.json`, et filtrage des micro-positions par le tracker. Validation complète par tests Pytest (16 tests passed).

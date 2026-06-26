@@ -1,6 +1,15 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-26 12:40:00] - Mise en œuvre du Connection Pooling PostgreSQL (via ThreadedConnectionPool de psycopg2) pour optimiser les performances réseau et soulager la base Supabase.
+- [x] [2026-06-26 12:35:00] - Intégration de Redis (Upstash) comme cache distribué partagé de prix temps réel entre l'Ingestor et le Paper Trading Engine.
+- [x] [2026-06-26 12:30:00] - Migration complète vers l'asynchronisme : refactoring des routes FastAPI (api.py) en async def (avec threads I/O gérés via asyncio.to_thread) et des boucles de polling (Ingestor et Engine) en tâches de fond asyncio.
+- [x] [2026-06-26 12:20:00] - Refactoring de is_market_open (engine.py) pour utiliser zoneinfo (IANA) de manière dynamique et éliminer les décalages horaires statiques non résilients face aux changements d'heure d'été/d'hiver (DST).
+- [x] [2026-06-26 12:10:00] - Alignement et mise à jour de la suite de tests unitaires et d'intégration (31/31 tests passés avec succès).
+- [x] [2026-06-26 11:44:00] - Correction du fuseau horaire de GMAB dans `configs/market_hours.json` (passage de NASDAQ `-05:00` à XETRA `+01:00`) pour éviter le gel du moteur de trading pendant la matinée européenne.
+- [x] [2026-06-26 11:33:00] - Validation de l'architecture d'ingestion : confirmation de la génération organique et continue des bougies 1m par `ingestor.py` via UPSERT, rendant obsolète l'automatisation du Warm-Up MarketFlow (économie du quota API).
+- [x] [2026-06-26 09:08:00] - Résolution de la désynchronisation des tickers (Frontend vs API Trading212) : intégration d'un dictionnaire de traduction `TICKER_TRANSLATION` à la volée dans `ingestor.py` pour unifier les flux de prix (`DPWd_EQ` -> `dpwdeeur`).
+- [x] [2026-06-26 08:33:00] - Robustesse de `marketflow_warmup.py` : augmentation du timeout API à 30s, insensibilité à la casse SQL et ajout de logs explicites en cas d'absence de prix live pour le ratio.
 - [x] [2026-06-25 17:00:00] - Intégration de PostgreSQL (Supabase) comme couche de cache optionnelle pour Trading 212 Price Ingestor. Double écriture (JSON local + PostgreSQL via UPSERT), lecture directe depuis PostgreSQL sur l'endpoint /prices avec repli automatique en cas d'erreur de base de données. Extension de la suite de tests unitaires à 27 tests validés (100% de réussite) couvrant la base de données. Documentation de déploiement mise à jour.
 - [x] [2026-06-25 14:19:00] - Conception et développement de l'ingesteur de prix Trading 212 (Price Ingestor) basé sur la méthode du Portfolio Hack. Mappage EUR validé des 21 actifs de la Shortlist, routine de bootstrap automatique des micro-positions (0.0001 action), polling toutes les 60s avec mise en cache dans `/tmp/t212_prices.json`, et filtrage des micro-positions par le tracker. Validation complète par 16 tests unitaires avec 100% de succès.
 - [x] [2026-06-19 22:15:00] - Résolution de l'anomalie de scope des variables dans `scripts/analyze_best_performances.py` et consolidation des configurations baseline + extensions, qualifiant 50 setups dans le portefeuille de déploiement immédiat.

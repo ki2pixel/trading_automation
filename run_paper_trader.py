@@ -1,6 +1,6 @@
 import os
 import sys
-import threading
+import asyncio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -12,38 +12,34 @@ from backtest_engine.live.paper_trading.engine import PaperTradingEngine
 from backtest_engine.live.paper_trading.db_setup import init_db
 
 engine = None
-background_thread = None
+background_task = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global background_thread
+    global background_task
     
     # Run DB schema check/seed
     print("[PaperTrader] Initializing database...")
-    init_db()
+    await asyncio.to_thread(init_db)
 
     polling_interval = int(os.getenv("PAPER_TRADER_POLLING_INTERVAL", "60"))
-    background_thread = threading.Thread(
-        target=run_engine_loop,
-        args=(engine, polling_interval),
-        daemon=True
-    )
-    background_thread.start()
-    print("[PaperTrader] Started background engine thread.")
+    if engine is not None:
+        background_task = asyncio.create_task(
+            engine.start_loop_async(interval_seconds=polling_interval)
+        )
+        print("[PaperTrader] Started background async engine task.")
     
     yield
     
     if engine is not None:
         engine.stop()
-    if background_thread is not None:
-        background_thread.join(timeout=5)
-    print("[PaperTrader] Stopped background engine thread.")
+    if background_task is not None:
+        try:
+            await background_task
+        except asyncio.CancelledError:
+            pass
+    print("[PaperTrader] Stopped background async engine task.")
 
-def run_engine_loop(engine_instance, interval):
-    try:
-        engine_instance.start_loop(interval_seconds=interval)
-    except Exception as e:
-        print(f"[PaperTrader] Background engine thread failed: {e}")
 
 # Initialize app
 app = FastAPI(title="Paper Trading Dashboard API", lifespan=lifespan)

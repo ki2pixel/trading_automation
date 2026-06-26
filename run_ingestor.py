@@ -9,30 +9,33 @@ from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.trading212.resolver import Trading212TickerResolver
 from backtest_engine.live.trading212.bootstrapper import Trading212Bootstrapper
 from backtest_engine.live.trading212.ingestor import Trading212PriceIngestor
+from backtest_engine.live.connection import get_db_connection, get_redis_client
 
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global background_thread
+    global background_task
     polling_interval = int(os.getenv("T212_POLLING_INTERVAL", "60"))
-    background_thread = threading.Thread(
-        target=run_polling_loop,
-        args=(ingestor, polling_interval),
-        daemon=True
-    )
-    background_thread.start()
-    print("[Runner] Started background polling thread.")
+    if ingestor is not None:
+        import asyncio
+        background_task = asyncio.create_task(
+            ingestor.start_loop_async(interval_seconds=polling_interval)
+        )
+        print("[Runner] Started background async polling task.")
     yield
     if ingestor is not None:
         ingestor._running = False
-    if background_thread is not None:
-        background_thread.join(timeout=5)
-    print("[Runner] Stopped background polling thread.")
+    if background_task is not None:
+        try:
+            await background_task
+        except asyncio.CancelledError:
+            pass
+    print("[Runner] Stopped background async polling task.")
 
 app = FastAPI(title="Trading 212 Price Ingestor API", lifespan=lifespan)
 ingestor = None
-background_thread = None
+background_task = None
 
 @app.get("/health")
 def health_check():
@@ -40,12 +43,28 @@ def health_check():
 
 @app.get("/prices")
 def get_prices():
+    # 1. Try fetching from Redis (Upstash)
+    redis_client = get_redis_client()
+    if redis_client:
+        try:
+            keys = redis_client.keys("price:*")
+            if keys:
+                prices = {}
+                for key in keys:
+                    ticker = key.split("price:")[1]
+                    price_val = redis_client.get(key)
+                    if price_val is not None:
+                        prices[ticker] = float(price_val)
+                return prices
+        except Exception as e:
+            print(f"[Runner] Failed to fetch prices from Redis: {e}")
+
+    # 2. Fallback to PostgreSQL via Connection Pool
     db_url = os.getenv("DATABASE_URL")
     if db_url:
         try:
-            import psycopg2
             prices = {}
-            with psycopg2.connect(db_url) as conn:
+            with get_db_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT ticker, price FROM trading212_prices")
                     rows = cur.fetchall()
@@ -104,9 +123,12 @@ def main():
         print(f"[Runner] Starting ingestor in WEB mode on {host}:{port}...")
         uvicorn.run(app, host=host, port=port, log_level="info")
     else:
-        print(f"[Runner] Starting ingestor in WORKER mode...")
-        # Direct run in the main thread
-        ingestor.start_loop(interval_seconds=polling_interval)
+        print(f"[Runner] Starting ingestor in WORKER mode (async)...")
+        import asyncio
+        try:
+            asyncio.run(ingestor.start_loop_async(interval_seconds=polling_interval))
+        except KeyboardInterrupt:
+            print("[Runner] Ingestor stopped by keyboard interrupt.")
 
 if __name__ == "__main__":
     main()

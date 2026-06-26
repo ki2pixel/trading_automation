@@ -3,6 +3,7 @@ import os
 import time
 from typing import Dict, Any, Optional
 from backtest_engine.live.trading212.client import Trading212Client
+from backtest_engine.live.connection import get_db_connection, get_redis_client
 
 class Trading212PriceIngestor:
     """Tâche d'ingestion de prix pour récupérer les cotations via positions."""
@@ -22,36 +23,37 @@ class Trading212PriceIngestor:
 
     def _init_db(self) -> None:
         """Creates the prices table if DATABASE_URL is set."""
-        conn = None
         try:
-            conn = self._get_db_connection()
-            if conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS trading212_prices (
-                            ticker VARCHAR(50) PRIMARY KEY,
-                            price NUMERIC(15, 6) NOT NULL,
-                            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                        );
-                    """)
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS trading212_candles_1m (
-                            ticker VARCHAR(50),
-                            timestamp_minute TIMESTAMP WITH TIME ZONE,
-                            open NUMERIC(15, 6) NOT NULL,
-                            high NUMERIC(15, 6) NOT NULL,
-                            low NUMERIC(15, 6) NOT NULL,
-                            close NUMERIC(15, 6) NOT NULL,
-                            PRIMARY KEY (ticker, timestamp_minute)
-                        );
-                    """)
-                    conn.commit()
-                print("[PriceIngestor] PostgreSQL prices table initialized.")
+            try:
+                with get_db_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS trading212_prices (
+                                ticker VARCHAR(50) PRIMARY KEY,
+                                price NUMERIC(15, 6) NOT NULL,
+                                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                            );
+                        """)
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS trading212_candles_1m (
+                                ticker VARCHAR(50),
+                                timestamp_minute TIMESTAMP WITH TIME ZONE,
+                                open NUMERIC(15, 6) NOT NULL,
+                                high NUMERIC(15, 6) NOT NULL,
+                                low NUMERIC(15, 6) NOT NULL,
+                                close NUMERIC(15, 6) NOT NULL,
+                                PRIMARY KEY (ticker, timestamp_minute)
+                            );
+                        """)
+                        conn.commit()
+                    print("[PriceIngestor] PostgreSQL prices table initialized.")
+            except RuntimeError as re:
+                if "DATABASE_URL not configured" in str(re):
+                    print("[PriceIngestor] PostgreSQL database not configured. Skipping initialization.")
+                else:
+                    raise
         except Exception as e:
             print(f"[PriceIngestor] Failed to initialize PostgreSQL table: {e}")
-        finally:
-            if conn:
-                conn.close()
 
     def poll_and_cache(self) -> Dict[str, float]:
         """Polls open positions, extracts current prices, and saves them to the cache file."""
@@ -113,7 +115,7 @@ class Trading212PriceIngestor:
         return prices
 
     def _write_cache(self, prices: Dict[str, float]) -> None:
-        """Writes price dictionary to the JSON cache file and database."""
+        """Writes price dictionary to the JSON cache file, Redis, and database."""
         # 1. Write to local JSON file
         try:
             temp_path = f"{self.cache_path}.tmp"
@@ -124,41 +126,55 @@ class Trading212PriceIngestor:
         except Exception as e:
             print(f"[PriceIngestor] Failed to write price cache: {e}")
 
-        # 2. Write to PostgreSQL (if DATABASE_URL is set)
-        conn = None
+        # 1.5 Write to Redis (Upstash)
+        redis_client = get_redis_client()
+        if redis_client:
+            try:
+                pipe = redis_client.pipeline()
+                for ticker, price in prices.items():
+                    pipe.set(f"price:{ticker}", str(price))
+                pipe.execute()
+                print(f"[PriceIngestor] Successfully published {len(prices)} prices to Redis.")
+            except Exception as e:
+                print(f"[PriceIngestor] Failed to write to Redis cache: {e}")
+
+        # 2. Write to PostgreSQL (from connection pool)
         try:
-            conn = self._get_db_connection()
-            if conn:
-                with conn.cursor() as cur:
-                    for ticker, price in prices.items():
-                        cur.execute("""
-                            INSERT INTO trading212_prices (ticker, price, updated_at)
-                            VALUES (%s, %s, CURRENT_TIMESTAMP)
-                            ON CONFLICT (ticker)
-                            DO UPDATE SET price = EXCLUDED.price, updated_at = CURRENT_TIMESTAMP;
-                        """, (ticker, price))
+            try:
+                with get_db_connection() as conn:
+                    with conn.cursor() as cur:
+                        for ticker, price in prices.items():
+                            cur.execute("""
+                                INSERT INTO trading212_prices (ticker, price, updated_at)
+                                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                                ON CONFLICT (ticker)
+                                DO UPDATE SET price = EXCLUDED.price, updated_at = CURRENT_TIMESTAMP;
+                            """, (ticker, price))
+                            
+                            # UPSERT for 1m continuous pseudo-candles
+                            cur.execute("""
+                                INSERT INTO trading212_candles_1m (ticker, timestamp_minute, open, high, low, close)
+                                VALUES (%s, date_trunc('minute', CURRENT_TIMESTAMP), %s, %s, %s, %s)
+                                ON CONFLICT (ticker, timestamp_minute)
+                                DO UPDATE SET 
+                                    high = GREATEST(trading212_candles_1m.high, EXCLUDED.high),
+                                    low = LEAST(trading212_candles_1m.low, EXCLUDED.low),
+                                    close = EXCLUDED.close;
+                            """, (ticker, price, price, price, price))
+                            
+                        # Auto-cleanup: keep only last 24h
+                        cur.execute("DELETE FROM trading212_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '24 hours'")
                         
-                        # UPSERT for 1m continuous pseudo-candles
-                        cur.execute("""
-                            INSERT INTO trading212_candles_1m (ticker, timestamp_minute, open, high, low, close)
-                            VALUES (%s, date_trunc('minute', CURRENT_TIMESTAMP), %s, %s, %s, %s)
-                            ON CONFLICT (ticker, timestamp_minute)
-                            DO UPDATE SET 
-                                high = GREATEST(trading212_candles_1m.high, EXCLUDED.high),
-                                low = LEAST(trading212_candles_1m.low, EXCLUDED.low),
-                                close = EXCLUDED.close;
-                        """, (ticker, price, price, price, price))
-                        
-                    # Auto-cleanup: keep only last 24h
-                    cur.execute("DELETE FROM trading212_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '24 hours'")
-                    
-                    conn.commit()
-                print(f"[PriceIngestor] Successfully updated {len(prices)} prices and 1m candles in PostgreSQL.")
+                        conn.commit()
+                    print(f"[PriceIngestor] Successfully updated {len(prices)} prices and 1m candles in PostgreSQL.")
+            except RuntimeError as re:
+                if "DATABASE_URL not configured" in str(re):
+                    # Silently skip if DB is not configured (local cache only)
+                    pass
+                else:
+                    raise
         except Exception as e:
             print(f"[PriceIngestor] Failed to write to PostgreSQL cache: {e}")
-        finally:
-            if conn:
-                conn.close()
 
     def read_cache(self) -> Dict[str, float]:
         """Reads cached prices from the JSON file."""
@@ -200,6 +216,25 @@ class Trading212PriceIngestor:
                     break
                 time.sleep(1)
         print("[PriceIngestor] Polling loop stopped cleanly.")
+
+    async def start_loop_async(self, interval_seconds: int = 60) -> None:
+        """Starts a non-blocking async loop that polls prices at the specified interval."""
+        print(f"[PriceIngestor] Starting async polling loop. Interval: {interval_seconds}s")
+        import asyncio
+        self._running = True
+
+        while self._running:
+            try:
+                await asyncio.to_thread(self.poll_and_cache)
+            except Exception as e:
+                print(f"[PriceIngestor] Unexpected error in async polling loop: {e}")
+            
+            for _ in range(interval_seconds):
+                if not self._running:
+                    break
+                await asyncio.sleep(1)
+        print("[PriceIngestor] Async polling loop stopped cleanly.")
+
 
 if __name__ == "__main__":
     # Executable entry point for manual validation

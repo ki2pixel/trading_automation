@@ -3,138 +3,161 @@
     "exchange": "GETTEX",
     "open": "08:00",
     "close": "22:00",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "GMAB": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "NVO": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "SHL.DE": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "EVD.DE": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "SAP": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "FPE.DE": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "LOGI": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "NVS": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "AMS.MC": {
     "exchange": "BOLSA_DE_MADRID",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Madrid"
   },
   "dpwdeeur": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "teniteur": {
     "exchange": "ITALIAN_STOCK_EXCHANGE",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Rome"
   },
   "akzanleur": {
     "exchange": "EURONEXT_AMSTERDAM",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Amsterdam"
   },
   "daideeur": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "mrkdeeur": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "vnadeeur": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "acfreur": {
     "exchange": "EURONEXT_PARIS",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Paris"
   },
   "lxsdeeur": {
     "exchange": "XETRA",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Berlin"
   },
   "randnleur": {
     "exchange": "EURONEXT_AMSTERDAM",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Amsterdam"
   },
   "rifreur": {
     "exchange": "EURONEXT_PARIS",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Paris"
   },
   "abibeeur": {
     "exchange": "EURONEXT_BRUSSELS",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Brussels"
   },
   "belgbeeur": {
     "exchange": "EURONEXT_BRUSSELS",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Brussels"
   },
   "cafreur": {
     "exchange": "EURONEXT_PARIS",
     "open": "09:00",
     "close": "17:30",
-    "tz_offset": "+01:00"
+    "tz_offset": "+01:00",
+    "timezone": "Europe/Paris"
   }
 }

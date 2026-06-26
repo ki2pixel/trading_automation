@@ -30,18 +30,36 @@ class PaperTradingEngine:
             return False
             
         config = self.market_hours[asset]
-        tz_offset_str = config.get("tz_offset", "+00:00")
-        
-        # Simple manual tz parsing for "+01:00" format to hours and minutes
-        sign = 1 if tz_offset_str[0] == "+" else -1
-        hours_offset = int(tz_offset_str[1:3])
-        mins_offset = int(tz_offset_str[4:6])
+        timezone_name = config.get("timezone")
         
         # Current UTC time
-        utc_now = datetime.now(pytz.utc)
+        import datetime as dt
+        utc_now = datetime.now(dt.timezone.utc)
         
-        # Not handling complex timezone transitions here, just a fixed offset for the MVP
-        local_time = utc_now.astimezone(pytz.FixedOffset(sign * (hours_offset * 60 + mins_offset)))
+        local_time = None
+        if timezone_name:
+            try:
+                from zoneinfo import ZoneInfo
+                local_time = utc_now.astimezone(ZoneInfo(timezone_name))
+            except Exception:
+                try:
+                    import pytz
+                    local_time = utc_now.astimezone(pytz.timezone(timezone_name))
+                except Exception as e:
+                    print(f"[PaperTrader] Failed to resolve timezone {timezone_name} for {asset}: {e}")
+                    
+        if local_time is None:
+            # Fallback to static offset parsing if timezone resolution failed
+            tz_offset_str = config.get("tz_offset", "+00:00")
+            sign = 1 if tz_offset_str[0] == "+" else -1
+            try:
+                hours_offset = int(tz_offset_str[1:3])
+                mins_offset = int(tz_offset_str[4:6])
+                import pytz
+                local_time = utc_now.astimezone(pytz.FixedOffset(sign * (hours_offset * 60 + mins_offset)))
+            except Exception as e:
+                print(f"[PaperTrader] Failed to parse static offset {tz_offset_str} for {asset}: {e}")
+                local_time = utc_now
         
         # Check if it's weekend (Monday = 0, Sunday = 6)
         if local_time.weekday() >= 5:
@@ -57,6 +75,12 @@ class PaperTradingEngine:
         Update the total NAV of the portfolio based on current prices of positions
         and the cash balance.
         """
+        from decimal import Decimal
+        from datetime import datetime, timedelta, timezone
+        from backtest_engine.live.connection import get_redis_client
+        
+        redis_client = get_redis_client()
+        
         try:
             with conn.cursor() as cur:
                 # Get current cash balance
@@ -64,7 +88,7 @@ class PaperTradingEngine:
                 row = cur.fetchone()
                 if not row:
                     return
-                cash_balance = row[0]
+                cash_balance = Decimal(str(row[0]))
 
                 # Update positions with current prices and calculate total value
                 cur.execute("SELECT id, asset, qty, entry_price FROM paper_positions")
@@ -73,13 +97,44 @@ class PaperTradingEngine:
                 total_nav = cash_balance
                 
                 for pos_id, asset, qty, entry_price in positions:
-                    if not self.is_market_open(asset):
-                        continue # Keep previous current_price if closed
+                    qty = Decimal(str(qty))
+                    entry_price = Decimal(str(entry_price))
                     
-                    cur.execute("SELECT price FROM trading212_prices WHERE ticker = %s", (asset,))
-                    price_row = cur.fetchone()
-                    if price_row:
-                        current_price = price_row[0]
+                    if not self.is_market_open(asset):
+                        # Keep previous current_price if closed
+                        cur.execute("SELECT current_price FROM paper_positions WHERE id = %s", (pos_id,))
+                        last_price_row = cur.fetchone()
+                        if last_price_row and last_price_row[0] is not None:
+                            total_nav += (Decimal(str(last_price_row[0])) * qty)
+                        continue 
+                    
+                    # 1. Try reading from Redis first
+                    current_price = None
+                    if redis_client:
+                        try:
+                            redis_val = redis_client.get(f"price:{asset}")
+                            if redis_val is not None:
+                                current_price = Decimal(str(redis_val))
+                        except Exception as re:
+                            print(f"[PaperTrader] Redis read error for {asset}: {re}")
+
+                    # 2. Fallback to SQL DB
+                    if current_price is None:
+                        cur.execute("SELECT price, updated_at FROM trading212_prices WHERE ticker = %s", (asset,))
+                        price_row = cur.fetchone()
+                        if price_row:
+                            current_price = Decimal(str(price_row[0]))
+                            updated_at = price_row[1]
+                            # Check freshness (3 minutes warning)
+                            if updated_at:
+                                if updated_at.tzinfo is None:
+                                    updated_at = updated_at.replace(tzinfo=timezone.utc)
+                                age = datetime.now(timezone.utc) - updated_at
+                                if age > timedelta(minutes=3):
+                                    print(f"[PaperTrader] WARNING: price for {asset} is stale (age: {age.total_seconds()}s). Using it anyway.")
+                    
+                    # 3. Fallback to last known position price
+                    if current_price is not None:
                         pnl = (current_price - entry_price) * qty
                         cur.execute("""
                             UPDATE paper_positions 
@@ -88,10 +143,11 @@ class PaperTradingEngine:
                         """, (current_price, pnl, pos_id))
                         total_nav += (current_price * qty)
                     else:
-                        # If no live price, fallback to last known
                         cur.execute("SELECT current_price FROM paper_positions WHERE id = %s", (pos_id,))
-                        last_price = cur.fetchone()[0]
-                        total_nav += (last_price * qty)
+                        last_price_row = cur.fetchone()
+                        if last_price_row and last_price_row[0] is not None:
+                            last_price = Decimal(str(last_price_row[0]))
+                            total_nav += (last_price * qty)
                         
                 cur.execute("UPDATE paper_portfolio_balance SET total_nav = %s, last_updated = CURRENT_TIMESTAMP", (total_nav,))
                 conn.commit()
@@ -101,18 +157,11 @@ class PaperTradingEngine:
 
     def run_cycle(self):
         """Single execution cycle for the paper trader."""
-        if not self.db_url:
-            print("[PaperTrader] DATABASE_URL not set. Cannot run cycle.")
-            return
-
+        from backtest_engine.live.connection import get_db_connection
+        
         try:
-            with psycopg2.connect(self.db_url) as conn:
-                # 1. Update Portfolio NAV and Position PnLs
+            with get_db_connection() as conn:
                 self._update_portfolio_nav(conn)
-                
-                # 2. Strategy Execution (Placeholder for future when history is available)
-                # print("[PaperTrader] Strategy execution is disabled pending historical data support.")
-                
         except Exception as e:
             print(f"[PaperTrader] Error in run_cycle: {e}")
 
@@ -123,5 +172,18 @@ class PaperTradingEngine:
             self.run_cycle()
             time.sleep(interval_seconds)
 
+    async def start_loop_async(self, interval_seconds=60):
+        print(f"[PaperTrader] Starting async paper trading loop (interval: {interval_seconds}s)...")
+        import asyncio
+        self._running = True
+        while self._running:
+            await asyncio.to_thread(self.run_cycle)
+            for _ in range(interval_seconds):
+                if not self._running:
+                    break
+                await asyncio.sleep(1)
+
     def stop(self):
         self._running = False
+
+
