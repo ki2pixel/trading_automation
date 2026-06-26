@@ -67,7 +67,7 @@ def fetch_candles(mf_symbol, range_limit=1440):
 def get_t212_current_price(t212_ticker, conn):
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT price FROM trading212_prices WHERE ticker = %s", (t212_ticker,))
+            cur.execute("SELECT price FROM trading212_prices WHERE LOWER(ticker) = LOWER(%s)", (t212_ticker,))
             row = cur.fetchone()
             if row:
                 return float(row[0])
