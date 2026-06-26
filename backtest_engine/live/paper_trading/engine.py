@@ -273,7 +273,18 @@ class PaperTradingEngine:
             }).dropna()
             df_aggregated["volume"] = 0.0 # dummy volume
             
-            if len(df_aggregated) < 2:
+            # Calculate dynamic warmup period based on indicator parameters
+            min_bars_needed = 2
+            if indicator_params:
+                lookbacks = [50] # Default safe lookback when config is populated
+                for k, v in indicator_params.items():
+                    if isinstance(v, (int, float)):
+                        k_lower = k.lower()
+                        if any(term in k_lower for term in ["length", "period", "len", "lookback", "window", "bars"]):
+                            lookbacks.append(int(v))
+                min_bars_needed = max(lookbacks)
+
+            if len(df_aggregated) < min_bars_needed:
                 try:
                     with conn.cursor() as cur:
                         cur.execute("UPDATE paper_strategy_configs SET run_status = 'waiting_data' WHERE id = %s", (config_id,))
