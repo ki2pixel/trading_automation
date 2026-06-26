@@ -22,9 +22,11 @@ class PaperTradingEngine:
             config.validate()
             self.t212_client = Trading212Client(config)
             print("[PaperTrader] Trading 212 API client successfully initialized.")
+            self.t212_init_error = None
         except Exception as e:
             print(f"[PaperTrader] Trading 212 credentials not configured or invalid, running in local-only mode: {e}")
             self.t212_client = None
+            self.t212_init_error = str(e)
 
     def _load_market_hours(self):
         try:

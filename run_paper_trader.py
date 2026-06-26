@@ -70,6 +70,7 @@ def status():
     return {
         "status": "online",
         "t212_client_active": engine.t212_client is not None,
+        "t212_init_error": getattr(engine, "t212_init_error", None),
         "database_url_configured": bool(engine.db_url),
     }
 
