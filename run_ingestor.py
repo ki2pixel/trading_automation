@@ -39,10 +39,12 @@ ingestor = None
 background_task = None
 
 @app.get("/health")
+@app.head("/health")
 def health_check():
     return {"status": "healthy"}
 
 @app.get("/keep-alive")
+@app.head("/keep-alive")
 def keep_alive():
     return {"status": "alive", "timestamp": time.time()}
 

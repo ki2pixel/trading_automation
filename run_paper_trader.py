@@ -49,10 +49,12 @@ app = FastAPI(title="Paper Trading Dashboard API", lifespan=lifespan)
 app.include_router(paper_trading_router)
 
 @app.get("/health")
+@app.head("/health")
 def health_check():
     return {"status": "healthy"}
 
 @app.get("/keep-alive")
+@app.head("/keep-alive")
 def keep_alive():
     return {"status": "alive", "timestamp": time.time()}
 

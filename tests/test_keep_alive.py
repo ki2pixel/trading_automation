@@ -10,7 +10,7 @@ def test_ingestor_keep_alive():
     # Given: Ingestor TestClient
     client = TestClient(ingestor_app)
     
-    # When: Querying /keep-alive
+    # When: Querying GET /keep-alive
     response = client.get("/keep-alive")
     
     # Then: Expect status 200 and dynamic timestamp
@@ -21,11 +21,45 @@ def test_ingestor_keep_alive():
     assert isinstance(data["timestamp"], (int, float))
     assert time.time() - data["timestamp"] < 10  # check it's recent
 
+def test_ingestor_keep_alive_head():
+    # Given: Ingestor TestClient
+    client = TestClient(ingestor_app)
+    
+    # When: Querying HEAD /keep-alive
+    response = client.head("/keep-alive")
+    
+    # Then: Expect status 200 and empty content
+    assert response.status_code == 200
+    assert response.text == ""
+
+def test_ingestor_health_get():
+    # Given: Ingestor TestClient
+    client = TestClient(ingestor_app)
+    
+    # When: Querying GET /health
+    response = client.get("/health")
+    
+    # Then: Expect status 200 and health status check
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+
+def test_ingestor_health_head():
+    # Given: Ingestor TestClient
+    client = TestClient(ingestor_app)
+    
+    # When: Querying HEAD /health
+    response = client.head("/health")
+    
+    # Then: Expect status 200 and empty content
+    assert response.status_code == 200
+    assert response.text == ""
+
 def test_paper_trader_keep_alive():
     # Given: Paper Trader TestClient
     client = TestClient(paper_trader_app)
     
-    # When: Querying /keep-alive
+    # When: Querying GET /keep-alive
     response = client.get("/keep-alive")
     
     # Then: Expect status 200 and dynamic timestamp
@@ -35,3 +69,37 @@ def test_paper_trader_keep_alive():
     assert "timestamp" in data
     assert isinstance(data["timestamp"], (int, float))
     assert time.time() - data["timestamp"] < 10  # check it's recent
+
+def test_paper_trader_keep_alive_head():
+    # Given: Paper Trader TestClient
+    client = TestClient(paper_trader_app)
+    
+    # When: Querying HEAD /keep-alive
+    response = client.head("/keep-alive")
+    
+    # Then: Expect status 200 and empty content
+    assert response.status_code == 200
+    assert response.text == ""
+
+def test_paper_trader_health_get():
+    # Given: Paper Trader TestClient
+    client = TestClient(paper_trader_app)
+    
+    # When: Querying GET /health
+    response = client.get("/health")
+    
+    # Then: Expect status 200 and health status check
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+
+def test_paper_trader_health_head():
+    # Given: Paper Trader TestClient
+    client = TestClient(paper_trader_app)
+    
+    # When: Querying HEAD /health
+    response = client.head("/health")
+    
+    # Then: Expect status 200 and empty content
+    assert response.status_code == 200
+    assert response.text == ""
