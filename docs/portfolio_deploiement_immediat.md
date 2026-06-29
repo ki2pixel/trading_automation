@@ -1,10 +1,10 @@
 # Portfolio de Déploiement Immédiat
 
-Ce document consigne la liste exacte des **50 setups** identifiés pour un déploiement en production ou en paper-trading actif, suite à la campagne globale d'optimisation et d'arbitrage.
+Ce document consigne la liste exacte des **51 setups** identifiés pour un déploiement en production ou en paper-trading actif, suite à la campagne globale d'optimisation et d'arbitrage.
 
 ### Critères de Sélection
 Les setups ci-dessous cochent toutes les conditions de robustesse suivantes :
-- **Profit Factor** > 1.5
+- **Profit Factor** >= 1.5
 - **Sharpe Ratio** > 1.0
 - **Kelly Criterion** > 0 (pour garantir un avantage mathématique à l'allocation)
 - **Rendement Mensuel Moyen (€)** > 0 (Générateur de profit brut justifiant le risque)
@@ -14,7 +14,7 @@ Les setups ci-dessous cochent toutes les conditions de robustesse suivantes :
 - **`cybernetic_hilbert`** ressort extrêmement fort sur `ZEAL.CO` (nécessite une petite surveillance manuelle initiale pour écarter tout overfitting résiduel).
 - **`momentum_based_zigzag`** et **`lorentzian_classification`** offrent d'excellents Profit Factors et des allocations Kelly élevées, parfaits pour la stabilité.
 
-## Les 50 Setups Validés (Triés par Poids Kelly décroissant)
+## Les 51 Setups Validés (Triés par Poids Kelly décroissant)
 
 | Stratégie | Actif | Timeframe | Profit Factor | Sharpe | Kelly Weight | Rendement Mensuel (€) |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: |
@@ -58,6 +58,7 @@ Les setups ci-dessous cochent toutes les conditions de robustesse suivantes :
 | `hmm_regime_filter` | **NVO** | 30m | 1.82 | 1.45 | **0.56%** | 10.55 € |
 | `momentum_based_zigzag` | **vnadeeur** | 10m | 2.00 | 2.12 | **0.56%** | 1.03 € |
 | `momentum_based_zigzag` | **akzanleur** | 30m | 1.81 | 1.16 | **0.56%** | 1.40 € |
+| `cybernetic_hilbert` | **ZEAL.CO** | 15m | 1.50 | 3.78 | **0.55%** | 69.42 € |
 | `hmm_regime_filter` | **acfreur** | 10m | 1.64 | 2.01 | **0.54%** | 0.78 € |
 | `3commas_bot` | **GMAB** | 30m | 1.56 | 1.14 | **0.53%** | 5.49 € |
 | `hmm_regime_filter` | **rifreur** | 10m | 1.60 | 1.52 | **0.52%** | 0.80 € |
@@ -76,7 +77,7 @@ Extraction par meilleur Rendement Mensuel (€) absolu par combinaison Stratégi
 
 | Stratégie | Actif | Timeframe | Profit Factor | Sharpe | Kelly Weight | Rendement Mensuel (€) |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: |
-| `cybernetic_hilbert` | **ZEAL.CO** | 45m | 1.85 | 3.36 | **0.79%** | 56.73 € |
+| `cybernetic_hilbert` | **ZEAL.CO** | 15m | 1.50 | 3.78 | **0.55%** | 69.42 € |
 | `momentum_based_zigzag` | **ZEAL.CO** | 1m | 1.68 | 2.26 | **0.59%** | 39.62 € |
 | `momentum_based_zigzag` | **NVO** | 45m | 2.60 | 1.89 | **0.73%** | 18.18 € |
 | `smart_trader_geometric` | **ZEAL.CO** | 10m | 1.57 | 1.86 | **0.47%** | 13.01 € |

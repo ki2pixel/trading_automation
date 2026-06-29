@@ -165,6 +165,7 @@ def test_resample_canonical_market_data_from_1m():
 def test_filter_market_hours():
     from backtest_engine.data import filter_market_hours
     from pathlib import Path
+    from unittest.mock import patch
 
     repo_root = Path(__file__).parent.parent
 
@@ -173,27 +174,45 @@ def test_filter_market_hours():
     idx = idx.append(pd.date_range("2023-01-03 00:00:00", periods=1440, freq="1min"))
     df = pd.DataFrame({"value": range(len(idx))}, index=idx)
 
-    # 1. XETRA symbol (CET UTC+1) -> market hours 09:00-17:30 local = 08:00-16:30 UTC
-    filtered = filter_market_hours(df, symbol="SAP", repo_root=repo_root)
-    # First retained bar should be 08:00 UTC on Jan 2
-    assert filtered.index[0] == pd.Timestamp("2023-01-02 08:00:00")
-    # Last retained bar should be 16:30 UTC on Jan 3
-    assert filtered.index[-1] == pd.Timestamp("2023-01-03 16:30:00")
-    # Each day: 09:00 to 17:30 inclusive at 1min -> (510 - 0) + 1 = 511 bars per day
-    assert len(filtered) == 511 * 2
+    fake_config = {
+        "SAP": {
+            "exchange": "XETRA",
+            "open": "09:00",
+            "close": "17:30",
+            "tz_offset": "+01:00",
+            "timezone": "Europe/Berlin"
+        },
+        "GMAB": {
+            "exchange": "NASDAQ",
+            "open": "09:30",
+            "close": "16:00",
+            "tz_offset": "-05:00",
+            "timezone": "America/New_York"
+        }
+    }
 
-    # 2. NASDAQ symbol (EST UTC-5) -> market hours 09:30-16:00 local = 14:30-21:00 UTC
-    filtered_nq = filter_market_hours(df, symbol="GMAB", repo_root=repo_root)
-    # First retained: 14:30 UTC
-    assert filtered_nq.index[0] == pd.Timestamp("2023-01-02 14:30:00")
-    # Last retained: 21:00 UTC
-    assert filtered_nq.index[-1] == pd.Timestamp("2023-01-03 21:00:00")
-    # Each day: 09:30 to 16:00 inclusive at 1min -> (390 - 0) + 1 = 391 bars per day
-    assert len(filtered_nq) == 391 * 2
+    with patch("backtest_engine.data._load_market_hours_config", return_value=fake_config):
+        # 1. XETRA symbol (CET UTC+1) -> market hours 09:00-17:30 local = 08:00-16:30 UTC
+        filtered = filter_market_hours(df, symbol="SAP", repo_root=repo_root)
+        # First retained bar should be 08:00 UTC on Jan 2
+        assert filtered.index[0] == pd.Timestamp("2023-01-02 08:00:00")
+        # Last retained bar should be 16:30 UTC on Jan 3
+        assert filtered.index[-1] == pd.Timestamp("2023-01-03 16:30:00")
+        # Each day: 09:00 to 17:30 inclusive at 1min -> (510 - 0) + 1 = 511 bars per day
+        assert len(filtered) == 511 * 2
 
-    # 3. Unknown symbol -> unchanged
-    filtered_unk = filter_market_hours(df, symbol="UNKNOWN", repo_root=repo_root)
-    assert len(filtered_unk) == len(df)
+        # 2. NASDAQ symbol (EST UTC-5) -> market hours 09:30-16:00 local = 14:30-21:00 UTC
+        filtered_nq = filter_market_hours(df, symbol="GMAB", repo_root=repo_root)
+        # First retained: 14:30 UTC
+        assert filtered_nq.index[0] == pd.Timestamp("2023-01-02 14:30:00")
+        # Last retained: 21:00 UTC
+        assert filtered_nq.index[-1] == pd.Timestamp("2023-01-03 21:00:00")
+        # Each day: 09:30 to 16:00 inclusive at 1min -> (390 - 0) + 1 = 391 bars per day
+        assert len(filtered_nq) == 391 * 2
+
+        # 3. Unknown symbol -> unchanged
+        filtered_unk = filter_market_hours(df, symbol="UNKNOWN", repo_root=repo_root)
+        assert len(filtered_unk) == len(df)
 
     # 4. Non-DatetimeIndex raises
     with pytest.raises(ValueError, match="Cannot filter market hours without a DatetimeIndex"):

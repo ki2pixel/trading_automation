@@ -70,13 +70,14 @@ def test_config_live():
 
 def test_config_missing_keys():
     # Given: Missing environment variables
-    with patch.dict(os.environ, {}, clear=True):
-        # When: Configuration is initialized and validated
-        config = Trading212Config(dotenv_path="/nonexistent_env")
-        # Then: Raises ValueError on validation
-        with pytest.raises(ValueError) as excinfo:
-            config.validate()
-        assert "Missing Trading 212 credentials" in str(excinfo.value)
+    with patch("dotenv.load_dotenv"):
+        with patch.dict(os.environ, {}, clear=True):
+            # When: Configuration is initialized and validated
+            config = Trading212Config(dotenv_path="/nonexistent_env")
+            # Then: Raises ValueError on validation
+            with pytest.raises(ValueError) as excinfo:
+                config.validate()
+            assert "Missing Trading 212 credentials" in str(excinfo.value)
 
 
 # =====================================================================

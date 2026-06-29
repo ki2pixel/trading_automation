@@ -6,10 +6,13 @@
 ## Prochaines Étapes
 - Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les nouvelles données saines.
 - Surveiller les logs Render pour confirmer que l'activité HTTP externe via Google Apps Script ou UptimeRobot empêche bien la mise en veille.
+- Intégrer les 10 configurations validées d'Adaptive Volatility Trend (5 de la baseline + 5 d'extension) dans le dictionnaire d'allocation du moteur de production live.
+
 
 ## Bloquants / Problèmes Actuels
 - Aucun. L'ingesteur et le paper-trader sont immunisés contre le spin-down de Render grâce aux nouveaux endpoints de keep-alive.
 
+- [2026-06-29 22:05:00] - Correction de tests unitaires et stabilisation de l'environnement de test suite au commit 6f34292. Mock de la configuration d'heures de marché dans test_filter_market_hours pour isoler le test des fichiers de config, mock de dotenv dans test_config_missing_keys pour éviter la pollution de .env, et création de conftest.py pour nettoyer BACKTEST_REPORTS_DIR de os.environ avant chaque test.
 - [2026-06-26 18:01:00] - Ajout de l'indicateur visuel pour le statut des stratégies sur le frontend. Les configurations en attente de données historiques (warmup) affichent désormais le badge orange "En attente", et les configurations en erreur affichent le badge violet "Erreur". Réalignement des tests unitaires (7/7 tests passés).
 - [2026-06-26 13:43:00] - Résolution des incohérences de tickers Trading 212. Renforcement de l'ingesteur de prix (ingestor.py) pour rejeter les tickers non autorisés. Nettoyage dynamique de PostgreSQL (trading212_prices, trading212_candles_1m) et Redis (price:*) via db_cleanup.py, ne laissant subsister que les 21 actifs autorisés. Non-régression validée par tests unitaires (28/28 passés).
 - [2026-06-26 13:28:00] - Résolution du spin-down Render. Implémentation de l'endpoint `/keep-alive` avec timestamp dynamique dans run_ingestor.py et run_paper_trader.py pour déjouer le spin-down de Render. Création du script Google Apps Script keep_alive.gs pour automatiser les requêtes HTTP externes toutes les 5 minutes.
@@ -19,6 +22,12 @@
 - [2026-06-25 17:00:00] - Intégration de PostgreSQL (Supabase) comme couche de cache optionnelle pour Trading 212 Price Ingestor. Double écriture (JSON local + PostgreSQL via UPSERT), lecture directe depuis PostgreSQL sur l'endpoint /prices avec repli automatique en cas d'erreur de base de données. Extension de la suite de tests unitaires à 27 tests validés (100% de réussite) couvrant la base de données. Documentation de déploiement mise à jour.
 
 - [2026-06-25 14:19:00] - Conception et développement de l'ingesteur de prix Trading 212 (Price Ingestor) basé sur la méthode du Portfolio Hack. Mappage EUR validé des 21 actifs de la Shortlist, routine de bootstrap automatique des micro-positions (0.0001 action), polling toutes les 60s avec mise en cache dans `/tmp/t212_prices.json`, et filtrage des micro-positions par le tracker. Validation complète par tests Pytest (16 tests passed).
+
+- [2026-06-20 00:55:00] - Analyse empirique des parquets de données de marché 1m/5m pour déduire les horaires de cotation exacts et les jours de trading des 21 actifs du portefeuille, et mise à jour de configs/market_hours.json pour l'alignement du backtester.
+
+- [2026-06-20 00:45:00] - Prise en charge du chargement automatique du fichier `.env` de la racine dans `map_tickers.py`, exécution avec succès sur l'API DEMO réelle de Trading 212 (chargement de 15 738 instruments) et affinement du mapping par défaut (DAId_EQ pour Mercedes, AMSe_EQ pour Amadeus, etc.) persisté en JSON/CSV et documenté.
+
+- [2026-06-19 23:06:00] - Résolution de l'exclusion du setup `cybernetic_hilbert/ZEAL.CO/15m` (PF de 1.50) par modification de la condition de filtrage (arrondi du Profit Factor à 2 décimales `>= 1.5` pour inclure les setups à la limite de robustesse) dans le script d'analyse. Régénération de tous les rapports et augmentation à 51 setups validés.
 
 - [2026-06-19 22:15:00] - Résolution de l'anomalie critique de scope des variables lors de l'arbitrage. Re-génération complète des rapports de performance consolidant les campagnes active et archivée (269 setups valides identifiés, 50 setups qualifiés pour déploiement immédiat). Validation de la configuration momentum_based_zigzag pour NVO en 45m.
 

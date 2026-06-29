@@ -1,0 +1,170 @@
+[
+  {
+    "local_id": "akzanleur",
+    "real_name": "Akzo Nobel",
+    "isin": "NL0013267909",
+    "t212_ticker": "AKZAa_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "dpwdeeur",
+    "real_name": "DHL Group",
+    "isin": "DE0005552004",
+    "t212_ticker": "DPWd_EQ",
+    "currency": "EUR",
+    "score": 15
+  },
+  {
+    "local_id": "teniteur",
+    "real_name": "Tenaris",
+    "isin": "LU2598331598",
+    "t212_ticker": "TW10d_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "SAP",
+    "real_name": "SAP",
+    "isin": "DE0007164600",
+    "t212_ticker": "SAPd_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "EVD.DE",
+    "real_name": "Evotec",
+    "isin": "DE0005664809",
+    "t212_ticker": "EVTd_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "GMAB",
+    "real_name": "Genmab",
+    "isin": "DK0010272202",
+    "t212_ticker": "GE9d_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "randnleur",
+    "real_name": "Randstad",
+    "isin": "NL0000379121",
+    "t212_ticker": "RANDa_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "FPE.DE",
+    "real_name": "Fuchs",
+    "isin": "DE000A3E5D56",
+    "t212_ticker": "FPEd_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "NVO",
+    "real_name": "Novo Nordisk",
+    "isin": "DK0062498333",
+    "t212_ticker": "NOVCd_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "NVS",
+    "real_name": "Novartis",
+    "isin": "CH0012005267",
+    "t212_ticker": "NOVNs_EQ",
+    "currency": "CHF",
+    "score": 23
+  },
+  {
+    "local_id": "ZEAL.CO",
+    "real_name": "Zeal Network",
+    "isin": "DE000ZEAL241",
+    "t212_ticker": "TIMd_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "AMS.MC",
+    "real_name": "Amadeus IT",
+    "isin": "ES0109067019",
+    "t212_ticker": "AMSe_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "daideeur",
+    "real_name": "Mercedes-Benz",
+    "isin": "DE0007100000",
+    "t212_ticker": "DAId_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "acfreur",
+    "real_name": "Accor",
+    "isin": "FR0000120404",
+    "t212_ticker": "ACp_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "mrkdeeur",
+    "real_name": "Merck",
+    "isin": "DE0006599905",
+    "t212_ticker": "MRKd_EQ",
+    "currency": "EUR",
+    "score": 15
+  },
+  {
+    "local_id": "vnadeeur",
+    "real_name": "Vonovia",
+    "isin": "DE000A1ML7J1",
+    "t212_ticker": "VNAd_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "rifreur",
+    "real_name": "Pernod Ricard",
+    "isin": "FR0000120693",
+    "t212_ticker": "RIp_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "belgbeeur",
+    "real_name": "Proximus",
+    "isin": "BE0003810273",
+    "t212_ticker": "PROX_BE_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "abibeeur",
+    "real_name": "AB InBev",
+    "isin": "BE0974293251",
+    "t212_ticker": "ABI_BE_EQ",
+    "currency": "EUR",
+    "score": 15
+  },
+  {
+    "local_id": "lxsdeeur",
+    "real_name": "LANXESS",
+    "isin": "DE0005470405",
+    "t212_ticker": "LXSd_EQ",
+    "currency": "EUR",
+    "score": 23
+  },
+  {
+    "local_id": "cafreur",
+    "real_name": "Carrefour",
+    "isin": "FR0000120172",
+    "t212_ticker": "CAp_EQ",
+    "currency": "EUR",
+    "score": 23
+  }
+]

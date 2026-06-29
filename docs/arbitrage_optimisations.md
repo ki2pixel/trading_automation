@@ -673,6 +673,6 @@ Comparatif entre la méthode **Risk-Parity** (Défensive) et **Kelly Criterion**
 
 ## 8. Recommandations de Production
 
-1. **Déploiement Immédiat** : Les setups ayant un Profit Factor > 1.5 et un Sharpe > 1.0, avec un poids Kelly significatif et un rendement mensuel moyen justifiant le risque.
+1. **Déploiement Immédiat** : Les setups ayant un Profit Factor >= 1.5 et un Sharpe > 1.0, avec un poids Kelly significatif et un rendement mensuel moyen justifiant le risque.
 2. **Surveillance (Paper Trading)** : Les setups avec un Profit Factor entre 1.25 et 1.5, ou une fréquence de trade trop faible (ex: < 1 par mois).
 3. **À écarter** : `bjorgum_double_tap` (sans surprise) et les runs où le drawdown absolu en devise excède la tolérance au risque.

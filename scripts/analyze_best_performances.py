@@ -367,7 +367,7 @@ def generate_portfolio_report(df, output_path):
     # Filter setups
     portfolio_df = df[
         (df["strategy"] != "adaptive_trend_classification") &
-        (df["profit_factor"] > 1.5) &
+        (df["profit_factor"].round(2) >= 1.5) &
         (df["sharpe"] > 1.0) &
         (df["kelly"] > 0) &
         (df["return_monthly_currency"] > 0)
@@ -388,7 +388,7 @@ def generate_portfolio_report(df, output_path):
     lines.append(f"Ce document consigne la liste exacte des **{num_setups} setups** identifiés pour un déploiement en production ou en paper-trading actif, suite à la campagne globale d'optimisation et d'arbitrage.\n")
     lines.append("### Critères de Sélection")
     lines.append("Les setups ci-dessous cochent toutes les conditions de robustesse suivantes :")
-    lines.append("- **Profit Factor** > 1.5")
+    lines.append("- **Profit Factor** >= 1.5")
     lines.append("- **Sharpe Ratio** > 1.0")
     lines.append("- **Kelly Criterion** > 0 (pour garantir un avantage mathématique à l'allocation)")
     lines.append("- **Rendement Mensuel Moyen (€)** > 0 (Générateur de profit brut justifiant le risque)\n")
@@ -794,7 +794,7 @@ def main():
         f.write("\n\n")
         
         f.write("## 8. Recommandations de Production\n\n")
-        f.write("1. **Déploiement Immédiat** : Les setups ayant un Profit Factor > 1.5 et un Sharpe > 1.0, avec un poids Kelly significatif et un rendement mensuel moyen justifiant le risque.\n")
+        f.write("1. **Déploiement Immédiat** : Les setups ayant un Profit Factor >= 1.5 et un Sharpe > 1.0, avec un poids Kelly significatif et un rendement mensuel moyen justifiant le risque.\n")
         f.write("2. **Surveillance (Paper Trading)** : Les setups avec un Profit Factor entre 1.25 et 1.5, ou une fréquence de trade trop faible (ex: < 1 par mois).\n")
         f.write("3. **À écarter** : `bjorgum_double_tap` (sans surprise) et les runs où le drawdown absolu en devise excède la tolérance au risque.\n")
 
