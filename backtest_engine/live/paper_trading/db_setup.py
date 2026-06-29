@@ -435,6 +435,7 @@ def init_db():
                         max_entry_price NUMERIC NOT NULL DEFAULT 10000,
                         is_active BOOLEAN DEFAULT TRUE,
                         indicator_params JSONB DEFAULT '{}'::jsonb,
+                        last_error TEXT DEFAULT NULL,
                         UNIQUE(strategy_name, asset, timeframe)
                     )
                 """)
@@ -443,6 +444,12 @@ def init_db():
                 cur.execute("""
                     ALTER TABLE paper_strategy_configs 
                     ADD COLUMN IF NOT EXISTS run_status VARCHAR(50) DEFAULT 'active'
+                """)
+
+                # Add last_error column if it doesn't exist
+                cur.execute("""
+                    ALTER TABLE paper_strategy_configs 
+                    ADD COLUMN IF NOT EXISTS last_error TEXT DEFAULT NULL
                 """)
 
                 # Seed the strategy configs

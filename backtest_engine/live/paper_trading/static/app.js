@@ -83,7 +83,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (conf.status === 'waiting_data') {
                     statusBadge = '<span class="badge warning">En attente</span>';
                 } else if (conf.status === 'error') {
-                    statusBadge = '<span class="badge error">Erreur</span>';
+                    if (conf.last_error) {
+                        statusBadge = `<span class="badge error has-tooltip">Erreur<span class="tooltip">${conf.last_error}</span></span>`;
+                    } else {
+                        statusBadge = '<span class="badge error">Erreur</span>';
+                    }
                 } else {
                     statusBadge = `<span class="badge inactive">${conf.status || 'Inactive'}</span>`;
                 }

@@ -1,8 +1,6 @@
-import os
 import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-import psycopg2
 from contextlib import contextmanager
 
 router = APIRouter(prefix="/api")
@@ -74,7 +72,7 @@ def _get_configs_sync():
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT id, strategy_name, asset, timeframe, kelly_weight, 
-                       initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, is_active, indicator_params, run_status
+                       initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, is_active, indicator_params, run_status, last_error
                 FROM paper_strategy_configs
                 ORDER BY id ASC
             """)
@@ -86,7 +84,8 @@ def _get_configs_sync():
                     "initial_capital_bucket": float(r[6]), "max_capital_bucket": float(r[7]),
                     "max_entry_price": float(r[8]), "is_active": r[9],
                     "indicator_params": r[10] if r[10] else {},
-                    "status": "inactive" if not r[9] else (r[11] if r[11] else "active")
+                    "status": "inactive" if not r[9] else (r[11] if r[11] else "active"),
+                    "last_error": r[12]
                 } for r in rows
             ]
 
@@ -101,7 +100,7 @@ def _update_config_sync(config_id: int, payload: ConfigUpdate):
                     UPDATE paper_strategy_configs 
                     SET initial_capital = %s, initial_capital_bucket = %s, 
                         max_capital_bucket = %s, max_entry_price = %s, is_active = %s,
-                        indicator_params = %s, run_status = %s
+                        indicator_params = %s, run_status = %s, last_error = NULL
                     WHERE id = %s
                 """, (payload.initial_capital, payload.initial_capital_bucket, 
                       payload.max_capital_bucket, payload.max_entry_price, payload.is_active,
@@ -111,7 +110,7 @@ def _update_config_sync(config_id: int, payload: ConfigUpdate):
                     UPDATE paper_strategy_configs 
                     SET initial_capital = %s, initial_capital_bucket = %s, 
                         max_capital_bucket = %s, max_entry_price = %s, is_active = %s,
-                        run_status = %s
+                        run_status = %s, last_error = NULL
                     WHERE id = %s
                 """, (payload.initial_capital, payload.initial_capital_bucket, 
                       payload.max_capital_bucket, payload.max_entry_price, payload.is_active,

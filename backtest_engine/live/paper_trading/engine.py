@@ -1,9 +1,7 @@
 import os
 import json
 import time
-import psycopg2
 from datetime import datetime
-import pytz
 
 class PaperTradingEngine:
     def __init__(self, db_url=None):
@@ -323,16 +321,24 @@ class PaperTradingEngine:
                 long_entry_signal = bool(last_closed_result.get('long_entry', False))
                 long_exit_signal = bool(last_closed_result.get('long_exit', False))
                 
-                # Success - Set status to active
+                # Success - Set status to active and reset last_error
                 with conn.cursor() as cur:
-                    cur.execute("UPDATE paper_strategy_configs SET run_status = 'active' WHERE id = %s", (config_id,))
+                    cur.execute("""
+                        UPDATE paper_strategy_configs 
+                        SET run_status = 'active', last_error = NULL 
+                        WHERE id = %s
+                    """, (config_id,))
                 conn.commit()
                 
             except Exception as strat_err:
                 print(f"[PaperTrader] Error running strategy {strategy_name} for {asset}: {strat_err}")
                 try:
                     with conn.cursor() as cur:
-                        cur.execute("UPDATE paper_strategy_configs SET run_status = 'error' WHERE id = %s", (config_id,))
+                        cur.execute("""
+                            UPDATE paper_strategy_configs 
+                            SET run_status = 'error', last_error = %s 
+                            WHERE id = %s
+                        """, (str(strat_err), config_id))
                     conn.commit()
                 except Exception as e:
                     print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
