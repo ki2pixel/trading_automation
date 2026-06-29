@@ -44,4 +44,7 @@
 
 ## [2026-06-30 00:27:00] - Journalisation et affichage premium des erreurs d'exécution des stratégies
 - **Décision** : Ajout de la colonne `last_error TEXT` à la table `paper_strategy_configs`. Modification du cycle d'évaluation (`engine.py`) pour capturer et persister les exceptions de calcul des signaux sous `last_error`, et réinitialiser la colonne à `NULL` lors d'une exécution réussie. Exposition du champ `last_error` via l'API REST FastAPI (`api.py`) et réinitialisation de celui-ci lors de la mise à jour manuelle des paramètres. Affichage des messages d'erreur au survol du badge "Erreur" sur le tableau de bord avec un tooltip glassmorphism personnalisé en CSS.
-- **Justification** : Permettre à l'utilisateur d'identifier immédiatement les anomalies d'exécution d'une stratégie (paramètres invalides, lookbacks excessifs, bugs de calcul) directement depuis le tableau de bord frontend sans avoir à fouiller dans les logs serveur.
+
+## [2026-06-30 00:57:00] - Indicateur visuel de session de marché (Ouvert/Fermé) pour les actifs
+- **Décision** : Intégration d'un indicateur visuel de session (glowing green dot pour ouvert, dimmed gray dot pour fermé) à côté de chaque actif dans le tableau de bord. La vérification de l'ouverture du marché (`is_market_open`) a été implémentée côté API FastAPI (`api.py`) à partir des données de `market_hours.json` et renvoyée en propriété dynamique de configuration.
+- **Justification** : Clarifier la différence entre un statut d'erreur persistant et une inactivité due à la fermeture légitime des bourses, et offrir une meilleure UX sur le dashboard durant les sessions hors marché.
