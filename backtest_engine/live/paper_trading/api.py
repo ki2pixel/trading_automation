@@ -1,3 +1,5 @@
+import os
+import json
 import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -67,6 +69,60 @@ def _get_transactions_sync():
                 } for r in rows
             ]
 
+MARKET_HOURS_PATH = os.path.join(
+    os.path.dirname(__file__), "../../../configs/market_hours.json"
+)
+
+def load_market_hours():
+    try:
+        with open(MARKET_HOURS_PATH, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[API] Error loading market hours: {e}")
+        return {}
+
+_market_hours = load_market_hours()
+
+def is_market_open(asset: str) -> bool:
+    if asset not in _market_hours:
+        return False
+        
+    config = _market_hours[asset]
+    timezone_name = config.get("timezone")
+    
+    import datetime as dt
+    from datetime import datetime
+    utc_now = datetime.now(dt.timezone.utc)
+    
+    local_time = None
+    if timezone_name:
+        try:
+            from zoneinfo import ZoneInfo
+            local_time = utc_now.astimezone(ZoneInfo(timezone_name))
+        except Exception:
+            try:
+                import pytz
+                local_time = utc_now.astimezone(pytz.timezone(timezone_name))
+            except Exception:
+                pass
+                
+    if local_time is None:
+        tz_offset_str = config.get("tz_offset", "+00:00")
+        sign = 1 if tz_offset_str[0] == "+" else -1
+        try:
+            hours_offset = int(tz_offset_str[1:3])
+            mins_offset = int(tz_offset_str[4:6])
+            import pytz
+            local_time = utc_now.astimezone(pytz.FixedOffset(sign * (hours_offset * 60 + mins_offset)))
+        except Exception:
+            local_time = utc_now
+            
+    if local_time.weekday() >= 5:
+        return False
+        
+    current_time_str = local_time.strftime("%H:%M")
+    return config["open"] <= current_time_str <= config["close"]
+
 def _get_configs_sync():
     with get_db_connection() as conn:
         with conn.cursor() as cur:
@@ -85,7 +141,8 @@ def _get_configs_sync():
                     "max_entry_price": float(r[8]), "is_active": r[9],
                     "indicator_params": r[10] if r[10] else {},
                     "status": "inactive" if not r[9] else (r[11] if r[11] else "active"),
-                    "last_error": r[12]
+                    "last_error": r[12],
+                    "market_open": is_market_open(r[2])
                 } for r in rows
             ]
 

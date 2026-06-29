@@ -407,3 +407,21 @@ h1, h2, h3, h4 {
     opacity: 1;
     transform: translateX(-50%) translateY(-4px);
 }
+
+/* Market Status dot styling */
+.market-status {
+    font-size: 0.75rem;
+    margin-left: 6px;
+    vertical-align: middle;
+    cursor: help;
+}
+
+.market-status.open {
+    color: var(--success);
+    text-shadow: 0 0 8px var(--success);
+}
+
+.market-status.closed {
+    color: var(--text-muted);
+    opacity: 0.5;
+}

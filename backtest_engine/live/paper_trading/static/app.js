@@ -92,10 +92,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     statusBadge = `<span class="badge inactive">${conf.status || 'Inactive'}</span>`;
                 }
 
+                const marketDot = conf.market_open 
+                    ? '<span class="market-status open" title="Marché Ouvert">●</span>' 
+                    : '<span class="market-status closed" title="Marché Fermé">●</span>';
+
                 tr.innerHTML = `
                     <td>${conf.id}</td>
                     <td><strong>${conf.strategy_name}</strong></td>
-                    <td>${conf.asset}</td>
+                    <td>${conf.asset} ${marketDot}</td>
                     <td>${conf.timeframe}</td>
                     <td>${formatCurrency(conf.initial_capital)}</td>
                     <td>${formatCurrency(conf.initial_capital_bucket)}</td>
