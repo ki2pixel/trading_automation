@@ -1,6 +1,7 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-30 11:47:00] - Correction Dockerfile : Ajout de la commande `COPY pine_scripts_convert_to_python/` pour copier les scripts de stratégies convertis dans l'image Docker, évitant les crashs `FileNotFoundError` lors de l'évaluation en production.
 - [x] [2026-06-30 00:57:00] - Amélioration ergonomique : Intégration d'un indicateur visuel de session de marché (glowing green dot pour ouvert, dimmed gray dot pour fermé) à côté de chaque actif sur le tableau de bord configurations (`app.js`, `style.css`), calculé dynamiquement par le backend (`api.py`) à partir de `configs/market_hours.json`.
 - [x] [2026-06-30 00:27:00] - Journalisation et affichage des erreurs d'exécution des stratégies de paper trading : Ajout du champ `last_error` en base de données, persistance des erreurs dans le moteur live (`engine.py`), exposition via FastAPI (`api.py`), et affichage dynamique avec tooltip CSS glassmorphism dans le dashboard frontend (`app.js`, `style.css`). Tests unitaires et d'intégration validés (478/478 passés).
 - [x] [2026-06-29 22:05:00] - Vérification et alignement du dépôt sur le commit 6f34292. Stabilisation des tests unitaires (mock des configurations d'heures de marché dans test_filter_market_hours, mock de load_dotenv dans test_config_missing_keys, isolation de BACKTEST_REPORTS_DIR via tests/conftest.py). Les 478 tests unitaires du projet passent désormais tous avec succès.

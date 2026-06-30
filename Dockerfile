@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir -r requirements-backtest-engine.txt
 # Copy source directories and the runner
 COPY backtest_engine/ /app/backtest_engine/
 COPY configs/ /app/configs/
+COPY pine_scripts_convert_to_python/ /app/pine_scripts_convert_to_python/
 COPY run_ingestor.py .
 COPY run_paper_trader.py .
 

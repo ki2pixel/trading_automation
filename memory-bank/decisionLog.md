@@ -48,3 +48,7 @@
 ## [2026-06-30 00:57:00] - Indicateur visuel de session de marché (Ouvert/Fermé) pour les actifs
 - **Décision** : Intégration d'un indicateur visuel de session (glowing green dot pour ouvert, dimmed gray dot pour fermé) à côté de chaque actif dans le tableau de bord. La vérification de l'ouverture du marché (`is_market_open`) a été implémentée côté API FastAPI (`api.py`) à partir des données de `market_hours.json` et renvoyée en propriété dynamique de configuration.
 - **Justification** : Clarifier la différence entre un statut d'erreur persistant et une inactivité due à la fermeture légitime des bourses, et offrir une meilleure UX sur le dashboard durant les sessions hors marché.
+
+## [2026-06-30 11:47:00] - Inclusion du dossier pine_scripts_convert_to_python dans l'image Docker
+- **Décision** : Ajout de la ligne `COPY pine_scripts_convert_to_python/ /app/pine_scripts_convert_to_python/` dans le `Dockerfile`.
+- **Justification** : Résoudre les exceptions `FileNotFoundError` (crashes d'importation dynamique de modules de stratégie) lors de l'évaluation des stratégies de paper trading en production dans les conteneurs Docker.
