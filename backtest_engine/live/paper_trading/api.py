@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+from datetime import timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from contextlib import contextmanager
@@ -40,7 +41,7 @@ def _get_portfolio_sync():
                 "cash_balance": float(row[0]),
                 "allocated_balance": float(row[1]),
                 "total_nav": float(row[2]),
-                "last_updated": row[3].isoformat() if row[3] else None
+                "last_updated": row[3].replace(tzinfo=timezone.utc).isoformat() if row[3] else None
             }
 
 def _get_positions_sync():
@@ -52,7 +53,7 @@ def _get_positions_sync():
                 {
                     "id": r[0], "asset": r[1], "strategy_name": r[2], "qty": float(r[3]),
                     "entry_price": float(r[4]), "current_price": float(r[5]), "pnl": float(r[6]),
-                    "updated_at": r[7].isoformat() if r[7] else None
+                    "updated_at": r[7].replace(tzinfo=timezone.utc).isoformat() if r[7] else None
                 } for r in rows
             ]
 
@@ -63,7 +64,7 @@ def _get_transactions_sync():
             rows = cur.fetchall()
             return [
                 {
-                    "id": r[0], "timestamp": r[1].isoformat() if r[1] else None, "asset": r[2],
+                    "id": r[0], "timestamp": r[1].replace(tzinfo=timezone.utc).isoformat() if r[1] else None, "asset": r[2],
                     "strategy_name": r[3], "action": r[4], "qty": float(r[5]), "price": float(r[6]),
                     "total_value": float(r[7])
                 } for r in rows
@@ -97,7 +98,7 @@ def _get_evaluations_sync(limit: int = 100, status: str | None = None, asset: st
             return [
                 {
                     "id": r[0],
-                    "timestamp": r[1].isoformat() if r[1] else None,
+                    "timestamp": r[1].replace(tzinfo=timezone.utc).isoformat() if r[1] else None,
                     "strategy_name": r[2],
                     "asset": r[3],
                     "timeframe": r[4],

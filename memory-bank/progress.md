@@ -1,6 +1,8 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+
+- [x] [2026-06-30 15:46:00] - Correction fuseau horaire API : Conversion explicite en UTC (`timezone.utc`) avant la sérialisation `.isoformat()` dans `api.py` pour le dashboard paper trading, résolvant le décalage horaire de -2h côté client.
 - [x] [2026-06-30 15:06:00] - Résilience Redis : Implémentation d'un mécanisme de failover transparent (FailoverRedisClient) dans connection.py, combinant détection de quota via l'API Upstash au démarrage et basculement à chaud (hot failover) avec replay des pipelines lors de l'exécution.
 
 - [x] [2026-06-30 14:10:00] - Journalisation et dashboard des évaluations de signaux (retenus et non-retenus) : Création de la table `paper_evaluations` avec indexations, interception des 8 embranchements d'évaluation dans le moteur live (`engine.py`), mécanisme de purge automatique (> 48h), création de l'endpoint `GET /api/evaluations` et intégration de l'onglet "Évaluations" avec design en glassmorphism et tooltips JSON interactifs. Tests unitaires validés (11/11 tests passés).

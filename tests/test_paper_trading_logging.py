@@ -74,6 +74,7 @@ class TestPaperTradingLogging:
         data = response.json()
         assert len(data) == 1
         assert data[0]["id"] == 1
+        assert data[0]["timestamp"] == "2026-06-30T14:00:00+00:00"
         assert data[0]["strategy_name"] == "cybernetic_hilbert"
         assert data[0]["asset"] == "AAPL"
         assert data[0]["timeframe"] == "15m"
