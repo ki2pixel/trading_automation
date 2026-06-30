@@ -1,0 +1,22 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://upstash.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Authentication
+
+> Authentication for the Upstash Developer API
+
+The Upstash API requires API keys to authenticate requests. You can view and
+manage API keys at the Upstash Console.
+
+Upstash API uses HTTP Basic authentication. You should pass `EMAIL` and
+`API_KEY` as basic authentication username and password respectively.
+
+With a client such as `curl`, you can pass your credentials with the `-u`
+option, as the following example shows:
+
+```curl theme={"system"}
+curl https://api.upstash.com/v2/redis/databases -u EMAIL:API_KEY
+```
+
+Replace `EMAIL` and `API_KEY` with your email and API key.

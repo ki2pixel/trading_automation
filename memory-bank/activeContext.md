@@ -10,6 +10,9 @@
 
 
 ## Bloquants / Problèmes Actuels
+
+- [2026-06-30 15:06:00] - Résilience Redis : Implémentation du Failover Redis transparent dans connection.py. Ce mécanisme résout les coupures de service lorsque le quota mensuel de la base principale est dépassé en basculant à chaud sur la base secondaire, combinant des requêtes à l'API Upstash pour le routage au démarrage et la capture des exceptions redis à l'exécution.
+
 - Aucun. L'ingesteur et le paper-trader sont immunisés contre le spin-down de Render grâce aux nouveaux endpoints de keep-alive.
 
 - [2026-06-30 14:10:00] - Journalisation des Évaluations de Signaux : Implémentation du système d'historique de signaux de paper trading et onglet Évaluations dédié sur le dashboard, avec tooltips interactifs pour l'inspection des indicateurs en temps réel.
