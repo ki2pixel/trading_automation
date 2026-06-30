@@ -52,3 +52,7 @@
 ## [2026-06-30 11:47:00] - Inclusion du dossier pine_scripts_convert_to_python dans l'image Docker
 - **Décision** : Ajout de la ligne `COPY pine_scripts_convert_to_python/ /app/pine_scripts_convert_to_python/` dans le `Dockerfile`.
 - **Justification** : Résoudre les exceptions `FileNotFoundError` (crashes d'importation dynamique de modules de stratégie) lors de l'évaluation des stratégies de paper trading en production dans les conteneurs Docker.
+
+## [2026-06-30 11:55:00] - Résolution des permissions pour les stratégies dans Docker
+- **Décision** : Ajout de la commande `RUN chmod -R 755 /app` dans le `Dockerfile`.
+- **Justification** : Prévenir les erreurs `FileNotFoundError` causées par les restrictions de droits de traversée de répertoires (`x`) pour les utilisateurs non-root exécutant le conteneur dans le cloud (Render).

@@ -27,6 +27,9 @@ COPY pine_scripts_convert_to_python/ /app/pine_scripts_convert_to_python/
 COPY run_ingestor.py .
 COPY run_paper_trader.py .
 
+# Ensure all files are readable and directories executable by any user
+RUN chmod -R 755 /app
+
 # Create cache directory
 RUN mkdir -p /app/cache
 
