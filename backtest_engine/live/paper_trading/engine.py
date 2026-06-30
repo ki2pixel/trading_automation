@@ -190,8 +190,67 @@ class PaperTradingEngine:
                 self._update_portfolio_nav(conn)
                 # 2. Evaluate active strategies and execute signals
                 self._evaluate_and_execute_strategies(conn)
+                # 3. Clean up old evaluations (Anti-Bloat)
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM paper_evaluations WHERE timestamp < NOW() - INTERVAL '48 hours'")
+                conn.commit()
         except Exception as e:
             print(f"[PaperTrader] Error in run_cycle: {e}")
+
+    def _log_evaluation(self, conn, strategy_name, asset, timeframe, price, signal_type, signal_triggered, status, fail_reason=None, details=None):
+        import json
+        from decimal import Decimal
+
+        def serialize_details(obj):
+            if isinstance(obj, dict):
+                return {k: serialize_details(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [serialize_details(i) for i in obj]
+            elif isinstance(obj, Decimal):
+                return float(obj)
+            elif isinstance(obj, (int, float)):
+                return obj
+            elif hasattr(obj, 'to_dict'):
+                try:
+                    return serialize_details(obj.to_dict())
+                except Exception:
+                    return str(obj)
+            elif hasattr(obj, 'isoformat'):
+                return obj.isoformat()
+            try:
+                json.dumps(obj)
+                return obj
+            except TypeError:
+                return str(obj)
+
+        details_json = None
+        if details is not None:
+            try:
+                details_json = json.dumps(serialize_details(details))
+            except Exception as e:
+                print(f"[PaperTrader] JSON serialization error for details: {e}")
+                details_json = "{}"
+
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO paper_evaluations (
+                        strategy_name, asset, timeframe, price, signal_type, 
+                        signal_triggered, status, fail_reason, details, timestamp
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                """, (
+                    strategy_name, asset, timeframe, 
+                    float(price) if price is not None else None, 
+                    signal_type, signal_triggered, status, 
+                    fail_reason, details_json
+                ))
+            conn.commit()
+        except Exception as e:
+            print(f"[PaperTrader] Error logging evaluation: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
     def _evaluate_and_execute_strategies(self, conn):
         """
@@ -246,6 +305,12 @@ class PaperTradingEngine:
                     conn.commit()
                 except Exception as e:
                     print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
+                self._log_evaluation(
+                    conn, strategy_name, asset, timeframe, 
+                    price=None, signal_type='EXIT' if has_position else 'ENTRY', 
+                    signal_triggered=False, status='WAITING_DATA', 
+                    fail_reason='Not enough candle history'
+                )
                 continue
                 
             # Convert to DataFrame
@@ -289,6 +354,12 @@ class PaperTradingEngine:
                     conn.commit()
                 except Exception as e:
                     print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
+                self._log_evaluation(
+                    conn, strategy_name, asset, timeframe, 
+                    price=None, signal_type='EXIT' if has_position else 'ENTRY', 
+                    signal_triggered=False, status='WAITING_DATA', 
+                    fail_reason='Not enough candle history'
+                )
                 continue
                 
             # Get latest closed bar (the one before the very last in-progress bar)
@@ -342,6 +413,12 @@ class PaperTradingEngine:
                     conn.commit()
                 except Exception as e:
                     print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
+                self._log_evaluation(
+                    conn, strategy_name, asset, timeframe, 
+                    price=None, signal_type='EXIT' if has_position else 'ENTRY', 
+                    signal_triggered=False, status='ERROR', 
+                    fail_reason=str(strat_err)
+                )
                 continue
                 
             # Fetch current live price (Redis first, then Postgres)
@@ -363,6 +440,12 @@ class PaperTradingEngine:
                         current_price = Decimal(str(price_row[0]))
             if current_price is None:
                 # No price available
+                self._log_evaluation(
+                    conn, strategy_name, asset, timeframe,
+                    price=None, signal_type='EXIT' if has_position else 'ENTRY',
+                    signal_triggered=False, status='WAITING_DATA',
+                    fail_reason='No price available'
+                )
                 continue
                 
             if not has_position:
@@ -371,6 +454,13 @@ class PaperTradingEngine:
                     # Check maximum entry price rule
                     if current_price > Decimal(str(max_entry_price)):
                         print(f"[PaperTrader] Entry rejected for {asset}: price ({current_price}) exceeds max_entry_price ({max_entry_price})")
+                        self._log_evaluation(
+                            conn, strategy_name, asset, timeframe, 
+                            price=current_price, signal_type='ENTRY', 
+                            signal_triggered=True, status='REJECTED', 
+                            fail_reason=f'Price {current_price} exceeds max_entry_price {max_entry_price}',
+                            details={"price": float(current_price), "max_entry_price": float(max_entry_price)}
+                        )
                         continue
                         
                     # Calculate quantity to buy
@@ -390,6 +480,17 @@ class PaperTradingEngine:
                     # Capital allocated = min(Kelly Size, cash_balance, initial_capital_bucket)
                     allocated_cash = min(kelly_size_cash, cash_balance, Decimal(str(initial_capital_bucket)))
                     if allocated_cash <= 0:
+                        self._log_evaluation(
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='ENTRY',
+                            signal_triggered=True, status='REJECTED',
+                            fail_reason=f'Kelly size ({kelly_size_cash}) or cash availability ({cash_balance}) results in zero qty',
+                            details={
+                                "kelly_size": float(kelly_size_cash),
+                                "cash_balance": float(cash_balance),
+                                "initial_capital_bucket": float(initial_capital_bucket)
+                            }
+                        )
                         continue
                         
                     qty = allocated_cash / current_price
@@ -397,6 +498,17 @@ class PaperTradingEngine:
                     qty_precision = indicator_params.get("quantity_precision", 6)
                     qty = round(qty, qty_precision)
                     if qty <= 0:
+                        self._log_evaluation(
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='ENTRY',
+                            signal_triggered=True, status='REJECTED',
+                            fail_reason='Kelly size or cash availability results in zero qty after precision rounding',
+                            details={
+                                "allocated_cash": float(allocated_cash),
+                                "qty_before_round": float(allocated_cash / current_price),
+                                "qty_precision": qty_precision
+                            }
+                        )
                         continue
                         
                     actual_cost = qty * current_price
@@ -406,6 +518,16 @@ class PaperTradingEngine:
                         qty = round(qty, qty_precision)
                         actual_cost = qty * current_price
                         if qty <= 0:
+                            self._log_evaluation(
+                                conn, strategy_name, asset, timeframe,
+                                price=current_price, signal_type='ENTRY',
+                                signal_triggered=True, status='REJECTED',
+                                fail_reason='Kelly size or cash availability results in zero qty',
+                                details={
+                                    "cash_balance": float(cash_balance),
+                                    "qty_precision": qty_precision
+                                }
+                            )
                             continue
                             
                     # Execute BUY
@@ -433,9 +555,37 @@ class PaperTradingEngine:
                             
                         conn.commit()
                         print(f"[PaperTrader] Executed virtual BUY for {asset} ({strategy_name}): {qty} units @ {current_price} € (Cost: {actual_cost} €)")
+                        
+                        self._log_evaluation(
+                            conn, strategy_name, asset, timeframe, 
+                            price=current_price, signal_type='ENTRY', 
+                            signal_triggered=True, status='EXECUTED', 
+                            fail_reason=None,
+                            details={
+                                "qty": float(qty),
+                                "cost": float(actual_cost),
+                                "indicator_values": last_closed_result.to_dict() if 'last_closed_result' in locals() else {}
+                            }
+                        )
                     except Exception as db_err:
                         print(f"[PaperTrader] Database error executing BUY: {db_err}")
                         conn.rollback()
+                        self._log_evaluation(
+                            conn, strategy_name, asset, timeframe, 
+                            price=current_price, signal_type='ENTRY', 
+                            signal_triggered=True, status='ERROR', 
+                            fail_reason=f"Database error executing BUY: {db_err}"
+                        )
+                else:
+                    self._log_evaluation(
+                        conn, strategy_name, asset, timeframe, 
+                        price=current_price, signal_type='ENTRY', 
+                        signal_triggered=False, status='NO_SIGNAL', 
+                        fail_reason='No long entry signal generated',
+                        details={
+                            "indicator_values": last_closed_result.to_dict() if 'last_closed_result' in locals() else {}
+                        }
+                    )
             else:
                 # Evaluate Exit
                 pos_id, qty, entry_price = position_row
@@ -550,9 +700,42 @@ class PaperTradingEngine:
                             
                         conn.commit()
                         print(f"[PaperTrader] Executed virtual SELL for {asset} ({strategy_name}) [Reason: {exit_reason}]: {qty} units @ {current_price} € (PnL: {pnl} €)")
+                        
+                        self._log_evaluation(
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='EXIT',
+                            signal_triggered=True, status='EXECUTED',
+                            fail_reason=f"Exit rule matched: {exit_reason}",
+                            details={
+                                "qty": float(qty),
+                                "entry_price": float(entry_price),
+                                "revenue": float(actual_revenue),
+                                "pnl": float(pnl),
+                                "exit_reason": exit_reason
+                            }
+                        )
                     except Exception as db_err:
                         print(f"[PaperTrader] Database error executing SELL: {db_err}")
                         conn.rollback()
+                        self._log_evaluation(
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='EXIT',
+                            signal_triggered=True, status='ERROR',
+                            fail_reason=f"Database error executing SELL: {db_err}"
+                        )
+                else:
+                    self._log_evaluation(
+                        conn, strategy_name, asset, timeframe,
+                        price=current_price, signal_type='EXIT',
+                        signal_triggered=False, status='NO_SIGNAL',
+                        fail_reason='No exit trigger matched',
+                        details={
+                            "qty": float(qty),
+                            "entry_price": float(entry_price),
+                            "current_price": float(current_price),
+                            "current_pnl": float((current_price - entry_price) * qty)
+                        }
+                    )
 
     def start_loop(self, interval_seconds=60):
         self._running = True

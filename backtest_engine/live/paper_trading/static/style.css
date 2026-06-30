@@ -425,3 +425,74 @@ h1, h2, h3, h4 {
     color: var(--text-muted);
     opacity: 0.5;
 }
+
+/* Badges for signal evaluations */
+.badge.status-executed { background: rgba(16, 185, 129, 0.2); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+.badge.status-rejected { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.25); }
+.badge.status-no-signal { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+.badge.status-waiting { background: rgba(245, 158, 11, 0.15); color: #eab308; }
+.badge.status-error { 
+    background: rgba(239, 68, 68, 0.2); 
+    color: var(--danger); 
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    animation: blink-error 1.5s infinite; 
+}
+
+@keyframes blink-error {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+/* Tooltip for evaluation details */
+.has-tooltip-detail {
+    position: relative;
+    cursor: help;
+    text-decoration: underline dotted var(--text-muted);
+}
+
+.has-tooltip-detail .tooltip {
+    visibility: hidden;
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 8px;
+    box-shadow: var(--glass-shadow);
+    font-family: monospace;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    min-width: 250px;
+    max-width: 400px;
+    word-break: break-word;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+    pointer-events: none;
+}
+
+.has-tooltip-detail .tooltip::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: rgba(30, 41, 59, 0.95) transparent transparent transparent;
+}
+
+.has-tooltip-detail:hover .tooltip {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(-4px);
+}

@@ -12,6 +12,8 @@
 ## Bloquants / Problèmes Actuels
 - Aucun. L'ingesteur et le paper-trader sont immunisés contre le spin-down de Render grâce aux nouveaux endpoints de keep-alive.
 
+- [2026-06-30 14:10:00] - Journalisation des Évaluations de Signaux : Implémentation du système d'historique de signaux de paper trading et onglet Évaluations dédié sur le dashboard, avec tooltips interactifs pour l'inspection des indicateurs en temps réel.
+
 - [2026-06-30 11:55:00] - Résolution des permissions Docker : Ajout de la commande `RUN chmod -R 755 /app` dans le `Dockerfile`. Sur les environnements de production sécurisés comme Render, le conteneur s'exécute avec un utilisateur non-root sans privilèges. Les permissions restrictives des fichiers locaux (avec des ACLs de type `+` sur le système hôte) créaient des erreurs de traversée de dossier (`FileNotFoundError`) pour l'import dynamique des fichiers de stratégie de paper trading.
 - [2026-06-30 11:47:00] - Correction critique du déploiement Docker : Ajout de la commande `COPY pine_scripts_convert_to_python/` dans le `Dockerfile`. Les stratégies importées dynamiquement par le moteur (comme `momentum_based_zigzag_strategy.py` ou `3Commas-Bot.py`) faisaient échouer les évaluations avec une erreur `FileNotFoundError` car le répertoire contenant les scripts convertis n'était pas copié dans l'image de production.
 - [2026-06-30 00:57:00] - Amélioration ergonomique : Intégration d'un indicateur de session de marché (glowing green dot pour ouvert, dimmed gray dot pour fermé) à côté de chaque ticker d'actif sur le tableau de bord. Découpage et réutilisation de la logique de vérification horaire (`configs/market_hours.json`) dans l'API FastAPI (`api.py`) et mise en correspondance dans l'UI (`app.js`, `style.css`).

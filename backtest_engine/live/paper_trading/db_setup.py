@@ -440,6 +440,25 @@ def init_db():
                     )
                 """)
                 
+                # 5. Create Evaluations table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS paper_evaluations (
+                        id SERIAL PRIMARY KEY,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        strategy_name VARCHAR(100) NOT NULL,
+                        asset VARCHAR(50) NOT NULL,
+                        timeframe VARCHAR(20) NOT NULL,
+                        price NUMERIC,
+                        signal_type VARCHAR(20),
+                        signal_triggered BOOLEAN,
+                        status VARCHAR(50),
+                        fail_reason TEXT,
+                        details JSONB
+                    )
+                """)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_eval_timestamp ON paper_evaluations (timestamp DESC)")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_eval_strat_asset ON paper_evaluations (strategy_name, asset)")
+                
                 # Add run_status column if it doesn't exist
                 cur.execute("""
                     ALTER TABLE paper_strategy_configs 

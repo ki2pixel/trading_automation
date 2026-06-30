@@ -1,6 +1,7 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-06-30 14:10:00] - Journalisation et dashboard des évaluations de signaux (retenus et non-retenus) : Création de la table `paper_evaluations` avec indexations, interception des 8 embranchements d'évaluation dans le moteur live (`engine.py`), mécanisme de purge automatique (> 48h), création de l'endpoint `GET /api/evaluations` et intégration de l'onglet "Évaluations" avec design en glassmorphism et tooltips JSON interactifs. Tests unitaires validés (11/11 tests passés).
 - [x] [2026-06-30 11:55:00] - Correction Dockerfile (Permissions) : Ajout de `RUN chmod -R 755 /app` pour garantir que tous les fichiers copiés sont lisibles et les répertoires traversables par n'importe quel UID d'exécution (non-root) sur les serveurs cloud.
 - [x] [2026-06-30 11:47:00] - Correction Dockerfile : Ajout de la commande `COPY pine_scripts_convert_to_python/` pour copier les scripts de stratégies convertis dans l'image Docker, évitant les crashs `FileNotFoundError` lors de l'évaluation en production.
 - [x] [2026-06-30 00:57:00] - Amélioration ergonomique : Intégration d'un indicateur visuel de session de marché (glowing green dot pour ouvert, dimmed gray dot pour fermé) à côté de chaque actif sur le tableau de bord configurations (`app.js`, `style.css`), calculé dynamiquement par le backend (`api.py`) à partir de `configs/market_hours.json`.

@@ -69,6 +69,47 @@ def _get_transactions_sync():
                 } for r in rows
             ]
 
+def _get_evaluations_sync(limit: int = 100, status: str | None = None, asset: str | None = None):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            query = """
+                SELECT id, timestamp, strategy_name, asset, timeframe, price, signal_type, signal_triggered, status, fail_reason, details
+                FROM paper_evaluations
+            """
+            conditions = []
+            params = []
+            
+            if status:
+                conditions.append("status = %s")
+                params.append(status)
+            if asset:
+                conditions.append("asset = %s")
+                params.append(asset)
+                
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+                
+            query += " ORDER BY timestamp DESC LIMIT %s"
+            params.append(limit)
+            
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
+            return [
+                {
+                    "id": r[0],
+                    "timestamp": r[1].isoformat() if r[1] else None,
+                    "strategy_name": r[2],
+                    "asset": r[3],
+                    "timeframe": r[4],
+                    "price": float(r[5]) if r[5] is not None else None,
+                    "signal_type": r[6],
+                    "signal_triggered": r[7],
+                    "status": r[8],
+                    "fail_reason": r[9],
+                    "details": r[10] if r[10] else {}
+                } for r in rows
+            ]
+
 MARKET_HOURS_PATH = os.path.join(
     os.path.dirname(__file__), "../../../configs/market_hours.json"
 )
@@ -197,6 +238,13 @@ async def get_positions():
 async def get_transactions():
     try:
         return await asyncio.to_thread(_get_transactions_sync)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/evaluations")
+async def get_evaluations(limit: int = 100, status: str | None = None, asset: str | None = None):
+    try:
+        return await asyncio.to_thread(_get_evaluations_sync, limit, status, asset)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

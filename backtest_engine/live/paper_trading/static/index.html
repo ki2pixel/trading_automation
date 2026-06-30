@@ -27,6 +27,10 @@
                     <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                     Transactions
                 </a>
+                <a href="#evaluations" class="nav-item" data-target="evaluations">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    Évaluations
+                </a>
             </nav>
         </aside>
 
@@ -135,6 +139,32 @@
                             </tr>
                         </thead>
                         <tbody id="transactions-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Evaluations View -->
+            <section id="evaluations" class="view-section">
+                <div class="data-table-container glass-panel">
+                    <div class="table-header">
+                        <h3>Évaluations Récentes</h3>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date/Heure</th>
+                                <th>Actif</th>
+                                <th>Stratégie</th>
+                                <th>Timeframe</th>
+                                <th>Signal</th>
+                                <th>Statut</th>
+                                <th>Prix</th>
+                                <th>Raison/Détails</th>
+                            </tr>
+                        </thead>
+                        <tbody id="evaluations-body">
                             <!-- Populated by JS -->
                         </tbody>
                     </table>

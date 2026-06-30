@@ -13,6 +13,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             sections.forEach(sec => sec.classList.remove('active'));
             document.getElementById(targetId).classList.add('active');
+
+            // Immediate fetch on tab change
+            if (targetId === 'dashboard') {
+                fetchPortfolio();
+                fetchPositions();
+            } else if (targetId === 'configs') {
+                fetchConfigs();
+            } else if (targetId === 'transactions') {
+                fetchTransactions();
+            } else if (targetId === 'evaluations') {
+                fetchEvaluations();
+            }
         });
     });
 
@@ -149,6 +161,69 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { console.error('Error fetching transactions', e); }
     };
 
+    const fetchEvaluations = async () => {
+        try {
+            const res = await fetch('/api/evaluations?limit=100');
+            const data = await res.json();
+            const tbody = document.getElementById('evaluations-body');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted)">No evaluations logged</td></tr>';
+            } else {
+                data.forEach(evalItem => {
+                    const tr = document.createElement('tr');
+                    const date = new Date(evalItem.timestamp).toLocaleString('fr-FR');
+                    
+                    let statusClass = 'status-no-signal';
+                    let statusLabel = 'No Signal';
+                    if (evalItem.status === 'EXECUTED') {
+                        statusClass = 'status-executed';
+                        statusLabel = 'Executed';
+                    } else if (evalItem.status === 'REJECTED') {
+                        statusClass = 'status-rejected';
+                        statusLabel = 'Rejected';
+                    } else if (evalItem.status === 'NO_SIGNAL') {
+                        statusClass = 'status-no-signal';
+                        statusLabel = 'No Signal';
+                    } else if (evalItem.status === 'WAITING_DATA') {
+                        statusClass = 'status-waiting';
+                        statusLabel = 'Waiting Data';
+                    } else if (evalItem.status === 'ERROR') {
+                        statusClass = 'status-error';
+                        statusLabel = 'Error';
+                    }
+
+                    const signalLabel = evalItem.signal_type || 'ENTRY';
+                    const signalClass = evalItem.signal_triggered ? 'positive' : 'text-muted';
+                    const displaySignal = evalItem.signal_triggered ? `<strong>${signalLabel} (Triggered)</strong>` : signalLabel;
+
+                    const priceStr = evalItem.price ? formatCurrency(evalItem.price) : '-';
+                    
+                    // Reason and detail formatting
+                    let reasonDetail = evalItem.fail_reason || '';
+                    if (evalItem.details && Object.keys(evalItem.details).length > 0) {
+                        const tooltipText = JSON.stringify(evalItem.details, null, 2);
+                        reasonDetail = `<span class="has-tooltip-detail">${reasonDetail || 'Details'}<span class="tooltip">${tooltipText}</span></span>`;
+                    }
+                    if (!reasonDetail) reasonDetail = '-';
+
+                    tr.innerHTML = `
+                        <td>${date}</td>
+                        <td><strong>${evalItem.asset}</strong></td>
+                        <td>${evalItem.strategy_name}</td>
+                        <td>${evalItem.timeframe}</td>
+                        <td class="${signalClass}">${displaySignal}</td>
+                        <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+                        <td>${priceStr}</td>
+                        <td>${reasonDetail}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        } catch (e) { console.error('Error fetching evaluations', e); }
+    };
+
     // Modal Logic
     const modal = document.getElementById('edit-modal');
     const closeBtn = document.querySelector('.close-modal');
@@ -214,6 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchPositions();
         fetchConfigs();
         fetchTransactions();
+        fetchEvaluations();
     };
 
     init();
@@ -221,5 +297,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
         fetchPortfolio();
         fetchPositions();
+        fetchEvaluations();
     }, 10000);
 });
