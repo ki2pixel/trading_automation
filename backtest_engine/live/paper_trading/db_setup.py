@@ -474,12 +474,15 @@ def init_db():
                 # Seed the strategy configs
                 for config in SEED_CONFIGS:
                     params_json = json.dumps(config.get('indicator_params', {}))
+                    # Uniform Kelly weight (e.g. 0.1) so that for NAV >= 3000 EUR, 
+                    # the trade size scales up to the max bucket limit (300 EUR).
+                    kelly_weight_override = 0.1
                     cur.execute("""
                         INSERT INTO paper_strategy_configs (strategy_name, asset, timeframe, kelly_weight, indicator_params)
                         VALUES (%s, %s, %s, %s, %s)
                         ON CONFLICT (strategy_name, asset, timeframe) 
                         DO UPDATE SET kelly_weight = EXCLUDED.kelly_weight, indicator_params = EXCLUDED.indicator_params
-                    """, (config['strategy'], config['asset'], config['timeframe'], config['kelly_weight'], params_json))
+                    """, (config['strategy'], config['asset'], config['timeframe'], kelly_weight_override, params_json))
 
             conn.commit()
             print("[DB Setup] Paper trading database schema initialized and seeded.")
