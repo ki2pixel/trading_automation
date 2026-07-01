@@ -2,6 +2,7 @@
 
 ## Tâches Terminées
 
+- [x] [2026-07-01 17:15:00] - Poids de Kelly uniformes en Paper Trading : Paramétrage d'un poids uniforme de 0.1 dans la base de données au seeding pour allouer au plus près de la limite du bucket de capital (300 €) sur un compte réel de ~5 000 €.
 - [x] [2026-06-30 15:46:00] - Correction fuseau horaire API : Conversion explicite en UTC (`timezone.utc`) avant la sérialisation `.isoformat()` dans `api.py` pour le dashboard paper trading, résolvant le décalage horaire de -2h côté client.
 - [x] [2026-06-30 15:06:00] - Résilience Redis : Implémentation d'un mécanisme de failover transparent (FailoverRedisClient) dans connection.py, combinant détection de quota via l'API Upstash au démarrage et basculement à chaud (hot failover) avec replay des pipelines lors de l'exécution.
 

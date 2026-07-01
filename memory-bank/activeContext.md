@@ -12,6 +12,7 @@
 ## Bloquants / Problèmes Actuels
 
 - [2026-06-30 15:46:00] - Correction fuseau horaire API : Conversion explicite en UTC (`timezone.utc`) avant la sérialisation `.isoformat()` dans `api.py` pour le dashboard paper trading, résolvant le décalage horaire de -2h côté client.
+- [2026-07-01 17:15:00] - Poids de Kelly uniformes en Paper Trading : Paramétrage d'un poids uniforme de 0.1 dans la base de données au seeding pour forcer l'allocation proche du bucket maximum de 300 € sur un compte réel de ~5 000 €.
 - [2026-06-30 15:06:00] - Résilience Redis : Implémentation du Failover Redis transparent dans connection.py. Ce mécanisme résout les coupures de service lorsque le quota mensuel de la base principale est dépassé en basculant à chaud sur la base secondaire, combinant des requêtes à l'API Upstash pour le routage au démarrage et la capture des exceptions redis à l'exécution.
 
 - Aucun. L'ingesteur et le paper-trader sont immunisés contre le spin-down de Render grâce aux nouveaux endpoints de keep-alive.
