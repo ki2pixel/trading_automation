@@ -74,8 +74,10 @@ class PaperTradingEngine:
                 local_time = utc_now
         
         # Check if it's weekend (Monday = 0, Sunday = 6)
-        if local_time.weekday() >= 5:
-            return False
+        # Ne pas appliquer l'exclusion du week-end si c'est de la crypto
+        if not config.get("is_crypto", False) and config.get("exchange") != "CRYPTO":
+            if local_time.weekday() >= 5:
+                return False
             
         current_time_str = local_time.strftime("%H:%M")
         

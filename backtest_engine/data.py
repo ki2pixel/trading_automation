@@ -334,6 +334,9 @@ def build_fx_rate_provider(
     }
 
     asset_currency = currency_map.get(symbol, "").strip().upper()
+    if not asset_currency and symbol.lower().endswith("usdt"):
+        asset_currency = "USD"
+
     if not asset_currency or asset_currency == account_currency.upper():
         return None
 

@@ -2,16 +2,25 @@
 
 ## Focus Actuel
 - Finalisation et validation de la mise en production du Paper Trading autonome.
+- Validation finale et intégration des configurations d'optimisation cryptos pour `cybernetic_hilbert`.
 
 ## Prochaines Étapes
 - Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les nouvelles données saines.
+- Intégrer les 7 configurations validées de `cybernetic_hilbert` crypto dans le dictionnaire d'allocation du moteur de production live.
 - Surveiller les logs Render pour confirmer que l'activité HTTP externe via Google Apps Script ou UptimeRobot empêche bien la mise en veille.
 - Intégrer les 10 configurations validées d'Adaptive Volatility Trend (5 de la baseline + 5 d'extension) dans le dictionnaire d'allocation du moteur de production live.
 
 
-## Bloquants / Problèmes Actuels
+## Bloquants / Problems Actuels
 
 - [2026-06-30 15:46:00] - Correction fuseau horaire API : Conversion explicite en UTC (`timezone.utc`) avant la sérialisation `.isoformat()` dans `api.py` pour le dashboard paper trading, résolvant le décalage horaire de -2h côté client.
+- [2026-07-01 20:01:00] - Tableau Multi-Timeframes Top 10 Ajouté : Remplacement et enrichissement de la section recommandation de `reports/screening_report_crypto.md` avec un second tableau d'analyse détaillant tous les autres timeframes et stratégies qualifiés pour chacun des 10 actifs optimaux.
+- [2026-07-01 19:56:00] - Support FX USDT Résolu : Modification de `build_fx_rate_provider` dans `data.py` pour mapper automatiquement les paires en `usdt` vers `USD` en devise de base. Le framework résout ainsi automatiquement le taux de change avec `EURUSD` ou `USDEUR` pour convertir proprement le P&L en EUR pour les comptes libellés en euros. Test d'intégration unitaire ajouté et validé.
+- [2026-07-01 19:53:00] - Sélection Top 10 Ajoutée au Rapport : Consignation de la sélection hybride optimale du Top 10 d'actifs cryptos au début de `reports/screening_report_crypto.md`.
+- [2026-07-01 19:43:00] - Baseline & Qualification Crypto Finalisées : Création du script `generate_baselines_crypto.py` et génération de la baseline de covariance crypto. Screening relancé avec succès : qualification officielle de **bnbusdt**, **compusdt**, **qtumusdt**, **linkusdt**, **ethusdt**, **btcusdt**, **ltcusdt**, **dogeusdt**, **adausdt**, etc. Ajout de ces actifs dans `configs/market_hours.json`.
+- [2026-07-01 19:40:00] - Intégration Crypto Implémentée : Fusion des datasets BTC/ETH, screening de 161 cryptomonnaies (volatilité 365j, Dickey-Fuller optimisé), sessions 24/7 configurées dans configs/market_hours.json, contournement du week-end appliqué dans le moteur live. Tests unitaires et d'intégration validés à 100%.
+- [2026-07-01 19:37:00] - Plan Crypto Approuvé & Checklist Créée : L'utilisateur a approuvé le plan d'implémentation technique. La checklist de tâches `task.md` a été générée pour guider l'agent d'exécution.
+- [2026-07-01 19:35:00] - Spécifications techniques Crypto : Rédaction des spécifications d'ingestion, filtrage historique, screening statistique (volatilité 365j) et intégration de session 24/7 dans implementation_plan.md.
 - [2026-07-01 17:15:00] - Poids de Kelly uniformes en Paper Trading : Paramétrage d'un poids uniforme de 0.1 dans la base de données au seeding pour forcer l'allocation proche du bucket maximum de 300 € sur un compte réel de ~5 000 €.
 - [2026-06-30 15:06:00] - Résilience Redis : Implémentation du Failover Redis transparent dans connection.py. Ce mécanisme résout les coupures de service lorsque le quota mensuel de la base principale est dépassé en basculant à chaud sur la base secondaire, combinant des requêtes à l'API Upstash pour le routage au démarrage et la capture des exceptions redis à l'exécution.
 

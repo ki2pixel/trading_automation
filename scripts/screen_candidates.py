@@ -87,7 +87,8 @@ def process_single_candidate(symbol: str, path: str, timeframes: List[str], base
             if len(df_resampled) < 50:
                 continue
                 
-            sig = extract_statistical_signature(df_resampled)
+            is_crypto = symbol.endswith("usdt")
+            sig = extract_statistical_signature(df_resampled, is_crypto=is_crypto)
             
             # Construire le vecteur de caractéristiques du candidat
             cand_features = np.array([
@@ -137,22 +138,29 @@ def main():
     parser.add_argument("--threshold", type=float, default=2.5, help="Seuil de distance de Mahalanobis maximale")
     parser.add_argument("--output-report", type=str, default="reports/screening_report.md", help="Fichier de rapport de sortie")
     parser.add_argument("--exclude", type=str, default="", help="Liste des symboles à exclure, séparés par des virgules")
+    parser.add_argument("--crypto-only", action="store_true", help="Screen uniquement les cryptomonnaies (symboles finissant par usdt)")
     args = parser.parse_args()
 
+    baselines_file = "/home/kidpixel/trading_automation_v2/configs/baselines_signatures_crypto.json" if args.crypto_only else BASELINES_FILE
     
-    if not os.path.exists(BASELINES_FILE):
-        print(f"Erreur: Le fichier de baselines {BASELINES_FILE} n'existe pas. Veuillez d'abord exécuter generate_baselines.py.")
+    if not os.path.exists(baselines_file):
+        print(f"Erreur: Le fichier de baselines {baselines_file} n'existe pas. Veuillez d'abord exécuter generate_baselines.py ou generate_baselines_crypto.py.")
         sys.exit(1)
         
-    with open(BASELINES_FILE, "r") as f:
+    with open(baselines_file, "r") as f:
         baselines_data = json.load(f)
         
     print("Identification des fichiers candidats...")
     m1_dir = os.path.join(DATA_DIR, "market_data_1m")
     m5_dir = os.path.join(DATA_DIR, "market_data_5m")
     
-    m1_files = {f.replace(".parquet", ""): os.path.join(m1_dir, f) for f in os.listdir(m1_dir) if f.endswith(".parquet")}
-    m5_files = {f.replace(".parquet", ""): os.path.join(m5_dir, f) for f in os.listdir(m5_dir) if f.endswith(".parquet")}
+    # S'assurer que les répertoires existent (éviter des plantages si market_data_5m n'a pas de cryptos)
+    m1_files = {}
+    if os.path.exists(m1_dir):
+        m1_files = {f.replace(".parquet", ""): os.path.join(m1_dir, f) for f in os.listdir(m1_dir) if f.endswith(".parquet")}
+    m5_files = {}
+    if os.path.exists(m5_dir):
+        m5_files = {f.replace(".parquet", ""): os.path.join(m5_dir, f) for f in os.listdir(m5_dir) if f.endswith(".parquet")}
     
     # Résolution des répertoires conformément aux exigences :
     # Si le symbole a des données 1m, on l'utilise.
@@ -176,6 +184,10 @@ def main():
             candidates[sym] = {"path": path, "src": "5m"}
             print(f"Symbole uniquement disponible en 5m détecté : {sym}")
             
+    # Filtrer pour ne garder que les cryptos si --crypto-only est actif
+    if args.crypto_only:
+        candidates = {sym: info for sym, info in candidates.items() if sym.endswith("usdt")}
+        
     print(f"Total de candidats à screener : {len(candidates)}")
     
     all_results = []

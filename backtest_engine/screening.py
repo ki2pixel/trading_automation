@@ -31,7 +31,7 @@ def calculate_hurst_exponent(series: pd.Series, max_lag: int = 100) -> float:
     except Exception:
         return np.nan
 
-def calculate_adf_statistic(series: pd.Series) -> Dict[str, float]:
+def calculate_adf_statistic(series: pd.Series) -> Dict[str, Any]:
     """
     Exécute le test Augmented Dickey-Fuller (ADF) pour évaluer la stationnarité.
     Retourne la statistique de test et la p-value.
@@ -39,6 +39,9 @@ def calculate_adf_statistic(series: pd.Series) -> Dict[str, float]:
     clean_series = series.dropna()
     if len(clean_series) < 50:
         return {"stat": 0.0, "p_value": 1.0}
+    # Limiter la taille de la série pour des raisons de performance (ADF)
+    if len(clean_series) > 20000:
+        clean_series = clean_series.iloc[-20000:]
     try:
         # Utilisation de la régression constante avec sélection automatique AIC
         res = adfuller(clean_series, regression='c', autolag='AIC')
@@ -124,7 +127,7 @@ def calculate_realized_volatility(series: pd.Series, periods: int = 252) -> floa
     log_returns = np.log(clean_series / clean_series.shift(1)).dropna()
     return float(log_returns.std() * np.sqrt(periods))
 
-def extract_statistical_signature(df: pd.DataFrame, target_col: str = 'close') -> Dict[str, Any]:
+def extract_statistical_signature(df: pd.DataFrame, target_col: str = 'close', is_crypto: bool = False) -> Dict[str, Any]:
     """
     Extrait le profil statistique complet (la signature) d'un jeu de données.
     """
@@ -144,7 +147,8 @@ def extract_statistical_signature(df: pd.DataFrame, target_col: str = 'close') -
     
     # Rendements journaliers pour la volatilité
     daily_series = series.resample('D').last().dropna()
-    vol = calculate_realized_volatility(daily_series)
+    periods = 365 if is_crypto else 252
+    vol = calculate_realized_volatility(daily_series, periods=periods)
     
     adv = calculate_adv_currency(df_clean)
     

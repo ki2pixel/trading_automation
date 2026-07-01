@@ -159,5 +159,77 @@
     "close": "17:30",
     "tz_offset": "+01:00",
     "timezone": "Europe/Paris"
+  },
+  "btcusdt": {
+    "exchange": "CRYPTO",
+    "open": "00:00",
+    "close": "23:59",
+    "timezone": "UTC",
+    "tz_offset": "+00:00",
+    "is_crypto": true
+  },
+  "ethusdt": {
+    "exchange": "CRYPTO",
+    "open": "00:00",
+    "close": "23:59",
+    "timezone": "UTC",
+    "tz_offset": "+00:00",
+    "is_crypto": true
+  },
+  "bnbusdt": {
+    "exchange": "CRYPTO",
+    "open": "00:00",
+    "close": "23:59",
+    "timezone": "UTC",
+    "tz_offset": "+00:00",
+    "is_crypto": true
+  },
+  "linkusdt": {
+    "exchange": "CRYPTO",
+    "open": "00:00",
+    "close": "23:59",
+    "timezone": "UTC",
+    "tz_offset": "+00:00",
+    "is_crypto": true
+  },
+  "ltcusdt": {
+    "exchange": "CRYPTO",
+    "open": "00:00",
+    "close": "23:59",
+    "timezone": "UTC",
+    "tz_offset": "+00:00",
+    "is_crypto": true
+  },
+  "dogeusdt": {
+    "exchange": "CRYPTO",
+    "open": "00:00",
+    "close": "23:59",
+    "timezone": "UTC",
+    "tz_offset": "+00:00",
+    "is_crypto": true
+  },
+  "adausdt": {
+    "exchange": "CRYPTO",
+    "open": "00:00",
+    "close": "23:59",
+    "timezone": "UTC",
+    "tz_offset": "+00:00",
+    "is_crypto": true
+  },
+  "qtumusdt": {
+    "exchange": "CRYPTO",
+    "open": "00:00",
+    "close": "23:59",
+    "timezone": "UTC",
+    "tz_offset": "+00:00",
+    "is_crypto": true
+  },
+  "compusdt": {
+    "exchange": "CRYPTO",
+    "open": "00:00",
+    "close": "23:59",
+    "timezone": "UTC",
+    "tz_offset": "+00:00",
+    "is_crypto": true
   }
 }

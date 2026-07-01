@@ -94,3 +94,36 @@ Ces actifs n'ont produit aucune combinaison rentable par rapport au Buy & Hold o
 * **TENITEUR**
 * **UMIBEEUR**
 * **VPKNLEUR**
+
+---
+
+## 5. Résultats Campagne Crypto (Nouveaux Actifs)
+
+### 🟢 Les Sur-Performants (Nouveaux Actifs Crypto)
+
+Ces actifs présentent une sur-performance significative par rapport au Buy & Hold (score positif) tout en satisfaisant les critères stricts de la Passe 1 (closed_trades >= 50, profit_factor >= 1.25, max_drawdown >= -25.0%) :
+
+* **APTUSDT** : Edge identifié.
+  * **10min (Best)** : Score `+114.5822` (`hilbert_smooth_period: 12`, `take_profit_net_percent: 18.0`, `stop_loss_net_percent: 1.0`). 63 282 trades, PF: 1.269, Sharpe: 3.574, Max DD: -0.26%.
+
+* **DOTUSDT** : Multiples timeframes qualifiés avec un edge robuste.
+  * **10min (Best)** : Score `+119.8589` (`hilbert_smooth_period: 10`, `take_profit_net_percent: 20.0`, `stop_loss_net_percent: 1.0`). 104 476 trades, PF: 1.316, Sharpe: 3.016, Max DD: -0.73%.
+  * **45min** : Score `+111.7093` (`hilbert_smooth_period: 8`, `take_profit_net_percent: 19.0`, `stop_loss_net_percent: 1.0`). 23 164 trades, PF: 1.750, Sharpe: 2.700, Max DD: -1.11%.
+  * **1h** : Score `+99.0538` (`hilbert_smooth_period: 6`, `take_profit_net_percent: 19.0`, `stop_loss_net_percent: 1.0`). 17 534 trades, PF: 1.655, Sharpe: 2.240, Max DD: -1.26%.
+
+* **ETHUSDT** : Sur-performance historique majeure sur le timeframe intermédiaire.
+  * **45min (Best)** : Score `+6960.3557` (`hilbert_smooth_period: 9`, `take_profit_net_percent: 19.0`, `stop_loss_net_percent: 1.0`). 35 664 trades, PF: 1.527, Sharpe: 2.036, Max DD: -10.06%.
+
+* **LTCUSDT** : Bon comportement sur le court et moyen terme.
+  * **30min (Best)** : Score `+704.2893` (`hilbert_smooth_period: 9`, `take_profit_net_percent: 20.0`, `stop_loss_net_percent: 1.0`). 52 158 trades, PF: 1.455, Sharpe: 1.851, Max DD: -4.90%.
+  * **45min** : Score `+674.0878` (`hilbert_smooth_period: 12`, `take_profit_net_percent: 20.0`, `stop_loss_net_percent: 1.0`). 34 612 trades, PF: 1.563, Sharpe: 1.541, Max DD: -8.70%.
+
+### 🔴 Les Rejetés (Nouveaux Actifs Crypto)
+
+Ces actifs n'ont produit aucune combinaison rentable par rapport au Buy & Hold ou n'ont pas respecté les critères stricts de la Passe 1 :
+* **ADAUSDT** (10min, 30min, 45min, 1h)
+* **BNBUSDT** (10min, 15min, 30min, 45min, 1h)
+* **BTCUSDT** (30min, 45min)
+* **ETHUSDT** (10min, 30min)
+* **LINKUSDT** (10min, 30min, 45min)
+
