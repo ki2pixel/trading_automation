@@ -9,9 +9,10 @@
 
 ## 1. Analyse Globale des Résultats
 
-L'analyse de la Passe 2 porte sur les 7 actifs qualifiés lors de la Passe 1 :
+L'analyse de la Passe 2 porte sur les configurations qualifiées lors de la Passe 1 :
 * **Campagne Initiale (15 Juin 2026)** : Actif **NVO** (7 timeframes qualifiées).
 * **Campagne d'Extension (18 Juin 2026)** : 6 nouveaux actifs : **ABIBEEUR** (3 timeframes), **ACFREUR** (2 timeframes), **DIAITEUR** (3 timeframes), **LXSDEEUR** (1 timeframe), **MRKDEEUR** (4 timeframes), **RIFREUR** (2 timeframes).
+* **Campagne d'Extension Crypto (02 Juillet 2026)** : Actif **BNBUSDT** (1 timeframe : 60m). L'optimisation Passe 2 a permis d'accroître le Profit Factor de 1.31 à 1.38 et le ratio de Sharpe de 0.38 à 0.42 en renforçant la confirmation.
 
 L'exploration de l'espace des paramètres (`confirm_bars` de 1 à 5, `dom_thresh` de 0.3 à 0.8) a démontré que sur la majorité des configurations, les paramètres par défaut de la Passe 1 (`confirm_bars: 2`, `dom_thresh: 0.5`) restaient les plus robustes. Néanmoins, pour plusieurs configurations (notamment à plus haute timeframe ou pour certains comportements de tendance), l'abaissement de la sensibilité (`dom_thresh: 0.3` ou `confirm_bars: 1`) ou l'augmentation de la confirmation (`confirm_bars: 5`) a apporté un gain de performance notable :
 * **ABIBEEUR 45m** (Score: +48.06 vs +46.43 en Passe 1)
@@ -120,13 +121,21 @@ Pour ces unités de temps, l'optimisation n'a pas montré d'avantage clair. Les 
   * Score: +38.42 | Max DD: -5.00% | Profit Factor: 1.45 | Trades: 583
   * Paramètres : `confirm_bars: 2`, `dom_thresh: 0.5`
 
+### 🔵 Campagne d'Extension Crypto (Clôturée le 02 Juillet 2026)
+
+* **BNBUSDT (60m)** :
+  * Performance Passe 2 : **Score: -36387.85** | Max DD: -16.62% | Profit Factor: 1.38 | Trades: 1798 | Sharpe: 0.42
+  * Performance Passe 1 : Score: -36396.57 | Max DD: -16.19% | Profit Factor: 1.31 | Trades: 2100 | Sharpe: 0.38
+  * Nouveaux Paramètres : `confirm_bars: 3`, `dom_thresh: 0.6`
+  * *Analyse* : Augmenter la confirmation de 2 à 3 bougies et rehausser le seuil de dominance à 0.6 permet de filtrer 302 transactions superflues. Cela augmente le Profit Factor de 1.31 à 1.38 et améliore le ratio de Sharpe de 0.38 à 0.42, avec un Drawdown qui reste stable à -16.62%.
+
 ---
 
 ## 4. Recommandations & Prochaines Étapes
 
 L'optimisation des paramètres de confirmation de régime valide deux comportements distincts :
 1. **Sensibilité accrue (Entrée rapide)** : Pour **ABIBEEUR 45m**, **DIAITEUR 30m** et **LXSDEEUR 30m**, attendre 1 seule bougie de confirmation avec un seuil de dominance HMM de 0.3 améliore la réactivité et le score final sans dégrader excessivement le risque.
-2. **Confirmation renforcée (Filtrage du bruit)** : Pour **RIFREUR 10m**, attendre 5 bougies de confirmation avec un seuil de dominance HMM de 0.7 permet de filtrer très efficacement les faux départs.
+2. **Confirmation renforcée (Filtrage du bruit)** : Pour **RIFREUR 10m** (`confirm_bars: 5`, `dom_thresh: 0.7`) et **BNBUSDT 60m** (`confirm_bars: 3`, `dom_thresh: 0.6`), attendre davantage de confirmation permet de filtrer efficacement le bruit propre aux actifs volatiles.
 
 ### Synthèse des configurations validées pour la Passe 3
 Ces paramètres sont désormais figés pour les 7 actifs retenus :
@@ -155,5 +164,6 @@ Ces paramètres sont désormais figés pour les 7 actifs retenus :
 | **MRKDEEUR** | 45m | 30 | 15 | 2.0 | 0.9 | 2 | 0.3 |
 | **RIFREUR** | 10m | 26 | 47 | 1.2 | 0.9 | 5 | 0.7 |
 | **RIFREUR** | 15m | 16 | 26 | 1.8 | 0.9 | 2 | 0.5 |
+| **BNBUSDT** | 60m | 23 | 77 | 2.1 | 0.9 | 3 | 0.6 |
 
-La prochaine étape (Passe 3) consistera à évaluer l'activation et l'impact d'un stop de sécurité asymétrique (`use_safety_stop = True`) sur ces 21 configurations figées.
+La prochaine étape (Passe 3) consistera à évaluer l'activation et l'impact d'un stop de sécurité asymétrique (`use_safety_stop = True`) sur ces 22 configurations figées.

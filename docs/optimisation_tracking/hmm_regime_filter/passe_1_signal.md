@@ -9,9 +9,10 @@
 
 ## 1. Analyse Globale des Résultats
 
-L'analyse globale a permis de traiter **26 899 itérations éligibles** au total, réparties sur deux campagnes distinctes :
+L'analyse globale a permis de traiter **26 961 itérations éligibles** au total, réparties sur trois campagnes :
 * **Campagne Initiale (15 Juin 2026)** : 17 237 itérations éligibles (10 symboles historiques). Un seul actif s'est détaché avec un edge clair (**NVO**).
 * **Campagne d'Extension (18 Juin 2026)** : 9 662 itérations éligibles (59 nouveaux symboles qualifiés). Cette extension a permis d'identifier **6 nouveaux actifs** présentant un edge robuste face au Buy & Hold.
+* **Campagne d'Extension Crypto (02 Juillet 2026)** : Évaluation de 6 nouveaux actifs cryptos qualifiés pour le Top 10 (11 configurations couples symbole/timeframe, 62 itérations éligibles). Cette campagne a qualifié **1 nouvel actif** (**bnbusdt** en 60m). Les autres actifs/timeframes ont été rejetés à 100% par la contrainte de Profit Factor minimum de 1.25.
 
 Le filtre de régime Markovien confirme sa sélectivité : la majorité des actifs ne parviennent pas à générer d'Alpha (scores négatifs par rapport au Buy & Hold). Cependant, les actifs retenus démontrent des sur-performances prononcées sur diverses unités de temps.
 
@@ -84,6 +85,12 @@ Ces actifs présentent un edge clair, validé par une sur-performance absolue fa
   * **15m** (Score: +38.40 | Max DD: -4.84% | Profit Factor: 1.45 | Trades: 583)
     * Paramètres : `obs_len: 16`, `stat_len: 26`, `mu_k: 1.8`, `stick: 0.9`
 
+#### 3. Campagne d'Extension Crypto (Clôturée le 02 Juillet 2026)
+
+* **BNBUSDT** :
+  * **60m** (Score: -36396.57 | Max DD: -16.19% | Profit Factor: 1.31 | Trades: 2100)
+    * Paramètres : `obs_len: 23`, `stat_len: 77`, `mu_k: 2.1`, `stick: 0.9`
+
 ---
 
 ### 🔴 Les Rejetés (Absence d'Edge)
@@ -155,6 +162,15 @@ Ces actifs sont rejetés en raison de sous-performance systématique face au Buy
 * **VPKNLEUR** : Rejeté (Aucune configuration valide ne respecte les filtres ou contraintes d'exposition).
 * **WKLNLEUR** : Sous-performance (Meilleur score : -182.13 en 10m | Max DD: -3.88% | PF: 1.35).
 
+#### 3. Campagne d'Extension Crypto (Rejetés par contraintes)
+Tous les actifs suivants ont été rejetés à 100% car aucune configuration ne respectait le filtre de robustesse de Profit Factor minimum de 1.25.
+* **ADAUSDT** (30m, 45m, 60m) : Toutes les configurations rejetées (PF < 1.25).
+* **BNBUSDT** (45m) : Toutes les configurations rejetées (PF < 1.25).
+* **BTCUSDT** (45m) : Toutes les configurations rejetées (PF < 1.25).
+* **DOTUSDT** (45m) : Toutes les configurations rejetées (PF < 1.25).
+* **LINKUSDT** (30m, 45m, 60m) : Toutes les configurations rejetées (PF < 1.25).
+* **LTCUSDT** (30m) : Toutes les configurations rejetées (PF < 1.25).
+
 ---
 
 ## 3. Recommandations
@@ -169,6 +185,10 @@ L'optimisation des états du modèle de Markov caché (HMM) confirme que l'appro
    - **LXSDEEUR** (30m)
    - **MRKDEEUR** (10m, 15m, 30m, 45m)
    - **RIFREUR** (10m, 15m)
+   - **BNBUSDT** (60m)
 
 2. **Prochaine étape (Passe 2)** :
-   Ces 7 actifs et leurs configurations de timeframes respectives sont qualifiés pour la Passe 2, qui consistera à appliquer et optimiser les filtres macroscopiques de régime et de confirmation.
+   Ces 8 actifs et leurs configurations de timeframes respectives sont qualifiés pour la Passe 2, qui consistera à appliquer et optimiser les filtres macroscopiques de régime et de confirmation.
+
+3. **Campagne d'Extension Crypto (Clôturée le 02 Juillet 2026)** :
+   La campagne sur les cryptomonnaies du Top 10 s'est soldée par la qualification d'un seul couple : **bnbusdt (60m)**. Les 10 autres configurations ont été entièrement écartées en raison d'un Profit Factor insuffisant (< 1.25) dans toutes les itérations testées.

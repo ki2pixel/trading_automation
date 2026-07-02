@@ -3,17 +3,25 @@
 ## Focus Actuel
 - Finalisation et validation de la mise en production du Paper Trading autonome.
 - Validation finale et intégration des configurations d'optimisation cryptos pour `cybernetic_hilbert`.
+- Intégration de la configuration validée HMM Crypto `bnbusdt` (60m) au moteur live.
 
 ## Prochaines Étapes
 - Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les nouvelles données saines.
 - Intégrer les 7 configurations validées de `cybernetic_hilbert` crypto dans le dictionnaire d'allocation du moteur de production live.
-- Surveiller les logs Render pour confirmer que l'activité HTTP externe via Google Apps Script ou UptimeRobot empêche bien la mise en veille.
 - Intégrer les 10 configurations validées d'Adaptive Volatility Trend (5 de la baseline + 5 d'extension) dans le dictionnaire d'allocation du moteur de production live.
+- Intégrer la configuration validée de HMM Crypto (`bnbusdt` 60m) dans le dictionnaire d'allocation du moteur de production live.
+- Surveiller les logs Render pour confirmer que l'activité HTTP externe via Google Apps Script ou UptimeRobot empêche bien la mise en veille.
+- Intégrer les 4 configurations validées de Passe 2 de `momentum_based_zigzag` crypto dans le dictionnaire d'allocation du moteur de production live.
 
 
 ## Bloquants / Problems Actuels
 
+- [2026-07-02 13:47:00] - Analyse de la Passe 2 Momentum-based ZigZag Crypto complétée : Intégration des résultats de Passe 2 dans `passe_2_signal.md` et mise à jour de la synthèse stratégique `synthese_strategie.md`. Validation d'améliorations de Sharpe spectaculaires (ex: `dotusdt` 45min Sharpe 1.23, DD -0.70% et `ltcusdt` 30min Sharpe 0.70, DD -5.91%). Bypass recommandé de la Passe 3 et consignation des 4 configurations cryptos finales.
+- [2026-07-02 13:42:00] - Script de file d'attente Passe 2 (Gestion du Risque) créé : Conception et développement de `scripts/queue_momentum_based_zigzag_crypto_campaign_passe2.py` pour la Passe 2 de la stratégie `momentum_based_zigzag` sur les 4 configurations cryptos qualifiées.
+- [2026-07-02 13:25:00] - Analyse de la Passe 1 Momentum-based ZigZag Crypto complétée : Intégration des résultats de 17 jobs d'optimisation dans `passe_1_signal.md`. Qualification de 4 configurations (`dotusdt` 30min/45min et `ltcusdt` 30min/45min) et rejet complet de `btcusdt` en raison des contraintes de risque strictes.
 - [2026-06-30 15:46:00] - Correction fuseau horaire API : Conversion explicite en UTC (`timezone.utc`) avant la sérialisation `.isoformat()` dans `api.py` pour le dashboard paper trading, résolvant le décalage horaire de -2h côté client.
+- [2026-07-02 11:27:00] - Campagne Crypto Adaptive Volatility Trend Clôturée & Documentée : Analyse des résultats de la Passe 1 montrant 0 configuration qualifiée sur les 8 actifs testés (100% de rejet par les contraintes à cause du quorum et de l'absence de stops). Décision de rejeter la stratégie pour le Top 10 Crypto et clôture définitive. Rapport `passe_1_signal.md` mis à jour.
+- [2026-07-02 09:32:00] - Script de file d'attente Adaptive Volatility Trend Crypto créé : Conception et développement de `scripts/queue_adaptive_volatility_trend_crypto_campaign.py` pour la Passe 1 (L'indicateur Core) sur les nouveaux actifs cryptos qualifiés du Top 10.
 - [2026-07-01 20:01:00] - Tableau Multi-Timeframes Top 10 Ajouté : Remplacement et enrichissement de la section recommandation de `reports/screening_report_crypto.md` avec un second tableau d'analyse détaillant tous les autres timeframes et stratégies qualifiés pour chacun des 10 actifs optimaux.
 - [2026-07-01 19:56:00] - Support FX USDT Résolu : Modification de `build_fx_rate_provider` dans `data.py` pour mapper automatiquement les paires en `usdt` vers `USD` en devise de base. Le framework résout ainsi automatiquement le taux de change avec `EURUSD` ou `USDEUR` pour convertir proprement le P&L en EUR pour les comptes libellés en euros. Test d'intégration unitaire ajouté et validé.
 - [2026-07-01 19:53:00] - Sélection Top 10 Ajoutée au Rapport : Consignation de la sélection hybride optimale du Top 10 d'actifs cryptos au début de `reports/screening_report_crypto.md`.

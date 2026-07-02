@@ -1,6 +1,6 @@
 # Rapport : Momentum-based ZigZag (avec QQE) - Passe 2 (Optimisation SL/TP)
 
-**Date d'analyse** : 19 Juin 2026
+**Date d'analyse** : 02 Juillet 2026
 **Objectif de la Passe** : Optimiser les paramètres de risque statiques (`stop_loss_pct` et `take_profit_pct`) pour maximiser l'efficience des entrées QQE fixées lors de la Passe 1, et cristalliser les gains.
 **Paramètres figés (issus Passe 1)** : `rsi_period`, `qqe_factor`, `rsi_smoothing`, `ob`, `os`, `signal_mode`.
 
@@ -8,12 +8,16 @@
 
 ## 1. Analyse Globale des Résultats
 
-L'ajout d'une gestion de risque statique (Stop Loss et Take Profit) a été testé sur deux vagues d'actifs :
+L'ajout d'une gestion de risque statique (Stop Loss et Take Profit) a été testé sur trois vagues d'actifs :
 *   **Vague de Baseline (11 Juin 2026)** : Évaluation sur les 9 actifs historiques. L'introduction du SL/TP a permis une amélioration massive des performances sur la quasi-totalité des actifs. Elle a révélé que la stratégie Momentum-based ZigZag bénéficie fortement de Take Profits amples (souvent supérieurs à 9%), combinés à des Stop Loss asymétriques adaptés à la volatilité intrinsèque.
 *   **Vague d'Extension (19 Juin 2026)** : Évaluation sur les 9 nouveaux actifs d'extension qualifiés lors de la Passe 1 (NVO exclu car déjà optimisé historiquement). Les résultats confirment l'asymétrie forte :
     *   **8 actifs sur 9** voient leurs métriques se consolider avec des scores de sur-performance positifs par rapport au Buy & Hold.
     *   Les leaders **daideeur** et **belgbeeur** affichent des hausses spectaculaires de Sharpe ratios (+86% pour daideeur à 2.67 et +83% pour belgbeeur à 2.18).
     *   **beideeur** montre une dégradation nette (score passant de +2.00% à -2.80% et Sharpe de 0.96 à 0.76), démontrant que la gestion statique du risque peut être contre-productive pour certains profils d'actifs à tendance très directionnelle.
+*   **Vague de Campagne Crypto (02 Juillet 2026)** : Évaluation sur les 4 configurations cryptos qualifiées lors de la Passe 1 (`dotusdt` 30min/45min, `ltcusdt` 30min/45min). L'introduction de SL/TP s'avère extrêmement fructueuse en réduisant drastiquement les drawdowns maximaux et en démultipliant l'efficience statistique :
+    *   **dotusdt (45min)** voit son Sharpe bondir de `0.50` à `1.23` (+146%), son Profit Factor doubler à `2.86` et son drawdown maximal s'écraser à `-0.70%` (contre `-2.69%`), tout en doublant son PnL Net (+271.44 €).
+    *   **ltcusdt (30min)** affiche un Sharpe de `0.70` (contre `0.30` en Passe 1), un Profit Factor de `2.17` et un PnL en hausse à `+1215.38 €`, avec un drawdown divisé par plus de deux à `-5.91%`.
+    *   Toutes les configurations cryptos optimisées valident l'apport d'un Take Profit large (souvent fixé à la borne maximale de 24.0% - 25.0%) combiné à des Stop Loss ajustés à la volatilité crypto.
 
 ---
 
@@ -67,19 +71,31 @@ L'optimisation bayésienne a ciblé les brackets SL/TP pour les 9 nouveaux actif
 
 ---
 
-## 4. Analyse Narrative & Observations Clés (Extension)
+## 4. Résultats de la Campagne Crypto (02 Juillet 2026)
 
-*   **daideeur (15m) en star de la campagne** : C'est le plus grand bénéficiaire de cette Passe 2. Son Sharpe ratio s'envole à **2.67** (contre 1.43 en Passe 1), son Profit Factor grimpe à **2.16** (contre 1.44) et son PnL Net augmente de **+119.41€**. Le modèle a trouvé un excellent équilibre avec un stop loss serré à 0.5% et un take profit modéré à 7.8% sur 1563 trades.
-*   **belgbeeur (10m) consolide son avance** : Le leader en score brut progresse encore à **+80.21%** de sur-performance relative. Le Sharpe ratio bondit de 1.19 à **2.18** (+83%), indiquant une régularité de gains exceptionnelle avec un SL serré à 0.5% et un TP à 4.6% sur 565 trades.
-*   **vnadeeur (10m) et cafreur (15m) confirment** : `vnadeeur` affiche désormais un Sharpe ratio de **2.12** (+30% vs Passe 1) et un Profit Factor de **2.00**. `cafreur` améliore également toutes ses métriques avec un Sharpe de **1.57** (contre 1.02) et un PnL absolu en hausse.
-*   **La dégradation de beideeur (15m)** : C'est la seule anomalie de la campagne d'extension. L'application d'un stop loss (1.3%) et d'un take profit (10.0%) a forcé des sorties prématurées de trades gagnants, réduisant le score de +2.00% à -2.80% et faisant chuter le Profit Factor de 3.47 à 1.69. Pour cet actif spécifique, la dynamique est mieux capturée par les signaux de momentum purs du QQE (Passe 1) sans brackets fixes.
-*   **Validation de l'asymétrie** : À l'exception de `beideeur`, tous les actifs valident la thèse de la Passe 2 baseline : un Stop Loss serré (souvent à 0.5% - 1.0%) et un Take Profit large (souvent supérieur à 7.5%, atteignant 15.0% pour `cpriteur`) permettent d'exploiter efficacement le momentum directionnel.
+L'optimisation bayésienne a ciblé les brackets SL/TP pour les 4 configurations cryptos qualifiées en Passe 1. Les résultats sont triés par symbole puis timeframe :
+
+| Actif | TF | Score (vs B&H) | PnL Net (€) | Profit Factor | Sharpe | Trades | SL Pct | TP Pct | Statut |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :--- |
+| **dotusdt** | 30min | **+54.44%** | +71.10 | 3.23 | 0.53 | 93 | 9.5% | 25.0% | **✅ Qualifié (Optimisé)** |
+| **dotusdt** | 45min | **+74.84%** | +271.44 | 2.86 | 1.23 | 2308 | 1.5% | 24.0% | **✅ Qualifié (Optimisé)** |
+| **ltcusdt** | 30min | **+201.34%** | +1215.38 | 2.17 | 0.70 | 910 | 2.5% | 25.0% | **✅ Qualifié (Optimisé)** |
+| **ltcusdt** | 45min | **+177.06%** | +964.10 | 2.20 | 0.57 | 718 | 2.5% | 25.0% | **✅ Qualifié (Optimisé)** |
 
 ---
 
-## 5. Recommandations et Suite
+## 5. Analyse Narrative & Observations Clés (Extension & Crypto)
 
-1.  **Rejet du Trailing Stop (Bypass de la Passe 3)** : Le comportement des actifs d'extension confirme en tous points la dynamique asymétrique de la baseline. Étant donné que la Passe 3 (Trailing Stop) a été catégoriquement rejetée sur la baseline en raison d'une dégradation généralisée du Sharpe, nous recommandons de **bypasser la Passe 3 pour la vague d'extension** et de retenir directement les configurations optimales de la Passe 2.
+*   **LTC & DOT en démonstrateurs de robustesse** : La campagne crypto confirme que l'ajout d'une gestion de risque statique est indispensable sur les cryptomonnaies. Non seulement les drawdowns maximaux sont divisés par des facteurs de 2 à 3, mais l'efficience globale s'améliore significativement, illustrée par la configuration de `dotusdt` (45min) qui affiche un Sharpe de **1.23** (contre `0.50` en Passe 1) et un DD maximal dérisoire de **-0.70%** (contre `-2.69%`).
+*   **daideeur (15m) en star de la campagne actions** : C'est le plus grand bénéficiaire de cette Passe 2 pour les actions. Son Sharpe ratio s'envole à **2.67** (contre 1.43 en Passe 1), son Profit Factor grimpe à **2.16** (contre 1.44) et son PnL Net augmente de **+119.41€**. Le modèle a trouvé un excellent équilibre avec un stop loss serré à 0.5% et un take profit modéré à 7.8% sur 1563 trades.
+*   **La dégradation de beideeur (15m)** : C'est la seule anomalie de la campagne d'extension actions. L'application d'un stop loss (1.3%) et d'un take profit (10.0%) a forcé des sorties prématurées de trades gagnants, réduisant le score de +2.00% à -2.80% et faisant chuter le Profit Factor de 3.47 à 1.69. Pour cet actif spécifique, la dynamique est mieux capturée par les signaux de momentum purs du QQE (Passe 1) sans brackets fixes.
+*   **Validation de l'asymétrie** : Que ce soit sur les actions d'extension ou les cryptos, tous les actifs valident la thèse de l'asymétrie de la Passe 2 : un Stop Loss serré ou moyen (souvent 0.5% - 2.5%) et un Take Profit large (souvent 15% à 25%) permettent de capter efficacement les longs mouvements de momentum propres aux actifs directionnels.
+
+---
+
+## 6. Recommandations et Suite
+
+1.  **Rejet du Trailing Stop (Bypass de la Passe 3)** : Le comportement des actifs d'extension et des cryptos confirme en tous points la dynamique asymétrique de la baseline. Étant donné que la Passe 3 (Trailing Stop) a été catégoriquement rejetée sur la baseline en raison d'une dégradation généralisée du Sharpe, nous recommandons de **bypasser la Passe 3 pour la vague d'extension et la campagne crypto** et de retenir directement les configurations optimales de la Passe 2.
 2.  **Traitement Particulier pour beideeur** : Pour `beideeur`, rejeter la configuration Passe 2 et conserver la configuration sans SL/TP issue de la Passe 1 (qui offrait un Profit Factor exceptionnel de 3.47).
 3.  **Configurations Finales d'Extension Validées** :
     *   `belgbeeur` : SL = 0.5%, TP = 4.6%
@@ -91,3 +107,8 @@ L'optimisation bayésienne a ciblé les brackets SL/TP pour les 9 nouveaux actif
     *   `akzanleur` : SL = 1.0%, TP = 7.7%
     *   `vpknleur` : SL = 4.5%, TP = 9.7%
     *   `beideeur` : Pas de SL/TP (conserver configuration Passe 1).
+4.  **Configurations Finales Crypto Validées** :
+    *   `dotusdt` (30min) : SL = 9.5%, TP = 25.0% (Sharpe = 0.53, PF = 3.23, Max DD = -1.67%)
+    *   `dotusdt` (45min) : SL = 1.5%, TP = 24.0% (Sharpe = 1.23, PF = 2.86, Max DD = -0.70%)
+    *   `ltcusdt` (30min) : SL = 2.5%, TP = 25.0% (Sharpe = 0.70, PF = 2.17, Max DD = -5.91%)
+    *   `ltcusdt` (45min) : SL = 2.5%, TP = 25.0% (Sharpe = 0.57, PF = 2.20, Max DD = -4.09%)

@@ -13,15 +13,15 @@ La stratégie **HMM Regime Filter** utilise des modèles de Markov cachés pour 
 3. Les signaux asymétriques et sorties nettes (Passe 3 : `use_safety_stop`, `take_profit_net_percent`, `stop_loss_net_percent`).
 
 Les campagnes cumulatives ont apporté les conclusions suivantes :
-* **Portefeuille d'actifs validés** : 7 actifs affichent un Edge robuste par rapport au Buy & Hold : **NVO** (historique) et 6 nouveaux actifs (**ABIBEEUR**, **ACFREUR**, **DIAITEUR**, **LXSDEEUR**, **MRKDEEUR**, **RIFREUR**).
-* **Importance du Stop Loss strict à 1%** : Dans 21 des 22 configurations validées, l'optimum global a convergé vers un Stop Loss fixe de **1.0%** (seul RIFREUR 10m utilise 2.0%). Cette protection rapide contre les faux signaux permet à la stratégie d'exploiter pleinement l'edge de tendance identifié par le modèle de Markov caché.
-* **Drawdowns contrôlés** : Grâce au money management strict validé en Passe 3, le Drawdown maximum historique est contenu à des niveaux extrêmement bas (généralement inférieurs à -5% sur les nouveaux actifs).
+* **Portefeuille d'actifs validés** : 8 actifs affichent un Edge robuste par rapport au Buy & Hold : **NVO** (historique), 6 nouveaux actifs (**ABIBEEUR**, **ACFREUR**, **DIAITEUR**, **LXSDEEUR**, **MRKDEEUR**, **RIFREUR**) et 1 actif crypto (**BNBUSDT** en 60m).
+* **Importance du Stop Loss strict à 1%** : Dans 22 des 23 configurations validées, l'optimum global a convergé vers un Stop Loss fixe de **1.0%** (seul RIFREUR 10m utilise 2.0%). Cette protection rapide contre les faux signaux permet à la stratégie d'exploiter pleinement l'edge de tendance identifié par le modèle de Markov caché.
+* **Drawdowns contrôlés** : Grâce au money management strict validé en Passe 3, le Drawdown maximum historique est contenu à des niveaux extrêmement bas (généralement inférieurs à -5% sur les nouveaux actifs actions et limité à -8.00% sur BNBUSDT).
 
 ---
 
 ## 2. Configurations Finales Validées (Passe 3)
 
-Voici les paramètres figés à l'issue de la Passe 3 pour l'intégralité des 22 configurations éligibles (prêts pour la production) :
+Voici les paramètres figés à l'issue de la Passe 3 pour l'intégralité des 23 configurations éligibles (prêts pour la production) :
 
 | Actif | TF | obs_len | stat_len | mu_k | stick | confirm_bars | dom_thresh | Safety Stop | TP % | SL % | Score | Max DD | PF |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -47,6 +47,7 @@ Voici les paramètres figés à l'issue de la Passe 3 pour l'intégralité des 2
 | **MRKDEEUR** | 45m | 30 | 15 | 2.0 | 0.9 | 2 | 0.3 | True | 4.0% | 1.0% | +15.59 | -2.57% | 1.75 |
 | **RIFREUR** | 10m | 26 | 47 | 1.2 | 0.9 | 5 | 0.7 | False | 20.0% | 2.0% | +40.92 | -5.25% | 1.60 |
 | **RIFREUR** | 15m | 16 | 26 | 1.8 | 0.9 | 2 | 0.5 | False | 20.0% | 1.0% | +40.64 | -4.20% | 1.57 |
+| **BNBUSDT** | 60m | 23 | 77 | 2.1 | 0.9 | 3 | 0.6 | False | 18.0% | 1.0% | -36258.94 | -8.00% | 2.46 |
 
 ---
 

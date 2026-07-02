@@ -84,3 +84,58 @@ Résultats pour les configurations éligibles ayant maximisé le score (seuil `c
 2. **Lancement recommandé d'une Post-Passe 2** :
    * Lancer la campagne d'optimisation de la Passe 2 (Filtres RSI & Volume) sur les **5 actifs qualifiés** (`akzanleur`, `ergiteur`, `beideeur`, `dpwdeeur`, `telnonok`) avec le même quorum assoupli à `min_closed_trades = 10`.
    * **Objectif** : Transformer la rentabilité brute et contrôler le risque pour exploiter pleinement l'alpha latent mis en évidence lors de nos pré-scans filtrés.
+
+---
+
+## 5. Campagne d'Optimisation Crypto (Top 10 - Juillet 2026)
+
+**Date d'enregistrement** : 02 Juillet 2026  
+**Objectif** : Identifier le cœur directionnel optimal pour la stratégie `adaptive_volatility_trend` sur les nouveaux actifs cryptos qualifiés issus du Top 10 ($D_M \le 2.5$).
+
+### Actifs et Timeframes Ciblés
+Les couples d'actifs et timeframes éligibles identifiés via le rapport de screening :
+* **bnbusdt** : 15m, 30m, 45m, 60m
+* **linkusdt** : 30m, 45m
+* **ethusdt** : 45m, 60m
+* **adausdt** : 30m, 60m
+* **btcusdt** : 45m, 60m
+* **aptusdt** : 30m
+* **ltcusdt** : 30m
+* **avaxusdt** : 30m
+
+### Structure de la Grille de Paramètres (Passe 1)
+Les filtres secondaires sont désactivés pour cette première phase :
+* `length` : de 10 à 50 (step: 1) — *41 valeurs*
+* `atr_len` : de 7 à 28 (step: 1) — *22 valeurs*
+* `atr_mult` : de 1.0 à 4.0 (step: 0.1) — *31 valeurs*
+* `preset` : `["Default"]`
+* `use_rsi_filter` : `[False]`
+* `use_volume_filter` : `[False]`
+* `use_safety_stop` : `[False]`
+
+**Espace de recherche canonique** : $41 \times 22 \times 31 = 27\,962$ combinaisons.
+
+### Paramétrage de la File d'Attente
+* **Intensité bayésienne** : Multiplicateur à $2.56\%$, ce qui donne $716$ itérations théoriques, clampé à la borne minimale de **$1000$ itérations (essais)** par job.
+* **Métrique de score** : `return_vs_buy_hold_pct_points` en direction `max`.
+* **Contraintes opérationnelles** :
+  * `min_closed_trades`: 50
+  * `max_drawdown_pct`: -25.0
+  * `min_exposure_pct`: 3.0
+  * `min_profit_factor`: 1.25
+  * `workers`: 10
+  * `use_vectorbt_prescan`: True
+  * `run_post_validation`: True
+  * `write_best_run`: True
+  * `convergence_patience`: 600
+  * `circuit_breaker_ratio`: 0.5
+
+### Résultats et Décision Stratégique (Clôture)
+* **Date de bilan** : 02 Juillet 2026
+* **Bilan quantitatif** : **0 configuration qualifiée sur les 8 actifs testés** (100% de rejet par les contraintes).
+* **Analyse des échecs** :
+  * **Nombre de trades insuffisant** : Sur un historique de 9 ans (2017-2026), le signal brut génère très peu de retournements de tendance (ex: 2 trades sur `bnbusdt`, 14 trades sur `ethusdt`), rendant le quorum de `min_closed_trades = 50` impossible à atteindre.
+  * **Drawdown catastrophique** : En l'absence de stop-loss (`use_safety_stop = False`), les positions ouvertes restent actives pendant les bear markets cryptos successifs, provoquant des drawdowns de l'ordre de $-700\%$ à $-13\,000\%$. La contrainte de drawdown maximum autorisée (`-25\%`) élimine l'intégralité des simulations.
+* **Décision stratégique** : La stratégie `adaptive_volatility_trend` (Passe 1 brute directionnelle) est jugée **non adaptée aux actifs cryptos du Top 10** en raison de son comportement "Buy & Hold" dégradé et de l'absence de sorties réactives. La campagne d'optimisation sur ces actifs est **officiellement clôturée définitivement**. Aucune poursuite vers la Passe 2 n'est planifiée pour cet univers.
+
+

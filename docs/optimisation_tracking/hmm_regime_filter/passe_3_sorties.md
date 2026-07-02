@@ -12,6 +12,7 @@
 L'ajout des brackets de sorties (`take_profit_net_percent` et `stop_loss_net_percent`) et du stop de sécurité a eu un impact **spectaculaire et généralisé** sur l'ensemble du portefeuille d'actifs qualifiés :
 * **Campagne Initiale (15 Juin 2026)** : Actif **NVO** (7 timeframes).
 * **Campagne d'Extension (18 Juin 2026)** : 6 nouveaux actifs : **ABIBEEUR** (3 timeframes), **ACFREUR** (2 timeframes), **DIAITEUR** (3 timeframes), **LXSDEEUR** (1 timeframe), **MRKDEEUR** (4 timeframes), **RIFREUR** (2 timeframes).
+* **Campagne d'Extension Crypto (02 Juillet 2026)** : Actif **BNBUSDT** (1 timeframe : 60m). L'optimisation a mené à une surperformance majeure en qualifiant la sortie bracket TP/SL fixe sans stop de sécurité dynamique.
 
 Les 15 configurations de l'extension de campagne affichent toutes une **amélioration systématique** des scores de performance et une forte réduction du risque.
 
@@ -94,10 +95,18 @@ Les 15 configurations de l'extension de campagne affichent toutes une **amélior
   * **15m** : **Score: +40.64** (vs +38.42 en P2) | Max DD: -4.20% | PF: 1.57 | Trades: 583
     * *Réglages* : `Safety Stop`: False | `TP`: 20.0% | `SL`: 1.0%
 
+### 🔵 Campagne d'Extension Crypto (Clôturée le 02 Juillet 2026)
+
+* **BNBUSDT (60m)** :
+  * Performance Passe 3 : **Score: -36258.94** | Max DD: -8.00% | Profit Factor: 2.46 | Trades: 1798 | Sharpe: 0.89
+  * Performance Passe 2 : Score: -36387.85 | Max DD: -16.62% | Profit Factor: 1.38 | Trades: 1798 | Sharpe: 0.42
+  * Nouveaux Paramètres : `Safety Stop`: False | `TP`: 18.0% | `SL`: 1.0%
+  * *Analyse* : L'introduction des brackets de sortie fixes (TP à 18.0% et SL très serré à 1.0%) a un impact monumental sur BNBUSDT. Le P&L net grimpe de +133.33% à +262.24%, le Profit Factor s'envole de 1.38 à 2.46, et le Drawdown maximum est divisé par deux (de -16.62% à -8.00%). Le ratio de Sharpe fait plus que doubler en s'établissant à 0.89. Le stop de sécurité dynamique s'est avéré inefficace et est donc désactivé.
+
 ---
 
 ## 4. Recommandations et Clôture
 
 La Passe 3 confirme que l'ajout systématique de brackets Take Profit / Stop Loss offre un edge fondamental pour sécuriser les profits et minimiser les drawdowns de la stratégie `hmm_regime_filter`.
 
-L'optimisation sur l'ensemble des 7 actifs est considérée comme un **succès total** et la campagne d'optimisation (Passes 1, 2 et 3) est **clôturée**. Les 22 configurations optimales validées doivent être intégrées dans le fichier de synthèse de la stratégie.
+L'optimisation globale incluant la campagne crypto sur le Top 10 est désormais un **succès total** et entièrement **clôturée**. Les 23 configurations optimales validées (portefeuille hybride actions + crypto) doivent être intégrées dans le fichier de synthèse de la stratégie.

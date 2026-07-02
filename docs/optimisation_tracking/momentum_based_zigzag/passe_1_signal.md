@@ -1,6 +1,6 @@
 # Rapport : Momentum-based ZigZag (avec QQE) - Passe 1 (Cœur QQE & Oscillateur)
 
-**Date de dernière mise à jour** : 19 Juin 2026
+**Date de dernière mise à jour** : 02 Juillet 2026
 **Objectif de la Passe** : Optimiser `rsi_period`, `qqe_factor`, `rsi_smoothing`, `ob`, `os`, et `signal_mode` sur l'ensemble des timeframes pour capturer les retournements de momentum (swings).
 **Paramètres bloqués** : `enable_stop_loss = false`, `enable_take_profit = false`, `enable_trailing_stop = false`.
 **Métriques cibles** : La métrique de score `return_vs_buy_hold_pct_points` a été utilisée pour forcer l'activité (sur-performance vs B&H).
@@ -9,10 +9,11 @@
 
 ## 1. Analyse Globale des Résultats
 
-L'analyse de cette Passe 1 s'est focalisée sur l'optimisation des conditions d'entrée en capturant les swings via le QQE et les seuils de surachat/survente (OB/OS). Les résultats sont divisés en deux vagues d'optimisation :
+L'analyse de cette Passe 1 s'est focalisée sur l'optimisation des conditions d'entrée en capturant les swings via le QQE et les seuils de surachat/survente (OB/OS). Les résultats sont divisés en trois vagues d'optimisation :
 
 *   **Vague de Baseline (11 Juin 2026)** : Évaluation sur les 9 actifs historiques du portefeuille. Un seul actif a montré un edge directionnel direct face au Buy & Hold (**NVO** sur 45m). Les 8 autres sous-performaient le B&H bien que générant des PnL absolus positifs robustes, justifiant le passage à la Passe 2 (SL/TP) pour figer les gains.
 *   **Vague d'Extension (19 Juin 2026)** : Évaluation sur les 20 nouveaux actifs qualifiés issus du rapport de screening. Les résultats sont remarquables avec **9 actifs sur 20** qui dégagent un score de sur-performance positif face au Buy & Hold dès cette Passe 1, notamment **belgbeeur** (+79.51 points), **daideeur** (+56.93 points), **cpriteur** (+41.43 points) et **cafreur** (+41.02 points).
+*   **Vague de Campagne Crypto (02 Juillet 2026)** : Évaluation de la stratégie sur les nouveaux actifs cryptos du Top 10 issus du rapport de screening. Les résultats montrent que **4 configurations sur 17** sont officiellement qualifiées en sur-performant le Buy & Hold, notamment **ltcusdt** (45min avec +183.17%) et **dotusdt** (45min avec +61.53%). Les autres actifs (comme BNB) sous-performent le Buy & Hold en raison des performances haussières historiques gigantesques du B&H sur la période (ex: BNB +36 000%), malgré des PnL absolus positifs robustes (ex: +3244.48€ pour bnbusdt 30min). BTC a été rejeté car aucune configuration n'a respecté les contraintes d'exposition et de drawdown maximal.
 
 ---
 
@@ -77,19 +78,45 @@ Résultats triés par Score de sur-performance décroissant (contrainte ferme de
 
 ---
 
-## 4. Analyse Narrative & Observations Clés
+## 4. Résultats de la Campagne Crypto (02 Juillet 2026)
 
-*   **Une moisson d'actifs exceptionnels en extension** : Alors que la baseline initiale n'avait produit qu'un seul actif sur-performant (NVO), la vague d'extension en qualifie **9** avec des scores robustes.
-*   **belgbeeur & daideeur en leaders** : `belgbeeur` (10m) offre la meilleure sur-performance brute face au B&H avec **+79.51%** et un Sharpe de 1.19 pour 254 trades. `daideeur` (15m) impressionne par son volume d'activité (**1418 trades**) et un Sharpe élevé de 1.43, tout en sur-performant le B&H de **+56.93%**.
-*   **Des ratios Sharpe/Profit Factor remarquables** : De nombreux actifs rejetés pour score négatif vs B&H (car le Buy & Hold de ces actifs sur la période a été extrêmement haussier) affichent pourtant des métriques intrinsèques excellentes. Par exemple, **hnrdeeur** affiche un Sharpe exceptionnel de **2.84** et un PF de **2.26** avec un PnL absolu de +299.63€ (277 trades).
+Résultats triés par symbole puis timeframe (contraintes de validation en univers crypto de `closed_trades >= 50` et score de sur-performance vs B&H strictement positif appliquées) :
+
+| Actif | TF | Score (vs B&H) | PnL Net (€) | Profit Factor | Sharpe | Trades | Paramètres Optimisés (Passe 1) | Statut |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: | :--- | :--- |
+| **adausdt** | 30min | -7.84% | +6.37 | 1.38 | 0.40 | 2164 | `rsi_period: 25, qqe_factor: 5.1, rsi_smoothing: 6, ob: 84.0, os: 15.0, signal_mode: 'Live'` | **❌ Rejeté (Score < 0)** |
+| **adausdt** | 60min | -6.27% | +7.32 | 1.88 | 0.44 | 775 | `rsi_period: 18, qqe_factor: 1.9, rsi_smoothing: 10, ob: 79.0, os: 28.0, signal_mode: 'Live'` | **❌ Rejeté (Score < 0)** |
+| **avaxusdt** | 10min | -51.21% | +403.90 | 1.71 | 0.64 | 974 | `rsi_period: 30, qqe_factor: 3.3, rsi_smoothing: 9, ob: 70.0, os: 28.0, signal_mode: 'Live'` | **❌ Rejeté (Score < 0)** |
+| **avaxusdt** | 30min | -50.25% | +394.75 | 3.56 | 0.62 | 144 | `rsi_period: 26, qqe_factor: 4.1, rsi_smoothing: 15, ob: 71.0, os: 30.0, signal_mode: 'Close'` | **❌ Rejeté (Score < 0)** |
+| **bnbusdt** | 15min | -36272.54% | +2497.36 | 2.05 | 0.47 | 454 | `rsi_period: 26, qqe_factor: 4.0, rsi_smoothing: 6, ob: 66.0, os: 35.0, signal_mode: 'Live'` | **❌ Rejeté (Score < 0)** |
+| **bnbusdt** | 30min | -36199.91% | +3244.48 | 1.42 | 0.59 | 3337 | `rsi_period: 21, qqe_factor: 3.7, rsi_smoothing: 15, ob: 87.0, os: 11.0, signal_mode: 'Close'` | **❌ Rejeté (Score < 0)** |
+| **bnbusdt** | 45min | -39891.40% | +3170.71 | 1.38 | 0.55 | 4037 | `rsi_period: 12, qqe_factor: 2.3, rsi_smoothing: 13, ob: 89.0, os: 12.0, signal_mode: 'Live'` | **❌ Rejeté (Score < 0)** |
+| **bnbusdt** | 60min | -36280.95% | +2368.42 | 1.39 | 0.50 | 2240 | `rsi_period: 21, qqe_factor: 1.9, rsi_smoothing: 13, ob: 88.0, os: 16.0, signal_mode: 'Live'` | **❌ Rejeté (Score < 0)** |
+| **btcusdt** | 45min | N/A | 0.00 | 0.00 | 0.00 | 0 | `Aucun paramètre` | **❌ Rejeté (Contraintes)** |
+| **btcusdt** | 60min | N/A | 0.00 | 0.00 | 0.00 | 0 | `Aucun paramètre` | **❌ Rejeté (Contraintes)** |
+| **dogeusdt** | 30min | -2452.56% | +1.88 | 1.60 | 0.48 | 1853 | `rsi_period: 8, qqe_factor: 1.8, rsi_smoothing: 15, ob: 78.0, os: 30.0, signal_mode: 'Close'` | **❌ Rejeté (Score < 0)** |
+| **dotusdt** | 30min | **+58.72%** | +112.57 | 4.62 | 0.43 | 63 | `rsi_period: 21, qqe_factor: 5.7, rsi_smoothing: 12, ob: 65.0, os: 33.0, signal_mode: 'Live'` | **✅ Qualifié** |
+| **dotusdt** | 45min | **+61.53%** | +138.04 | 1.43 | 0.50 | 2119 | `rsi_period: 30, qqe_factor: 3.0, rsi_smoothing: 4, ob: 85.0, os: 16.0, signal_mode: 'Close'` | **✅ Qualifié** |
+| **linkusdt** | 30min | -1662.92% | +92.86 | 1.60 | 0.29 | 329 | `rsi_period: 15, qqe_factor: 5.4, rsi_smoothing: 3, ob: 71.0, os: 31.0, signal_mode: 'Close'` | **❌ Rejeté (Score < 0)** |
+| **linkusdt** | 45min | -1653.55% | +186.09 | 1.42 | 0.57 | 2275 | `rsi_period: 23, qqe_factor: 3.3, rsi_smoothing: 10, ob: 87.0, os: 12.0, signal_mode: 'Live'` | **❌ Rejeté (Score < 0)** |
+| **ltcusdt** | 30min | **+160.51%** | +809.06 | 1.47 | 0.30 | 656 | `rsi_period: 8, qqe_factor: 6.0, rsi_smoothing: 8, ob: 75.0, os: 27.0, signal_mode: 'Live'` | **✅ Qualifié** |
+| **ltcusdt** | 45min | **+183.17%** | +1027.27 | 1.78 | 0.35 | 490 | `rsi_period: 10, qqe_factor: 3.8, rsi_smoothing: 13, ob: 76.0, os: 29.0, signal_mode: 'Live'` | **✅ Qualifié** |
+
+---
+
+## 5. Analyse Narrative & Observations Clés
+
+*   **Une moisson d'actifs exceptionnels en extension & cryptos** : Alors que la baseline initiale n'avait produit qu'un seul actif sur-performant (NVO), la vague d'extension et la campagne crypto qualifient respectivement **9** et **4** configurations avec des scores robustes.
+*   **Le phénomène BNB et les rendements absolus vs relatifs** : Pour des actifs comme BNB, le score de sur-performance vs B&H écarte la configuration (-36 000%) en raison de la hausse historique stratosphérique de BNB sur la période de backtest (2018-2026). Néanmoins, la stratégie génère un gain absolu très élevé de +3244.48€ sur `bnbusdt` 30min, ce qui prouve la rentabilité de la stratégie dans l'absolu.
+*   **Rejet complet de BTC** : Toutes les itérations de BTC ont été classées comme `INELIGIBLE_CONSTRAINTS`. En effet, l'absence de Stop-Loss et la volatilité propre au Bitcoin conduisent systématiquement à des drawdowns supérieurs à -25% ou à des Profit Factors inférieurs à 1.25, disqualifiant l'actif à ce stade.
 *   **Importance du Signal Mode** : Une majorité de configurations optimales privilégient le mode `Live` (calcul dynamique intra-bougie pour le QQE/Oscillateur), ce qui valide l'importance de ce paramètre introduit dans la grille de Passe 1.
 
 ---
 
-## 5. Recommandations pour la Passe 2 (Gestion du Risque)
+## 6. Recommandations pour la Passe 2 (Gestion du Risque)
 
-1.  **Figer les configurations Core (Passe 1)** : Verrouiller les paramètres optimisés pour les **9 actifs d'extension qualifiés** et l'actif de baseline **NVO**.
+1.  **Figer les configurations Core (Passe 1)** : Verrouiller les paramètres optimisés pour les **9 actifs d'extension qualifiés**, l'actif de baseline **NVO**, et les **4 configurations crypto qualifiées** (`dotusdt` 30min/45min, `ltcusdt` 30min/45min).
 2.  **Lancer la Passe 2 (SL/TP)** : Construire et exécuter le script de queue de Passe 2 pour optimiser les sorties asymétriques :
     *   `enable_stop_loss = [True]` avec `stop_loss_pct` de 1.0% à 10.0% (pas de 0.5%).
     *   `enable_take_profit = [True]` avec `take_profit_pct` de 2.0% à 25.0% (pas de 1.0%).
-    *   *Objectif* : Améliorer les scores absolus, réduire les drawdowns maximaux et figer les gains.
+    *   *Objectif* : Réduire les drawdowns maximaux (en particulier pour réintégrer des actifs exclus comme BTC) et figer les gains.
