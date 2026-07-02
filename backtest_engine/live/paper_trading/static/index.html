@@ -6,6 +6,8 @@
     <title>Paper Trading Engine | Trading Automation</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <!-- Lightweight Charts CDN -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -37,58 +39,135 @@
         <!-- Main Content -->
         <main class="main-content">
             <!-- Header -->
-            <header class="top-header">
+            <header class="top-header glass-panel">
                 <div class="header-title">
                     <h1>Overview</h1>
                     <p class="subtitle">Live Paper Trading Metrics</p>
                 </div>
-                <div class="system-status">
-                    <div class="status-indicator active"></div>
-                    <span>Engine Online</span>
+                <div class="header-controls">
+                    <!-- Heartbeat Price Feeds -->
+                    <div class="heartbeat-group">
+                        <div class="heartbeat-item" id="hb-t212-container" title="Last price update for Trading 212">
+                            <span class="heartbeat-dot offline" id="hb-t212"></span>
+                            <span class="heartbeat-label">T212 Feed</span>
+                        </div>
+                        <div class="heartbeat-item" id="hb-bybit-container" title="Last price update for Bybit">
+                            <span class="heartbeat-dot offline" id="hb-bybit"></span>
+                            <span class="heartbeat-label">Bybit Feed</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Panic close button -->
+                    <button class="btn-panic" id="panic-btn" title="Liquidate all active positions immediately">
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                        Close All Positions
+                    </button>
+                    
+                    <div class="system-status">
+                        <div class="status-indicator active"></div>
+                        <span>Engine Online</span>
+                    </div>
                 </div>
             </header>
 
             <!-- Dashboard View -->
             <section id="dashboard" class="view-section active">
-                <!-- Stocks Ecosystem -->
-                <h3 class="ecosystem-title" style="margin-top: 10px; margin-bottom: 15px; color: var(--text-light); font-family: 'Outfit', sans-serif; font-size: 1.25rem;">Stocks Portfolio (Trading 212)</h3>
-                <div class="kpi-grid">
-                    <div class="kpi-card glass-panel">
-                        <div class="kpi-title">T212 Total NAV</div>
-                        <div class="kpi-value" id="kpi-t212-nav">€0.00</div>
+                <!-- Portfolios grid side-by-side -->
+                <div class="portfolio-ecosystem-grid">
+                    <!-- Stocks Ecosystem -->
+                    <div class="ecosystem-column">
+                        <h3 class="ecosystem-title">Stocks Portfolio (Trading 212)</h3>
+                        <div class="kpi-grid">
+                            <div class="kpi-card glass-panel">
+                                <div class="kpi-title">T212 Total NAV</div>
+                                <div class="kpi-value" id="kpi-t212-nav">€0.00</div>
+                            </div>
+                            <div class="kpi-card glass-panel">
+                                <div class="kpi-title">T212 Cash Balance</div>
+                                <div class="kpi-value" id="kpi-t212-cash">€0.00</div>
+                            </div>
+                            <div class="kpi-card glass-panel">
+                                <div class="kpi-title">T212 Allocated</div>
+                                <div class="kpi-value" id="kpi-t212-allocated">€0.00</div>
+                            </div>
+                            <div class="kpi-card glass-panel highlight">
+                                <div class="kpi-title">T212 Open PnL</div>
+                                <div class="kpi-value" id="kpi-t212-pnl">€0.00</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="kpi-card glass-panel">
-                        <div class="kpi-title">T212 Cash Balance</div>
-                        <div class="kpi-value" id="kpi-t212-cash">€0.00</div>
-                    </div>
-                    <div class="kpi-card glass-panel">
-                        <div class="kpi-title">T212 Allocated</div>
-                        <div class="kpi-value" id="kpi-t212-allocated">€0.00</div>
-                    </div>
-                    <div class="kpi-card glass-panel highlight">
-                        <div class="kpi-title">T212 Open PnL</div>
-                        <div class="kpi-value" id="kpi-t212-pnl">€0.00</div>
+                    
+                    <!-- Crypto Ecosystem -->
+                    <div class="ecosystem-column">
+                        <h3 class="ecosystem-title">Crypto Portfolio (Bybit EU USDT)</h3>
+                        <div class="kpi-grid">
+                            <div class="kpi-card glass-panel">
+                                <div class="kpi-title">Bybit Total NAV</div>
+                                <div class="kpi-value" id="kpi-bybit-nav">USDT 0.00</div>
+                            </div>
+                            <div class="kpi-card glass-panel">
+                                <div class="kpi-title">Bybit Cash Balance</div>
+                                <div class="kpi-value" id="kpi-bybit-cash">USDT 0.00</div>
+                            </div>
+                            <div class="kpi-card glass-panel">
+                                <div class="kpi-title">Bybit Allocated</div>
+                                <div class="kpi-value" id="kpi-bybit-allocated">USDT 0.00</div>
+                            </div>
+                            <div class="kpi-card glass-panel highlight-crypto">
+                                <div class="kpi-title">Bybit Open PnL</div>
+                                <div class="kpi-value" id="kpi-bybit-pnl">USDT 0.00</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Crypto Ecosystem -->
-                <h3 class="ecosystem-title" style="margin-top: 30px; margin-bottom: 15px; color: var(--text-light); font-family: 'Outfit', sans-serif; font-size: 1.25rem;">Crypto Portfolio (Bybit EU USDT)</h3>
-                <div class="kpi-grid">
-                    <div class="kpi-card glass-panel">
-                        <div class="kpi-title">Bybit Total NAV</div>
-                        <div class="kpi-value" id="kpi-bybit-nav">USDT 0.00</div>
+                <!-- Active Asset Charts & Analytics -->
+                <div class="chart-section-container glass-panel mt-4">
+                    <div class="chart-header">
+                        <div class="chart-title-select">
+                            <h3>Active Asset Analysis</h3>
+                            <select id="asset-selector" class="glass-select">
+                                <option value="">Select an asset to analyze...</option>
+                                <!-- Populated by JS -->
+                            </select>
+                        </div>
                     </div>
-                    <div class="kpi-card glass-panel">
-                        <div class="kpi-title">Bybit Cash Balance</div>
-                        <div class="kpi-value" id="kpi-bybit-cash">USDT 0.00</div>
+                    
+                    <!-- Performance KPIs for selected asset -->
+                    <div class="analytics-kpi-grid" id="analytics-grid" style="display: none;">
+                        <div class="analytics-kpi-card">
+                            <div class="kpi-title">Win Rate</div>
+                            <div class="kpi-value" id="analytic-winrate">0.00%</div>
+                        </div>
+                        <div class="analytics-kpi-card">
+                            <div class="kpi-title">Profit Factor</div>
+                            <div class="kpi-value" id="analytic-profitfactor">1.00</div>
+                        </div>
+                        <div class="analytics-kpi-card">
+                            <div class="kpi-title">Max Drawdown</div>
+                            <div class="kpi-value" id="analytic-maxdd">0.00%</div>
+                        </div>
+                        <div class="analytics-kpi-card">
+                            <div class="kpi-title">Current Drawdown</div>
+                            <div class="kpi-value" id="analytic-currentdd">0.00%</div>
+                        </div>
+                        <div class="analytics-kpi-card">
+                            <div class="kpi-title">Total Profit</div>
+                            <div class="kpi-value" id="analytic-totalprofit">€0.00</div>
+                        </div>
+                        <div class="analytics-kpi-card">
+                            <div class="kpi-title">Closed Trades</div>
+                            <div class="kpi-value" id="analytic-tradescount">0</div>
+                        </div>
                     </div>
-                    <div class="kpi-card glass-panel">
-                        <div class="kpi-title">Bybit Allocated</div>
-                        <div class="kpi-value" id="kpi-bybit-allocated">USDT 0.00</div>
-                    </div>
-                    <div class="kpi-card glass-panel highlight-crypto" style="background: linear-gradient(135deg, rgba(240, 185, 11, 0.15) 0%, rgba(240, 185, 11, 0.05) 100%); border: 1px solid rgba(240, 185, 11, 0.3);">
-                        <div class="kpi-title" style="color: rgb(240, 185, 11);">Bybit Open PnL</div>
-                        <div class="kpi-value" id="kpi-bybit-pnl">USDT 0.00</div>
+                    
+                    <!-- Chart container -->
+                    <div class="chart-wrapper">
+                        <div id="price-chart" class="chart-container"></div>
+                        <div class="chart-placeholder" id="chart-placeholder">
+                            <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--text-muted)" stroke-width="1.5" fill="none"><path d="M3 3v18h18"></path><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path></svg>
+                            <p>Select an asset from the list above to view price chart, trades history, and equity curve comparison.</p>
+                        </div>
                     </div>
                 </div>
 
@@ -112,6 +191,34 @@
                             <!-- Populated by JS -->
                         </tbody>
                     </table>
+                </div>
+
+                <!-- System Logs Console -->
+                <div class="console-container glass-panel mt-4">
+                    <div class="console-header">
+                        <div class="console-title-group">
+                            <div class="console-title-dot"></div>
+                            <h3>System Logs Console</h3>
+                        </div>
+                        <div class="console-filters">
+                            <label class="filter-label">
+                                <input type="checkbox" id="filter-info" checked> <span class="badge active" style="padding: 2px 6px; font-size: 0.75rem;">INFO</span>
+                            </label>
+                            <label class="filter-label">
+                                <input type="checkbox" id="filter-warn" checked> <span class="badge warning" style="padding: 2px 6px; font-size: 0.75rem;">WARN</span>
+                            </label>
+                            <label class="filter-label">
+                                <input type="checkbox" id="filter-error" checked> <span class="badge error" style="padding: 2px 6px; font-size: 0.75rem;">ERROR</span>
+                            </label>
+                            <button class="btn-console-clear" id="clear-console-btn">Clear</button>
+                            <label class="autoscroll-label">
+                                <input type="checkbox" id="autoscroll-logs" checked> Auto-Scroll
+                            </label>
+                        </div>
+                    </div>
+                    <div class="console-body" id="console-output">
+                        <div class="log-line info"><span class="log-time">[System]</span> Dashboard console loaded. Connecting to real-time log stream...</div>
+                    </div>
                 </div>
             </section>
 
@@ -229,6 +336,32 @@
                 </div>
                 <button type="submit" class="btn-primary">Save Changes</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Panic Close All Confirmation Modal -->
+    <div id="panic-modal" class="modal">
+        <div class="modal-content glass-panel confirmation-panel">
+            <span class="close-modal" id="close-panic-modal">&times;</span>
+            <div class="alert-icon-container">
+                <svg viewBox="0 0 24 24" width="48" height="48" stroke="#ef4444" stroke-width="2" fill="none"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </div>
+            <h3>Liquidate All Positions?</h3>
+            <p class="modal-warning-text">This will immediately sell all open positions across all portfolios (Trading 212 and Bybit) at the current market prices. This action is irreversible.</p>
+            
+            <div class="double-confirm-container">
+                <label class="checkbox-label" style="margin-bottom: 8px;">
+                    <input type="checkbox" id="panic-confirm-1"> I understand that all assets will be sold at market price.
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="panic-confirm-2"> I confirm the immediate liquidation.
+                </label>
+            </div>
+            
+            <div class="modal-buttons mt-3">
+                <button class="btn-cancel" id="cancel-panic-btn">Cancel</button>
+                <button class="btn-confirm-danger" id="execute-panic-btn" disabled>EXECUTE LIQUIDATION</button>
+            </div>
         </div>
     </div>
 

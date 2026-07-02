@@ -2,6 +2,20 @@ import os
 import json
 import time
 from datetime import datetime
+import logging
+
+# Intercept print calls to route through logging system
+logger = logging.getLogger("papertrader")
+
+def print(*args, **kwargs):
+    message = " ".join(str(arg) for arg in args)
+    msg_lower = message.lower()
+    if "warning" in msg_lower:
+        logger.warning(message)
+    elif "error" in msg_lower or "failed" in msg_lower or "exception" in msg_lower:
+        logger.error(message)
+    else:
+        logger.info(message)
 
 class PaperTradingEngine:
     def __init__(self, db_url=None):
