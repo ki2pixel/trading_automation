@@ -25,10 +25,12 @@ class BybitConfig:
         self.api_secret = os.getenv("BYBIT_API_SECRET")
         self.env = os.getenv("BYBIT_ENV", "testnet").lower()
         
-        if self.env == "live":
-            self.base_url = "https://api.bybit.com"
-        else:
-            self.base_url = "https://api-testnet.bybit.com"
+        self.base_url = os.getenv("BYBIT_BASE_URL")
+        if not self.base_url:
+            if self.env == "live":
+                self.base_url = "https://api.bybit.com"
+            else:
+                self.base_url = "https://api-testnet.bybit.com"
 
     def _load_dotenv(self) -> None:
         """Helper to read .env file and set environment variables if not already set."""
