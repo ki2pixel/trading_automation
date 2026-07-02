@@ -1,5 +1,13 @@
 # Journal des Décisions
 
+## [2026-07-02 22:15:00] - Enrichissement et Stabilisation du Dashboard Paper Trading
+- **Décision** : Enrichissement de l'interface de monitoring Paper Trading avec de nouvelles fonctionnalités et correction de la résilience de l'ingesteur :
+  1. Intégration de `Lightweight Charts` v4.1.3 avec une échelle double Y (NAV sur l'axe gauche, prix des bougies sur l'axe droit) pour superposer la courbe de stratégie vs Buy & Hold sans distorsion.
+  2. Stream en temps réel des logs du moteur de Paper Trading via FastAPI SSE (Server-Sent Events) en redirigeant dynamiquement les sorties standard (prints) vers un logger Python circulaire.
+  3. Ajout de contrôles interactifs : interrupteurs d'activation/désactivation de stratégie et bouton de panique (Close All) avec double confirmation modale.
+  4. Déplacement de l'initialisation des ingesteurs de prix de `run_ingestor.py` directement dans le context manager `lifespan` de FastAPI pour s'assurer que les workers d'Uvicorn démarrent toujours les tâches d'ingestion asynchrones en arrière-plan.
+- **Justification** : Offrir un monitoring temps réel robuste des métriques d'exécution et de performance (calculées en FIFO) et assurer la continuité du flux de données de marché en environnement de production (Render).
+
 ## [2026-07-02 20:21:00] - Alignement et Mise à jour des Standards de Code (Trading Automation)
 - **Décision** : Mise à jour de `.agents/rules/codingstandards.md` pour refléter la réalité technique de la base de code :
   1. Ingesteur de prix Bybit en mode public-only sur Render (sans clés d'API requises).
