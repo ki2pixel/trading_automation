@@ -1,12 +1,18 @@
 import pytest
 from fastapi.testclient import TestClient
 import time
+from unittest.mock import patch, MagicMock
 
 # Given: FastAPI apps imported from runners
 from run_ingestor import app as ingestor_app
 from run_paper_trader import app as paper_trader_app
 
-def test_ingestor_keep_alive():
+@patch("run_ingestor.get_redis_client")
+def test_ingestor_keep_alive(mock_get_redis_client):
+    # Given: Mock Redis client
+    mock_redis = MagicMock()
+    mock_get_redis_client.return_value = mock_redis
+
     # Given: Ingestor TestClient
     client = TestClient(ingestor_app)
     
@@ -20,6 +26,11 @@ def test_ingestor_keep_alive():
     assert "timestamp" in data
     assert isinstance(data["timestamp"], (int, float))
     assert time.time() - data["timestamp"] < 10  # check it's recent
+    
+    # Then: verify that Redis set keep-alive was triggered
+    mock_redis.set.assert_called_once()
+    args, kwargs = mock_redis.set.call_args
+    assert args[0] == "ping:keepalive"
 
 def test_ingestor_keep_alive_head():
     # Given: Ingestor TestClient

@@ -59,6 +59,9 @@ _redis_client: Optional[redis.Redis] = None
 
 def _is_upstash_quota_exhausted(redis_url: str, api_key: str, email: str) -> bool:
     """Queries the Upstash Developer API to check if the database limit is reached."""
+    if "upstash" not in redis_url.lower():
+        return False
+
     import urllib.request
     import urllib.parse
     import json
@@ -171,10 +174,11 @@ class FailoverRedisClient:
         self._primary_url = primary_url
         self._secondary_url = secondary_url
         
-        self._primary_client = redis.Redis.from_url(primary_url, decode_responses=True)
+        pool_max = int(os.getenv("REDIS_POOL_MAX", "40"))
+        self._primary_client = redis.Redis.from_url(primary_url, decode_responses=True, max_connections=pool_max)
         self._secondary_client = None
         if secondary_url:
-            self._secondary_client = redis.Redis.from_url(secondary_url, decode_responses=True)
+            self._secondary_client = redis.Redis.from_url(secondary_url, decode_responses=True, max_connections=pool_max)
             
         self._active_client = self._primary_client
         self._is_failed_over = False
@@ -272,7 +276,8 @@ def get_redis_client() -> Optional[redis.Redis]:
                 _redis_client = None
         else:
             try:
-                _redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+                pool_max = int(os.getenv("REDIS_POOL_MAX", "40"))
+                _redis_client = redis.Redis.from_url(redis_url, decode_responses=True, max_connections=pool_max)
                 _redis_client.ping()
                 print("[ConnectionManager] Redis client connected successfully.")
             except Exception as e:

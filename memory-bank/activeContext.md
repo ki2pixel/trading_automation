@@ -12,6 +12,10 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-02 20:49:00] - Migration du fournisseur Redis : Intégration d'Aiven for Valkey comme remplacement gratuit d'Upstash, configuration du pool de connexions (REDIS_POOL_MAX=40) et mécanisme de Keep-Alive via l'endpoint /keep-alive.
+
+- [2026-07-02 20:21:00] - Alignement des Standards de Code : Audit et mise à jour de la documentation d'architecture de référence (.agents/rules/codingstandards.md) pour refléter fidèlement le codebase réel (Render public-only, frais Bybit Spot 0.1000%, shm_allocators.py, tickers WFA NVO/NVS/AMS.MC, et stockage Parquet plat).
+- [2026-07-02 20:13:00] - Harmonisation et documentation du système d'exécution live : Création de guides détaillés sur l'architecture du Paper Trading (moteur bi-broker, fallbacks de prix, BrokerSimulator) et sur son déploiement sur Render (contournement géoblocage et Siebly SDK).
 - [2026-07-02 19:58:00] - Simulation des frais de transaction Bybit Spot : Implémentation d'une commission réaliste de 0.1000% (Non-VIP) sur les ordres d'achat et de vente cryptos (Bybit) dans le moteur de Paper Trading. Les limites de cash sont ajustées en conséquence et les transactions sont loggées netes de frais.
 - [2026-07-02 19:43:00] - Résolution geoblock et authentification Bybit EU : Support du mode public-only sans clés API (les endpoints d'ingestion Spot de Bybit sont publics et le paper trading tourne localement) et basculement vers api-demo.bybit.com par défaut pour contourner les restrictions réglementaires françaises sur les dérivés démo.
 - [2026-07-02 18:30:00] - Restauration et migration de l'historique Trading 212 : Migration de 187 389 bougies et prix depuis les anciennes tables trading212_* vers live_* après normalisation des tickers en minuscules. Suppression des tables doublons obsolètes.

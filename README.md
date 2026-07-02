@@ -13,8 +13,9 @@ Ce dépôt centralise l'infrastructure technique permettant de collecter des sé
 3. [Backtest Engine](#backtest-engine)
 4. [Intégration VectorBT](#intégration-vectorbt)
 5. [Lanceur de production](#lanceur-de-production)
-6. [Tests unitaires et d'intégration](#tests-unitaires-et-dintégration)
-7. [Documentation détaillée](#documentation-détaillée)
+6. [Live & Paper Trading Engine](#live--paper-trading-engine)
+7. [Tests unitaires et d'intégration](#tests-unitaires-et-dintégration)
+8. [Documentation détaillée](#documentation-détaillée)
 
 ---
 
@@ -160,6 +161,15 @@ Toutes les informations pratiques sont regroupées dans la documentation :
 - 🚀 **[Utilisation](./docs/backtester/launcher/utilisation.md)** — Commandes d'exploitation du script `start_backtest_engine.sh` (start, stop, status).
 - ⚙️ **[Configuration launcher](./docs/backtester/launcher/configuration.md)** — Paramètres système (ports, host, variables).
 - 🖥️ **[Raccourcis bureau .desktop](./docs/backtester/launcher/desktop-launchers.md)** — Installation des lanceurs graphiques d'exécution, d'arrêt et de statut.
+---
+
+## Live & Paper Trading Engine
+
+Le moteur de **Paper Trading** et les modules d'**Ingestion Live** constituent l'infrastructure temps réel pour exécuter vos algorithmes sur des comptes de démonstration Trading 212 et Bybit EU. Ce système découple la collecte asynchrone des prix (via Redis et PostgreSQL) de l'évaluation synchrone des signaux de trading et de la gestion de portefeuille (calcul NAV, règles de sorties avancées).
+
+Toutes les informations sur le fonctionnement et le déploiement du moteur de paper trading sont disponibles dans la documentation :
+- 📈 **[Architecture temps réel](./docs/live_and_paper_trading/README.md)** : Fonctionnement bi-broker, fallbacks de prix, Kelly sizing et BrokerSimulator live.
+- 🚀 **[Guide de déploiement](./docs/live_and_paper_trading/deployment_guide.md)** : Procédure pas-à-pas pour Render (localisation à Francfort, association Siebly SDK) et configuration des variables d'environnement.
 
 ---
 
@@ -191,4 +201,5 @@ Pour naviguer facilement dans les modules, utilisez le tableau récapitulatif de
 | **Backtest Engine** | [Quickstart](./docs/backtester/backtest-engine/quickstart.md) · [Configuration](./docs/backtester/backtest-engine/configuration.md) · [Runner](./docs/backtester/backtest-engine/runner.md) · [Optimization](./docs/backtester/backtest-engine/optimization.md) · [Global Analysis](./docs/backtester/backtest-engine/global-analysis.md) · [Walk-Forward](./docs/backtester/backtest-engine/walk-forward.md) · [Job Store](./docs/backtester/backtest-engine/job-store.md) · [Viewer](./docs/backtester/backtest-engine/viewer.md) · [Performance](./docs/backtester/backtest-engine/performance.md) · [Datasets canoniques](./docs/backtester/backtest-engine/canonical-datasets.md) · [CLI Reference](./docs/backtester/backtest-engine/cli-reference.md) · [Roadmap Multi-devises](./docs/backtester/backtest-engine/currency-conversion-roadmap.md) · [Dépannage](./docs/backtester/backtest-engine/troubleshooting.md) |
 | **VectorBT Bridge** | [Rapport d'Audit](./docs/backtester/vectorbt/vectorbt_audit_report.md) · [Guide d'utilisation](./docs/backtester/vectorbt/README.md) · [Pre-Scan VectorBT](./docs/backtester/vectorbt/vectorbt_prescan.md) |
 | **Launcher** | [Utilisation](./docs/backtester/launcher/utilisation.md) · [Configuration](./docs/backtester/launcher/configuration.md) · [Lanceurs graphiques](./docs/backtester/launcher/desktop-launchers.md) |
+| **Live & Paper Trading** | [Architecture](./docs/live_and_paper_trading/README.md) · [Guide de déploiement](./docs/live_and_paper_trading/deployment_guide.md) |
 | **Architecture** | [Architecture globale](./docs/backtester/architecture.md) |

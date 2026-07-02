@@ -67,6 +67,13 @@ def health_check():
 @app.get("/keep-alive")
 @app.head("/keep-alive")
 def keep_alive():
+    # Keep-Alive for Redis/Valkey (Aiven idle shutdown mitigation)
+    redis_client = get_redis_client()
+    if redis_client:
+        try:
+            redis_client.set("ping:keepalive", str(time.time()))
+        except Exception as e:
+            print(f"[KeepAlive] Failed to write keep-alive to Redis: {e}")
     return {"status": "alive", "timestamp": time.time()}
 
 @app.get("/prices")

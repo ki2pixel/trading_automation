@@ -1,7 +1,9 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-02 20:49:00] - Migration du fournisseur Redis : Intégration d'Aiven for Valkey comme remplacement gratuit d'Upstash, configuration du pool de connexions (REDIS_POOL_MAX=40) et mécanisme de Keep-Alive via l'endpoint /keep-alive.
 
+- [x] [2026-07-02 20:13:00] - Harmonisation et documentation du Paper Trading et de l'ingestion live : Création d'un guide architectural et d'un guide de déploiement unifié (Trading 212 & Bybit EU). Dépréciation de l'ancien guide Trading 212. Mise à jour de README.md et docs/backtester/README.md.
 - [x] [2026-07-02 19:58:00] - Simulation des frais de transaction Bybit Spot complétée : Implémentation de la commission de 0.1% (Non-VIP) sur l'achat et la vente Spot dans engine.py. Ajustement dynamique des limites d'achat de cash et enregistrement du net PnL et de la valeur de transaction en BDD. Ajout du cas de test unitaire test_bybit_crypto_transaction_fees (10/10 tests passés).
 - [x] [2026-07-02 19:43:00] - Résolution geoblock et authentification Bybit EU : Support du mode public-only sans clés API (les endpoints d'ingestion Spot de Bybit sont publics et le paper trading tourne localement) et basculement vers api-demo.bybit.com par défaut pour contourner les restrictions réglementaires françaises sur les dérivés démo.
 - [x] [2026-07-02 18:30:00] - Restauration et migration de l'historique Trading 212 : Migration de 187 389 bougies et prix depuis les anciennes tables trading212_* vers live_* après normalisation des tickers en minuscules. Suppression des tables doublons obsolètes.

@@ -48,6 +48,11 @@ Parce que démarrer des serveurs FastAPI et des workers SQLite en ligne de comma
 - [Configurer les variables du launcher](./launcher/configuration.md)
 - [Créer des raccourcis graphiques sous Linux](./launcher/desktop-launchers.md)
 
+### 5. Live & Paper Trading
+Une fois vos stratégies backtestées et qualifiées, vous pouvez les déployer dans notre environnement d'exécution temps réel bi-broker (Trading 212 et Bybit EU) en mode Paper Trading. Ce système autonome ingère les prix en continu et évalue vos setups à l'aide d'un simulateur de courtier live.
+- [Architecture du moteur temps réel](../live_and_paper_trading/README.md)
+- [Guide de déploiement Render / local](../live_and_paper_trading/deployment_guide.md)
+
 ---
 
 ## Où dois-je aller maintenant ?

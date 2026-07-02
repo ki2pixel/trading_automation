@@ -1,5 +1,14 @@
 # Journal des Décisions
 
+## [2026-07-02 20:21:00] - Alignement et Mise à jour des Standards de Code (Trading Automation)
+- **Décision** : Mise à jour de `.agents/rules/codingstandards.md` pour refléter la réalité technique de la base de code :
+  1. Ingesteur de prix Bybit en mode public-only sur Render (sans clés d'API requises).
+  2. Simulation des frais de transaction Bybit Spot à 0.1000% (non-VIP) et Trading 212 à 0.0000% de frais dans le Paper Trading.
+  3. Rôle de `shm_allocators.py` dans l'allocation POSIX SHM pour réduire la complexité d'Optuna.
+  4. Correction de la confusion sur les métriques : NVO, NVS et AMS.MC sont des actifs/tickers de référence WFA, tandis que PBO et DSR sont les véritables métriques de robustesse.
+  5. Organisation plate des données Parquet dans `storage/processed/market_data_{timeframe}m/{symbol}.parquet`.
+- **Justification** : Aligner précisément la documentation d'architecture de référence avec le codebase pour éviter la dérive de documentation et guider correctement les futurs développements.
+
 > Ce document trace les décisions techniques majeures et leur justification.
 
 ## [2026-07-02 15:00:00] - Architecture Dual-Portefeuille et Intégration Binance API

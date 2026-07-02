@@ -87,6 +87,15 @@ class TestUpstashQuotaCheck(unittest.TestCase):
         # Should return False (do not consider exhausted, fallback gracefully to ping test)
         self.assertFalse(result)
 
+    def test_quota_check_skipped_for_non_upstash(self):
+        # Should return False immediately without calling URL open
+        result = _is_upstash_quota_exhausted(
+            "rediss://default:pwd@aiven-valkey.aivencloud.com:25000",
+            "fake_api",
+            "fake@gmail.com"
+        )
+        self.assertFalse(result)
+
 
 class TestFailoverRedisClient(unittest.TestCase):
     @patch("redis.Redis.from_url")
@@ -160,6 +169,17 @@ class TestFailoverRedisClient(unittest.TestCase):
         self.assertFalse(client._is_failed_over)
         self.assertEqual(client._active_client, mock_primary)
         mock_secondary.get.assert_not_called()
+
+    @patch("redis.Redis.from_url")
+    def test_max_connections_respected(self, mock_from_url):
+        with patch.dict("os.environ", {"REDIS_POOL_MAX": "25"}):
+            FailoverRedisClient("redis://primary", "redis://secondary")
+            
+            # Assert that Redis.from_url was called with max_connections=25
+            calls = mock_from_url.call_args_list
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[0][1]["max_connections"], 25)
+            self.assertEqual(calls[1][1]["max_connections"], 25)
 
 
 class TestFailoverPipeline(unittest.TestCase):
