@@ -12,6 +12,7 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-02 19:58:00] - Simulation des frais de transaction Bybit Spot : Implémentation d'une commission réaliste de 0.1000% (Non-VIP) sur les ordres d'achat et de vente cryptos (Bybit) dans le moteur de Paper Trading. Les limites de cash sont ajustées en conséquence et les transactions sont loggées netes de frais.
 - [2026-07-02 19:43:00] - Résolution geoblock et authentification Bybit EU : Support du mode public-only sans clés API (les endpoints d'ingestion Spot de Bybit sont publics et le paper trading tourne localement) et basculement vers api-demo.bybit.com par défaut pour contourner les restrictions réglementaires françaises sur les dérivés démo.
 - [2026-07-02 18:30:00] - Restauration et migration de l'historique Trading 212 : Migration de 187 389 bougies et prix depuis les anciennes tables trading212_* vers live_* après normalisation des tickers en minuscules. Suppression des tables doublons obsolètes.
 - [2026-07-02 17:58:00] - Intégration API Bybit EU et Remplacement de Binance complétés : Remplacement complet des modules de Binance par Bybit EU. Développement du client Spot V5 de Bybit avec en-têtes signés HMAC-SHA-256 et gestion de la balance Unified. Implémentation du bootstrap inversé des 1 000 bougies 1m de Bybit. Reroutage du Paper Trading Engine, de l'API de dashboard et de l'UI Web. Validation de la non-régression avec 500 tests unitaires et d'intégration validés à 100%.
