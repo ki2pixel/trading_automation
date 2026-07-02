@@ -28,7 +28,7 @@ class TestBybitIngestor(unittest.TestCase):
     def test_config_resolution(self):
         self.assertEqual(self.config.api_key, "test_key")
         self.assertEqual(self.config.api_secret, "test_secret")
-        self.assertEqual(self.config.base_url, "https://api-testnet.bybit.com")
+        self.assertEqual(self.config.base_url, "https://api-demo.bybit.com")
 
     def test_signature_generation(self):
         timestamp = "1672531200000"

@@ -30,7 +30,7 @@ class BybitConfig:
             if self.env == "live":
                 self.base_url = "https://api.bybit.com"
             else:
-                self.base_url = "https://api-testnet.bybit.com"
+                self.base_url = "https://api-demo.bybit.com"
 
     def _load_dotenv(self) -> None:
         """Helper to read .env file and set environment variables if not already set."""
