@@ -6,8 +6,8 @@
     <title>Paper Trading Engine | Trading Automation</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- Lightweight Charts CDN -->
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- Lightweight Charts CDN (Stable v4.1.3) -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -47,8 +47,8 @@
                 <div class="header-controls">
                     <!-- Heartbeat Price Feeds -->
                     <div class="heartbeat-group">
-                        <div class="heartbeat-item" id="hb-t212-container" title="Last price update for Trading 212">
-                            <span class="heartbeat-dot offline" id="hb-t212"></span>
+                        <div class="heartbeat-item" id="hb-trading212-container" title="Last price update for Trading 212">
+                            <span class="heartbeat-dot offline" id="hb-trading212"></span>
                             <span class="heartbeat-label">T212 Feed</span>
                         </div>
                         <div class="heartbeat-item" id="hb-bybit-container" title="Last price update for Bybit">
