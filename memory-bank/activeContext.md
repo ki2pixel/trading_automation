@@ -1,19 +1,19 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Surveillance de la production du Paper Trading autonome dual-portefeuille (Stocks + Cryptos via Bybit EU).
+- Session terminée. Les flux d'ingestion dual-portefeuille (Trading212 + Bybit EU) et le paper-trading fonctionnent de manière autonome et résiliente sur Render.
 
 ## Prochaines Étapes
-- Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les nouvelles données saines de Bybit EU.
-- Intégrer les 7 configurations validées de `cybernetic_hilbert` crypto dans le dictionnaire d'allocation du moteur de production live.
-- Intégrer les 10 configurations validées d'Adaptive Volatility Trend (5 de la baseline + 5 d'extension) dans le dictionnaire d'allocation du moteur de production live.
-- Intégrer la configuration validée de HMM Crypto (`bnbusdt` 60m) dans le dictionnaire d'allocation du moteur de production live.
-- Surveiller les logs Render pour confirmer que l'activité HTTP externe via Google Apps Script ou UptimeRobot empêche bien la mise en veille.
-- Intégrer les 4 configurations validées de Passe 2 de `momentum_based_zigzag` crypto dans le dictionnaire d'allocation du moteur de production live.
-
+- Suivre le bon fonctionnement de l'ingesteur de prix Bybit/Trading212 sur Render en mode public-only (sans clés d'API Bybit requises).
+- Confirmer que l'accumulation des bougies réelles de Bybit (LTCUSDT, DOTUSDT) se fait correctement dans `live_candles_1m`.
+- Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les données saines en temps réel.
 
 ## Bloquants / Problems Actuels
+- Aucun bloquant.
 
+## Résolutions Récentes
+- [2026-07-02 19:43:00] - Résolution geoblock et authentification Bybit EU : Support du mode public-only sans clés API (les endpoints d'ingestion Spot de Bybit sont publics et le paper trading tourne localement) et basculement vers api-demo.bybit.com par défaut pour contourner les restrictions réglementaires françaises sur les dérivés démo.
+- [2026-07-02 18:30:00] - Restauration et migration de l'historique Trading 212 : Migration de 187 389 bougies et prix depuis les anciennes tables trading212_* vers live_* après normalisation des tickers en minuscules. Suppression des tables doublons obsolètes.
 - [2026-07-02 17:58:00] - Intégration API Bybit EU et Remplacement de Binance complétés : Remplacement complet des modules de Binance par Bybit EU. Développement du client Spot V5 de Bybit avec en-têtes signés HMAC-SHA-256 et gestion de la balance Unified. Implémentation du bootstrap inversé des 1 000 bougies 1m de Bybit. Reroutage du Paper Trading Engine, de l'API de dashboard et de l'UI Web. Validation de la non-régression avec 500 tests unitaires et d'intégration validés à 100%.
 - [2026-07-02 14:50:00] - Fusion & Restauration des Rapports Complètes : Correction de l'effet de bord dû à la purge des runs locaux passés. Ajout d'un système hybride dans `scripts/analyze_best_performances.py` extrayant les 126 configurations historiques du backup HTML `docs/backup/arbitrage_optimisations.html` et les fusionnant avec les 32 configurations cryptos courantes. Recalcul et régénération totale des rapports (158 configurations consolidées et pondérées).
 - [2026-07-02 14:40:00] - Reporting et Arbitrage Crypto à jour : Intégration des configurations cryptos qualifiées (`cybernetic_hilbert`, `hmm_regime_filter` et `momentum_based_zigzag`) dans `scripts/analyze_best_performances.py`. Régénération des rapports `docs/arbitrage_optimisations.md`, `docs/arbitrage_optimisations.html` et `docs/portfolio_deploiement_immediat.md` démontrant une intégration réussie.
