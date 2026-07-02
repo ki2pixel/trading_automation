@@ -31,17 +31,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // Formatting utilities
     const formatCurrency = (val) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(val);
     const formatPercent = (val) => new Intl.NumberFormat('fr-FR', { style: 'percent', minimumFractionDigits: 2 }).format(val);
+    const formatUSDT = (val) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) + ' USDT';
 
     // Data Fetching
     const fetchPortfolio = async () => {
         try {
             const res = await fetch('/api/portfolio');
             const data = await res.json();
-            document.getElementById('kpi-nav').textContent = formatCurrency(data.total_nav);
-            document.getElementById('kpi-cash').textContent = formatCurrency(data.cash_balance);
-            document.getElementById('kpi-allocated').textContent = formatCurrency(data.allocated_balance);
             
-            // We'll calculate open pnl from positions
+            // Stocks (Trading 212)
+            const t212 = data.trading212 || { total_nav: 0, cash_balance: 0, allocated_balance: 0 };
+            document.getElementById('kpi-t212-nav').textContent = formatCurrency(t212.total_nav);
+            document.getElementById('kpi-t212-cash').textContent = formatCurrency(t212.cash_balance);
+            document.getElementById('kpi-t212-allocated').textContent = formatCurrency(t212.allocated_balance);
+            
+            // Crypto (Bybit)
+            const bybit = data.bybit || { total_nav: 0, cash_balance: 0, allocated_balance: 0 };
+            document.getElementById('kpi-bybit-nav').textContent = formatUSDT(bybit.total_nav);
+            document.getElementById('kpi-bybit-cash').textContent = formatUSDT(bybit.cash_balance);
+            document.getElementById('kpi-bybit-allocated').textContent = formatUSDT(bybit.allocated_balance);
         } catch (e) { console.error('Error fetching portfolio', e); }
     };
 
@@ -51,30 +59,44 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             const tbody = document.getElementById('positions-body');
             tbody.innerHTML = '';
-            let totalPnl = 0;
+            let totalT212Pnl = 0;
+            let totalBybitPnl = 0;
 
             if (data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted)">No open positions</td></tr>';
             } else {
                 data.forEach(pos => {
-                    totalPnl += pos.pnl;
+                    const isCrypto = pos.asset.toLowerCase().endsWith("usdt");
+                    let pnlStr = '';
+                    if (isCrypto) {
+                        totalBybitPnl += pos.pnl;
+                        pnlStr = formatUSDT(pos.pnl);
+                    } else {
+                        totalT212Pnl += pos.pnl;
+                        pnlStr = formatCurrency(pos.pnl);
+                    }
+                    
                     const pnlClass = pos.pnl >= 0 ? 'positive' : 'negative';
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td><strong>${pos.asset}</strong></td>
                         <td>${pos.strategy_name}</td>
                         <td>${pos.qty}</td>
-                        <td>${formatCurrency(pos.entry_price)}</td>
-                        <td>${formatCurrency(pos.current_price)}</td>
-                        <td class="${pnlClass}">${formatCurrency(pos.pnl)}</td>
+                        <td>${isCrypto ? formatUSDT(pos.entry_price) : formatCurrency(pos.entry_price)}</td>
+                        <td>${isCrypto ? formatUSDT(pos.current_price) : formatCurrency(pos.current_price)}</td>
+                        <td class="${pnlClass}">${pnlStr}</td>
                     `;
                     tbody.appendChild(tr);
                 });
             }
 
-            const pnlEl = document.getElementById('kpi-pnl');
-            pnlEl.textContent = formatCurrency(totalPnl);
-            pnlEl.className = 'kpi-value ' + (totalPnl >= 0 ? 'positive' : 'negative');
+            const t212PnlEl = document.getElementById('kpi-t212-pnl');
+            t212PnlEl.textContent = formatCurrency(totalT212Pnl);
+            t212PnlEl.className = 'kpi-value ' + (totalT212Pnl >= 0 ? 'positive' : 'negative');
+
+            const bybitPnlEl = document.getElementById('kpi-bybit-pnl');
+            bybitPnlEl.textContent = formatUSDT(totalBybitPnl);
+            bybitPnlEl.className = 'kpi-value ' + (totalBybitPnl >= 0 ? 'positive' : 'negative');
         } catch (e) { console.error('Error fetching positions', e); }
     };
 

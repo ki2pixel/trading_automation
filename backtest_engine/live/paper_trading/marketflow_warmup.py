@@ -67,7 +67,7 @@ def fetch_candles(mf_symbol, range_limit=1440):
 def get_t212_current_price(t212_ticker, conn):
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT price FROM trading212_prices WHERE LOWER(ticker) = LOWER(%s)", (t212_ticker,))
+            cur.execute("SELECT price FROM live_prices WHERE LOWER(ticker) = LOWER(%s)", (t212_ticker,))
             row = cur.fetchone()
             if row:
                 return float(row[0])
@@ -117,7 +117,7 @@ def parse_and_insert(t212_ticker, candles, conn):
                     continue
 
                 cur.execute("""
-                    INSERT INTO trading212_candles_1m (ticker, timestamp_minute, open, high, low, close)
+                    INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
                     VALUES (%s, date_trunc('minute', %s::timestamptz), %s, %s, %s, %s)
                     ON CONFLICT (ticker, timestamp_minute) 
                     DO UPDATE SET 

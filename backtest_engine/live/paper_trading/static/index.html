@@ -50,23 +50,45 @@
 
             <!-- Dashboard View -->
             <section id="dashboard" class="view-section active">
-                <!-- KPI Cards -->
+                <!-- Stocks Ecosystem -->
+                <h3 class="ecosystem-title" style="margin-top: 10px; margin-bottom: 15px; color: var(--text-light); font-family: 'Outfit', sans-serif; font-size: 1.25rem;">Stocks Portfolio (Trading 212)</h3>
                 <div class="kpi-grid">
                     <div class="kpi-card glass-panel">
-                        <div class="kpi-title">Total NAV</div>
-                        <div class="kpi-value" id="kpi-nav">€0.00</div>
+                        <div class="kpi-title">T212 Total NAV</div>
+                        <div class="kpi-value" id="kpi-t212-nav">€0.00</div>
                     </div>
                     <div class="kpi-card glass-panel">
-                        <div class="kpi-title">Cash Balance</div>
-                        <div class="kpi-value" id="kpi-cash">€0.00</div>
+                        <div class="kpi-title">T212 Cash Balance</div>
+                        <div class="kpi-value" id="kpi-t212-cash">€0.00</div>
                     </div>
                     <div class="kpi-card glass-panel">
-                        <div class="kpi-title">Allocated</div>
-                        <div class="kpi-value" id="kpi-allocated">€0.00</div>
+                        <div class="kpi-title">T212 Allocated</div>
+                        <div class="kpi-value" id="kpi-t212-allocated">€0.00</div>
                     </div>
                     <div class="kpi-card glass-panel highlight">
-                        <div class="kpi-title">Open PnL</div>
-                        <div class="kpi-value" id="kpi-pnl">€0.00</div>
+                        <div class="kpi-title">T212 Open PnL</div>
+                        <div class="kpi-value" id="kpi-t212-pnl">€0.00</div>
+                    </div>
+                </div>
+
+                <!-- Crypto Ecosystem -->
+                <h3 class="ecosystem-title" style="margin-top: 30px; margin-bottom: 15px; color: var(--text-light); font-family: 'Outfit', sans-serif; font-size: 1.25rem;">Crypto Portfolio (Bybit EU USDT)</h3>
+                <div class="kpi-grid">
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-title">Bybit Total NAV</div>
+                        <div class="kpi-value" id="kpi-bybit-nav">USDT 0.00</div>
+                    </div>
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-title">Bybit Cash Balance</div>
+                        <div class="kpi-value" id="kpi-bybit-cash">USDT 0.00</div>
+                    </div>
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-title">Bybit Allocated</div>
+                        <div class="kpi-value" id="kpi-bybit-allocated">USDT 0.00</div>
+                    </div>
+                    <div class="kpi-card glass-panel highlight-crypto" style="background: linear-gradient(135deg, rgba(240, 185, 11, 0.15) 0%, rgba(240, 185, 11, 0.05) 100%); border: 1px solid rgba(240, 185, 11, 0.3);">
+                        <div class="kpi-title" style="color: rgb(240, 185, 11);">Bybit Open PnL</div>
+                        <div class="kpi-value" id="kpi-bybit-pnl">USDT 0.00</div>
                     </div>
                 </div>
 

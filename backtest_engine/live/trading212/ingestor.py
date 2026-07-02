@@ -4,8 +4,9 @@ import time
 from typing import Dict, Any, Optional
 from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.connection import get_db_connection, get_redis_client
+from backtest_engine.live.ingestion.base import BasePriceIngestor
 
-class Trading212PriceIngestor:
+class Trading212PriceIngestor(BasePriceIngestor):
     """Tâche d'ingestion de prix pour récupérer les cotations via positions."""
 
     def __init__(self, client: Trading212Client, cache_path: Optional[str] = None):
@@ -28,14 +29,15 @@ class Trading212PriceIngestor:
                 with get_db_connection() as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
-                            CREATE TABLE IF NOT EXISTS trading212_prices (
+                            CREATE TABLE IF NOT EXISTS live_prices (
                                 ticker VARCHAR(50) PRIMARY KEY,
                                 price NUMERIC(15, 6) NOT NULL,
+                                source VARCHAR(50) NOT NULL DEFAULT 'trading212',
                                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                             );
                         """)
                         cur.execute("""
-                            CREATE TABLE IF NOT EXISTS trading212_candles_1m (
+                            CREATE TABLE IF NOT EXISTS live_candles_1m (
                                 ticker VARCHAR(50),
                                 timestamp_minute TIMESTAMP WITH TIME ZONE,
                                 open NUMERIC(15, 6) NOT NULL,
@@ -135,7 +137,7 @@ class Trading212PriceIngestor:
             try:
                 pipe = redis_client.pipeline()
                 for ticker, price in prices.items():
-                    pipe.set(f"price:{ticker}", str(price))
+                    pipe.set(f"price:{ticker.lower()}", str(price))
                 pipe.execute()
                 print(f"[PriceIngestor] Successfully published {len(prices)} prices to Redis.")
             except Exception as e:
@@ -147,26 +149,27 @@ class Trading212PriceIngestor:
                 with get_db_connection() as conn:
                     with conn.cursor() as cur:
                         for ticker, price in prices.items():
+                            normalized_ticker = ticker.lower()
                             cur.execute("""
-                                INSERT INTO trading212_prices (ticker, price, updated_at)
-                                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                                INSERT INTO live_prices (ticker, price, source, updated_at)
+                                VALUES (%s, %s, 'trading212', CURRENT_TIMESTAMP)
                                 ON CONFLICT (ticker)
-                                DO UPDATE SET price = EXCLUDED.price, updated_at = CURRENT_TIMESTAMP;
-                            """, (ticker, price))
+                                DO UPDATE SET price = EXCLUDED.price, source = 'trading212', updated_at = CURRENT_TIMESTAMP;
+                            """, (normalized_ticker, price))
                             
                             # UPSERT for 1m continuous pseudo-candles
                             cur.execute("""
-                                INSERT INTO trading212_candles_1m (ticker, timestamp_minute, open, high, low, close)
+                                INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
                                 VALUES (%s, date_trunc('minute', CURRENT_TIMESTAMP), %s, %s, %s, %s)
                                 ON CONFLICT (ticker, timestamp_minute)
                                 DO UPDATE SET 
-                                    high = GREATEST(trading212_candles_1m.high, EXCLUDED.high),
-                                    low = LEAST(trading212_candles_1m.low, EXCLUDED.low),
+                                    high = GREATEST(live_candles_1m.high, EXCLUDED.high),
+                                    low = LEAST(live_candles_1m.low, EXCLUDED.low),
                                     close = EXCLUDED.close;
-                            """, (ticker, price, price, price, price))
+                            """, (normalized_ticker, price, price, price, price))
                             
                         # Auto-cleanup: keep only last 7 days
-                        cur.execute("DELETE FROM trading212_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '7 days'")
+                        cur.execute("DELETE FROM live_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '7 days'")
                         
                         conn.commit()
                     print(f"[PriceIngestor] Successfully updated {len(prices)} prices and 1m candles in PostgreSQL.")

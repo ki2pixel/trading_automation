@@ -1,12 +1,10 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Finalisation et validation de la mise en production du Paper Trading autonome.
-- Validation finale et intégration des configurations d'optimisation cryptos pour `cybernetic_hilbert`.
-- Intégration de la configuration validée HMM Crypto `bnbusdt` (60m) au moteur live.
+- Surveillance de la production du Paper Trading autonome dual-portefeuille (Stocks + Cryptos via Bybit EU).
 
 ## Prochaines Étapes
-- Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les nouvelles données saines.
+- Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les nouvelles données saines de Bybit EU.
 - Intégrer les 7 configurations validées de `cybernetic_hilbert` crypto dans le dictionnaire d'allocation du moteur de production live.
 - Intégrer les 10 configurations validées d'Adaptive Volatility Trend (5 de la baseline + 5 d'extension) dans le dictionnaire d'allocation du moteur de production live.
 - Intégrer la configuration validée de HMM Crypto (`bnbusdt` 60m) dans le dictionnaire d'allocation du moteur de production live.
@@ -16,6 +14,9 @@
 
 ## Bloquants / Problems Actuels
 
+- [2026-07-02 17:58:00] - Intégration API Bybit EU et Remplacement de Binance complétés : Remplacement complet des modules de Binance par Bybit EU. Développement du client Spot V5 de Bybit avec en-têtes signés HMAC-SHA-256 et gestion de la balance Unified. Implémentation du bootstrap inversé des 1 000 bougies 1m de Bybit. Reroutage du Paper Trading Engine, de l'API de dashboard et de l'UI Web. Validation de la non-régression avec 500 tests unitaires et d'intégration validés à 100%.
+- [2026-07-02 14:50:00] - Fusion & Restauration des Rapports Complètes : Correction de l'effet de bord dû à la purge des runs locaux passés. Ajout d'un système hybride dans `scripts/analyze_best_performances.py` extrayant les 126 configurations historiques du backup HTML `docs/backup/arbitrage_optimisations.html` et les fusionnant avec les 32 configurations cryptos courantes. Recalcul et régénération totale des rapports (158 configurations consolidées et pondérées).
+- [2026-07-02 14:40:00] - Reporting et Arbitrage Crypto à jour : Intégration des configurations cryptos qualifiées (`cybernetic_hilbert`, `hmm_regime_filter` et `momentum_based_zigzag`) dans `scripts/analyze_best_performances.py`. Régénération des rapports `docs/arbitrage_optimisations.md`, `docs/arbitrage_optimisations.html` et `docs/portfolio_deploiement_immediat.md` démontrant une intégration réussie.
 - [2026-07-02 13:47:00] - Analyse de la Passe 2 Momentum-based ZigZag Crypto complétée : Intégration des résultats de Passe 2 dans `passe_2_signal.md` et mise à jour de la synthèse stratégique `synthese_strategie.md`. Validation d'améliorations de Sharpe spectaculaires (ex: `dotusdt` 45min Sharpe 1.23, DD -0.70% et `ltcusdt` 30min Sharpe 0.70, DD -5.91%). Bypass recommandé de la Passe 3 et consignation des 4 configurations cryptos finales.
 - [2026-07-02 13:42:00] - Script de file d'attente Passe 2 (Gestion du Risque) créé : Conception et développement de `scripts/queue_momentum_based_zigzag_crypto_campaign_passe2.py` pour la Passe 2 de la stratégie `momentum_based_zigzag` sur les 4 configurations cryptos qualifiées.
 - [2026-07-02 13:25:00] - Analyse de la Passe 1 Momentum-based ZigZag Crypto complétée : Intégration des résultats de 17 jobs d'optimisation dans `passe_1_signal.md`. Qualification de 4 configurations (`dotusdt` 30min/45min et `ltcusdt` 30min/45min) et rejet complet de `btcusdt` en raison des contraintes de risque strictes.

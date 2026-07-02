@@ -1,6 +1,5 @@
 import os
 import sys
-import threading
 import time
 from fastapi import FastAPI
 import uvicorn
@@ -10,33 +9,55 @@ from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.trading212.resolver import Trading212TickerResolver
 from backtest_engine.live.trading212.bootstrapper import Trading212Bootstrapper
 from backtest_engine.live.trading212.ingestor import Trading212PriceIngestor
+
+from backtest_engine.live.bybit.config import BybitConfig
+from backtest_engine.live.bybit.client import BybitClient
+from backtest_engine.live.bybit.ingestor import BybitPriceIngestor
+
 from backtest_engine.live.connection import get_db_connection, get_redis_client
 
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global background_task
+    global background_tasks
     polling_interval = int(os.getenv("T212_POLLING_INTERVAL", "60"))
-    if ingestor is not None:
-        import asyncio
-        background_task = asyncio.create_task(
-            ingestor.start_loop_async(interval_seconds=polling_interval)
+    import asyncio
+    
+    if t212_ingestor is not None:
+        background_tasks.append(
+            asyncio.create_task(
+                t212_ingestor.start_loop_async(interval_seconds=polling_interval)
+            )
         )
-        print("[Runner] Started background async polling task.")
+        print("[Runner] Started background async Trading 212 polling task.")
+        
+    if bybit_ingestor is not None:
+        background_tasks.append(
+            asyncio.create_task(
+                bybit_ingestor.start_loop_async(interval_seconds=polling_interval)
+            )
+        )
+        print("[Runner] Started background async Bybit polling task.")
+        
     yield
-    if ingestor is not None:
-        ingestor._running = False
-    if background_task is not None:
+    
+    if t212_ingestor is not None:
+        t212_ingestor._running = False
+    if bybit_ingestor is not None:
+        bybit_ingestor._running = False
+        
+    for task in background_tasks:
         try:
-            await background_task
+            await task
         except asyncio.CancelledError:
             pass
-    print("[Runner] Stopped background async polling task.")
+    print("[Runner] Stopped background async polling tasks.")
 
-app = FastAPI(title="Trading 212 Price Ingestor API", lifespan=lifespan)
-ingestor = None
-background_task = None
+app = FastAPI(title="Trading 212 & Bybit Price Ingestor API", lifespan=lifespan)
+t212_ingestor = None
+bybit_ingestor = None
+background_tasks = []
 
 @app.get("/health")
 @app.head("/health")
@@ -73,53 +94,62 @@ def get_prices():
             prices = {}
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT ticker, price FROM trading212_prices")
+                    cur.execute("SELECT ticker, price FROM live_prices")
                     rows = cur.fetchall()
                     for ticker, price in rows:
                         prices[ticker] = float(price)
             return prices
         except Exception as e:
             print(f"[Runner] Failed to fetch prices from PostgreSQL: {e}")
-            # Fallback to local JSON cache below
             
-    if ingestor is None:
-        return {}
-    return ingestor.read_cache()
-
-def run_polling_loop(ingestor_instance, interval):
-    try:
-        ingestor_instance.start_loop(interval_seconds=interval)
-    except Exception as e:
-        print(f"[Runner] Background polling thread failed: {e}")
+    # 3. Fallback to local JSON caches
+    prices = {}
+    if t212_ingestor is not None:
+        prices.update(t212_ingestor.read_cache())
+    if bybit_ingestor is not None:
+        prices.update(bybit_ingestor.read_cache())
+    return prices
 
 def main():
-    global ingestor
+    global t212_ingestor, bybit_ingestor
     
-    # 1. Config loading and validation
-    config = Trading212Config()
+    # 1. Initialize Trading 212 Client and Ingestor
+    t212_config = Trading212Config()
     try:
-        config.validate()
-    except ValueError as e:
-        print(f"Configuration error: {e}", file=sys.stderr)
+        t212_config.validate()
+        t212_client = Trading212Client(t212_config)
+        t212_ingestor = Trading212PriceIngestor(t212_client)
+        print("[Runner] Trading 212 client and ingestor initialized successfully.")
+    except Exception as e:
+        print(f"[Runner] Trading 212 not configured: {e}. Skipping.")
+        t212_ingestor = None
+        
+    # 2. Initialize Bybit Client and Ingestor
+    bybit_config = BybitConfig()
+    try:
+        bybit_config.validate()
+        bybit_client = BybitClient(bybit_config)
+        bybit_ingestor = BybitPriceIngestor(bybit_client)
+        print("[Runner] Bybit client and ingestor initialized successfully.")
+    except Exception as e:
+        print(f"[Runner] Bybit not configured: {e}. Skipping.")
+        bybit_ingestor = None
+
+    if t212_ingestor is None and bybit_ingestor is None:
+        print("[Runner] ERROR: Neither Trading 212 nor Bybit are configured. Exiting.", file=sys.stderr)
         sys.exit(1)
         
-    client = Trading212Client(config)
-    
-    # 2. Bootstrapping (optional)
+    # 3. Bootstrapping (optional for T212)
     bootstrap_env = os.getenv("T212_BOOTSTRAP", "false").lower()
-    if bootstrap_env in ("true", "1", "yes"):
+    if bootstrap_env in ("true", "1", "yes") and t212_ingestor is not None:
         print("[Runner] Running bootstrap procedure...")
         try:
-            resolver = Trading212TickerResolver(client)
-            bootstrapper = Trading212Bootstrapper(client, resolver)
+            resolver = Trading212TickerResolver(t212_client)
+            bootstrapper = Trading212Bootstrapper(t212_client, resolver)
             bootstrapper.bootstrap()
         except Exception as e:
             print(f"[Runner] Bootstrap failed: {e}", file=sys.stderr)
-            # Do not crash the process if bootstrap fails, to ensure resilience
             
-    # 3. Create ingestor
-    ingestor = Trading212PriceIngestor(client)
-    
     # 4. Mode routing
     mode = os.getenv("T212_INGESTOR_MODE", "worker").lower()
     polling_interval = int(os.getenv("T212_POLLING_INTERVAL", "60"))
@@ -128,12 +158,19 @@ def main():
         port = int(os.getenv("PORT", "8080"))
         host = os.getenv("HOST", "0.0.0.0")
         print(f"[Runner] Starting ingestor in WEB mode on {host}:{port}...")
-        uvicorn.run(app, host=host, port=port, log_level="info")
+        uvicorn.run("run_ingestor:app", host=host, port=port, log_level="info", reload=False)
     else:
         print(f"[Runner] Starting ingestor in WORKER mode (async)...")
         import asyncio
+        async def run_loops():
+            tasks = []
+            if t212_ingestor is not None:
+                tasks.append(t212_ingestor.start_loop_async(interval_seconds=polling_interval))
+            if bybit_ingestor is not None:
+                tasks.append(bybit_ingestor.start_loop_async(interval_seconds=polling_interval))
+            await asyncio.gather(*tasks)
         try:
-            asyncio.run(ingestor.start_loop_async(interval_seconds=polling_interval))
+            asyncio.run(run_loops())
         except KeyboardInterrupt:
             print("[Runner] Ingestor stopped by keyboard interrupt.")
 

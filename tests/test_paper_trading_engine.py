@@ -2,6 +2,7 @@ import os
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
+from decimal import Decimal
 
 from backtest_engine.live.paper_trading.engine import PaperTradingEngine
 from backtest_engine.live.paper_trading.api import router, ConfigUpdate
@@ -130,6 +131,8 @@ class TestPaperTradingEngine:
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, asset, qty, entry_price" in last_query:
                 return [(1, "AAPL", 10, 100.0)]
+            if "SELECT source, cash_balance FROM paper_portfolio_balance" in last_query:
+                return [("trading212", 4995.58), ("bybit", 10000.0)]
             return []
             
         mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
@@ -165,8 +168,9 @@ class TestPaperTradingEngine:
             call[0] for call in mock_cursor.execute.call_args_list 
             if "UPDATE paper_portfolio_balance SET total_nav" in call[0][0]
         ]
-        assert len(nav_update_calls) == 1
+        assert len(nav_update_calls) == 2
         assert nav_update_calls[0][1] == (Decimal('6495.58'),)
+        assert nav_update_calls[1][1] == (Decimal('10000.0'),)
 
     def test_update_portfolio_nav_fallback_local(self):
         # GIVEN: A database connection returning a local cash balance, and no Trading 212 Client (None)
@@ -192,6 +196,8 @@ class TestPaperTradingEngine:
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, asset, qty, entry_price" in last_query:
                 return [(1, "AAPL", 10, 100.0)]
+            if "SELECT source, cash_balance FROM paper_portfolio_balance" in last_query:
+                return [("trading212", 100000.0), ("bybit", 10000.0)]
             return []
             
         mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
@@ -218,9 +224,9 @@ class TestPaperTradingEngine:
             call[0] for call in mock_cursor.execute.call_args_list 
             if "UPDATE paper_portfolio_balance SET total_nav" in call[0][0]
         ]
-        assert len(nav_update_calls) == 1
-        from decimal import Decimal
+        assert len(nav_update_calls) == 2
         assert nav_update_calls[0][1] == (Decimal('101500.0'),)
+        assert nav_update_calls[1][1] == (Decimal('10000.0'),)
 
     @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
     @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
@@ -241,7 +247,7 @@ class TestPaperTradingEngine:
                 return None # No position open
             if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [10000.0, 10000.0] # 10k cash and nav
-            if "SELECT price FROM trading212_prices" in last_query:
+            if "SELECT price FROM live_prices" in last_query:
                 return [10.0] # live price is 10.0
             return None
 
@@ -310,7 +316,7 @@ class TestPaperTradingEngine:
             if "UPDATE paper_portfolio_balance" in call[0][0]
         ]
         assert len(cash_deduct_calls) == 1
-        assert cash_deduct_calls[0][1] == (Decimal('1000.0'), Decimal('1000.0'))
+        assert cash_deduct_calls[0][1] == (Decimal('1000.0'), Decimal('1000.0'), 'trading212')
 
     @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
     @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
@@ -382,7 +388,7 @@ class TestPaperTradingEngine:
                 return None # No position open
             if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [10000.0, 10000.0]
-            if "SELECT price FROM trading212_prices" in last_query:
+            if "SELECT price FROM live_prices" in last_query:
                 return [10.0]
             return None
 

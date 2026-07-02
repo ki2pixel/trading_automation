@@ -428,7 +428,7 @@ def test_run_ingestor_web_app(mock_get_db_conn, mock_get_redis):
     # Given: We mock run_ingestor's ingestor instance
     mock_ing = MagicMock()
     mock_ing.read_cache.return_value = {"AAPL": 150.0}
-    run_ingestor.ingestor = mock_ing
+    run_ingestor.t212_ingestor = mock_ing
     
     # When: Calling health_check
     resp_health = health_check()
@@ -533,7 +533,7 @@ def test_ingestor_postgres_init_success(mock_get_db_conn, mock_client):
         mock_get_db_conn.assert_called_once()
         # And: table creation query is executed
         mock_cur.execute.assert_called()
-        assert "CREATE TABLE IF NOT EXISTS trading212_prices" in mock_cur.execute.call_args_list[0][0][0]
+        assert "CREATE TABLE IF NOT EXISTS live_prices" in mock_cur.execute.call_args_list[0][0][0]
         # And: connection commits
         mock_conn.commit.assert_called_once()
 
@@ -580,10 +580,10 @@ def test_ingestor_postgres_write(mock_get_db_conn, mock_client):
         # Check first query
         first_query = call_args_list[0][0][0]
         first_params = call_args_list[0][0][1]
-        assert "INSERT INTO trading212_prices" in first_query
+        assert "INSERT INTO live_prices" in first_query
         assert "ON CONFLICT (ticker)" in first_query
         assert "DO UPDATE SET price = EXCLUDED.price" in first_query
-        assert first_params == ("AAPL", 150.0)
+        assert first_params == ("aapl", 150.0)
         
         # And connection commits
         mock_conn.commit.assert_called_once()
@@ -601,7 +601,7 @@ def test_run_ingestor_postgres_read(mock_get_db_conn, mock_get_redis):
     # Mock ingestor fallback just in case
     mock_ing = MagicMock()
     mock_ing.read_cache.return_value = {"AAPL": 150.0}
-    run_ingestor.ingestor = mock_ing
+    run_ingestor.t212_ingestor = mock_ing
     
     # Case 1: DATABASE_URL is set, DB query succeeds
     mock_conn = MagicMock()
@@ -614,7 +614,7 @@ def test_run_ingestor_postgres_read(mock_get_db_conn, mock_get_redis):
         res = get_prices()
         assert res == {"AAPL": 155.0, "MSFT": 305.0}
         mock_get_db_conn.assert_called_once()
-        mock_cur.execute.assert_called_once_with("SELECT ticker, price FROM trading212_prices")
+        mock_cur.execute.assert_called_once_with("SELECT ticker, price FROM live_prices")
         
     # Case 2: DATABASE_URL is set, but DB query fails (should fallback to cache)
     mock_get_db_conn.reset_mock()
@@ -623,4 +623,3 @@ def test_run_ingestor_postgres_read(mock_get_db_conn, mock_get_redis):
         res = get_prices()
         # Should fallback to local JSON cache
         assert res == {"AAPL": 150.0}
-

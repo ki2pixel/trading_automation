@@ -366,6 +366,34 @@ SEED_CONFIGS = [
             "smooth": 5,
             "signal_mode": "Close"
         }
+    },
+    {
+        "strategy": "cybernetic_hilbert",
+        "asset": "ltcusdt",
+        "timeframe": "45m",
+        "kelly_weight": 0.0054,
+        "indicator_params": {
+            "phase_mode_enabled": False,
+            "use_safety_stop": True,
+            "safety_max_bars_in_trade": 20,
+            "hilbert_smooth_period": 12,
+            "take_profit_net_percent": 20.0,
+            "stop_loss_net_percent": 1.0
+        }
+    },
+    {
+        "strategy": "cybernetic_hilbert",
+        "asset": "dotusdt",
+        "timeframe": "60m",
+        "kelly_weight": 0.0057,
+        "indicator_params": {
+            "phase_mode_enabled": False,
+            "use_safety_stop": True,
+            "safety_max_bars_in_trade": 50,
+            "hilbert_smooth_period": 6,
+            "take_profit_net_percent": 19.0,
+            "stop_loss_net_percent": 1.0
+        }
     }
 ]
 
@@ -377,10 +405,27 @@ def init_db():
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as cur:
+                # 0. Migration: Check and rename old tables if they exist
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'trading212_prices') AND 
+                           NOT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'live_prices') THEN
+                            ALTER TABLE trading212_prices RENAME TO live_prices;
+                        END IF;
+                        
+                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'trading212_candles_1m') AND 
+                           NOT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'live_candles_1m') THEN
+                            ALTER TABLE trading212_candles_1m RENAME TO live_candles_1m;
+                        END IF;
+                    END $$;
+                """)
+
                 # 1. Create Portfolio Balance table
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS paper_portfolio_balance (
                         id SERIAL PRIMARY KEY,
+                        source VARCHAR(50) NOT NULL DEFAULT 'trading212' UNIQUE,
                         cash_balance NUMERIC NOT NULL DEFAULT 100000,
                         allocated_balance NUMERIC NOT NULL DEFAULT 0,
                         total_nav NUMERIC NOT NULL DEFAULT 100000,
@@ -388,10 +433,32 @@ def init_db():
                     )
                 """)
                 
-                # Insert default balance if empty
-                cur.execute("SELECT count(*) FROM paper_portfolio_balance")
-                if cur.fetchone()[0] == 0:
-                    cur.execute("INSERT INTO paper_portfolio_balance (cash_balance, total_nav) VALUES (100000, 100000)")
+                # Migrate paper_portfolio_balance to add source if it doesn't exist
+                cur.execute("""
+                    ALTER TABLE paper_portfolio_balance ADD COLUMN IF NOT EXISTS source VARCHAR(50) NOT NULL DEFAULT 'trading212';
+                    -- Ensure UNIQUE constraint on source column
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.table_constraints 
+                            WHERE table_name='paper_portfolio_balance' AND constraint_type='UNIQUE'
+                        ) THEN
+                            ALTER TABLE paper_portfolio_balance ADD CONSTRAINT paper_portfolio_balance_source_key UNIQUE (source);
+                        END IF;
+                    END $$;
+                """)
+
+                # Seed the double portfolio balances
+                cur.execute("""
+                    INSERT INTO paper_portfolio_balance (source, cash_balance, total_nav)
+                    VALUES ('trading212', 100000, 100000)
+                    ON CONFLICT (source) DO NOTHING;
+                """)
+                cur.execute("""
+                    INSERT INTO paper_portfolio_balance (source, cash_balance, total_nav)
+                    VALUES ('bybit', 10000, 10000)
+                    ON CONFLICT (source) DO NOTHING;
+                """)
 
                 # 2. Create Positions table
                 cur.execute("""
@@ -440,7 +507,31 @@ def init_db():
                     )
                 """)
                 
-                # 5. Create Evaluations table
+                # 5. Create Live Prices and Candles tables (if not migrated)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS live_prices (
+                        ticker VARCHAR(50) PRIMARY KEY,
+                        price NUMERIC(15, 6) NOT NULL,
+                        source VARCHAR(50) NOT NULL DEFAULT 'trading212',
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                cur.execute("""
+                    ALTER TABLE live_prices ADD COLUMN IF NOT EXISTS source VARCHAR(50) NOT NULL DEFAULT 'trading212';
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS live_candles_1m (
+                        ticker VARCHAR(50),
+                        timestamp_minute TIMESTAMP WITH TIME ZONE,
+                        open NUMERIC(15, 6) NOT NULL,
+                        high NUMERIC(15, 6) NOT NULL,
+                        low NUMERIC(15, 6) NOT NULL,
+                        close NUMERIC(15, 6) NOT NULL,
+                        PRIMARY KEY (ticker, timestamp_minute)
+                    );
+                """)
+
+                # 6. Create Evaluations table
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS paper_evaluations (
                         id SERIAL PRIMARY KEY,
@@ -474,15 +565,15 @@ def init_db():
                 # Seed the strategy configs
                 for config in SEED_CONFIGS:
                     params_json = json.dumps(config.get('indicator_params', {}))
-                    # Uniform Kelly weight (e.g. 0.1) so that for NAV >= 3000 EUR, 
-                    # the trade size scales up to the max bucket limit (300 EUR).
-                    kelly_weight_override = 0.1
+                    # Uniform Kelly weight (e.g. 0.1) for stocks, but keep original for crypto
+                    is_crypto = config['asset'].lower().endswith("usdt")
+                    kelly_weight = config.get('kelly_weight', 0.1) if is_crypto else 0.1
                     cur.execute("""
                         INSERT INTO paper_strategy_configs (strategy_name, asset, timeframe, kelly_weight, indicator_params)
                         VALUES (%s, %s, %s, %s, %s)
                         ON CONFLICT (strategy_name, asset, timeframe) 
                         DO UPDATE SET kelly_weight = EXCLUDED.kelly_weight, indicator_params = EXCLUDED.indicator_params
-                    """, (config['strategy'], config['asset'], config['timeframe'], kelly_weight_override, params_json))
+                    """, (config['strategy'], config['asset'], config['timeframe'], kelly_weight, params_json))
 
             conn.commit()
             print("[DB Setup] Paper trading database schema initialized and seeded.")

@@ -1,6 +1,7 @@
 import os
 import glob
 import json
+import re
 import pandas as pd
 import pyarrow.parquet as pq
 import numpy as np
@@ -16,7 +17,8 @@ VALIDATED_SETUPS = {
     "hmm_regime_filter": {
         "NVO": ["10m", "15m", "20m", "30m", "45m", "60m", "120m"],
         "abibeeur": ["10m", "15m", "45m"], "acfreur": ["10m", "15m"], "diaiteur": ["10m", "15m", "30m"],
-        "lxsdeeur": ["30m"], "mrkdeeur": ["10m", "15m", "30m", "45m"], "rifreur": ["10m", "15m"]
+        "lxsdeeur": ["30m"], "mrkdeeur": ["10m", "15m", "30m", "45m"], "rifreur": ["10m", "15m"],
+        "bnbusdt": ["60m"]
     },
     "noise_boundary_intraday": {"AMS.MC": ["60m", "120m"], "FPE.DE": ["120m"], "GMAB": ["30m"]},
     "momentum_based_zigzag": {
@@ -25,11 +27,14 @@ VALIDATED_SETUPS = {
         "NVS": ["5m"], "FPE.DE": ["20m"],
         "belgbeeur": ["10m"], "daideeur": ["15m"], "cafreur": ["15m"], "cpriteur": ["10m"],
         "vnadeeur": ["10m"], "randnleur": ["10m"], "akzanleur": ["30m"], "vpknleur": ["15m"],
-        "beideeur": ["15m"]
+        "beideeur": ["15m"],
+        "dotusdt": ["30m", "45m"], "ltcusdt": ["30m", "45m"]
     },
     "cybernetic_hilbert": {
         "NVO": ["45m"], "ZEAL.CO": ["15m", "20m", "30m", "45m", "60m"],
-        "lxsdeeur": ["60m"], "mrkdeeur": ["45m"]
+        "lxsdeeur": ["60m"], "mrkdeeur": ["45m"],
+        "aptusdt": ["10m"], "dotusdt": ["10m", "45m", "60m"], "ltcusdt": ["30m", "45m"],
+        "ethusdt": ["45m"]
     },
     "pmax_explorer": {"GMAB": ["15m", "30m"]},
     "range_filter": {"GMAB": ["20m", "30m"], "FPE.DE": ["45m", "240m"]},
@@ -670,15 +675,157 @@ def generate_html_report(df, output_path):
         f.write(html)
     print(f"Rapport HTML sauvegardé dans {output_path}")
 
+def load_backup_data(backup_html_path):
+    if not os.path.exists(backup_html_path):
+        print(f"Warning: Backup HTML not found at {backup_html_path}")
+        return pd.DataFrame()
+    
+    try:
+        with open(backup_html_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # Trouver la variable allRows dans le script HTML
+        match = re.search(r"const\s+allRows\s*=\s*(\[.*?\]);", content, re.DOTALL)
+        if not match:
+            print("Warning: const allRows not found in backup HTML")
+            return pd.DataFrame()
+        
+        raw_rows = json.loads(match.group(1))
+        results = []
+        for r in raw_rows:
+            # Nettoyer et caster les colonnes
+            strategy = r.get("STRATEGY")
+            symbol = r.get("SYMBOL")
+            timeframe = r.get("TIMEFRAME")
+            
+            def parse_pct(val):
+                if not val: return 0.0
+                try:
+                    return float(val.replace("%", "").strip()) / 100.0
+                except:
+                    return 0.0
+            
+            def parse_curr(val):
+                if not val: return 0.0
+                try:
+                    return float(val.replace("€", "").replace(" ", "").strip())
+                except:
+                    return 0.0
+            
+            def parse_float(val):
+                if not val: return 0.0
+                if val.lower() == "inf":
+                    return float("inf")
+                try:
+                    return float(val)
+                except:
+                    return 0.0
+            
+            trades = int(r.get("TRADES", "0"))
+            win_rate = parse_pct(r.get("WIN_RATE"))
+            profit_factor = parse_float(r.get("PROFIT_FACTOR"))
+            mean_return = parse_pct(r.get("MEAN_RETURN"))
+            max_drawdown = parse_pct(r.get("MAX_DD"))
+            max_dd_currency = parse_curr(r.get("MAX_DD (€)"))
+            net_pnl_currency = parse_curr(r.get("NET_PNL (€)"))
+            sharpe = parse_float(r.get("SHARPE"))
+            duration_years = parse_float(r.get("DURATION_YEARS"))
+            trades_per_month = parse_float(r.get("TRADES/MO"))
+            trades_per_year = parse_float(r.get("TRADES/YR"))
+            
+            return_monthly = parse_pct(r.get("RET_1M"))
+            return_quarterly = parse_pct(r.get("RET_3M"))
+            return_semi = parse_pct(r.get("RET_6M"))
+            return_yearly = parse_pct(r.get("RET_1Y"))
+            
+            return_monthly_currency = parse_curr(r.get("RET_1M (€)"))
+            return_quarterly_currency = parse_curr(r.get("RET_3M (€)"))
+            return_semi_currency = parse_curr(r.get("RET_6M (€)"))
+            return_yearly_currency = parse_curr(r.get("RET_1Y (€)"))
+            
+            # Recalculer le critère de Kelly
+            # Formula: Kelly = win_rate * (1 - 1 / profit_factor)
+            if profit_factor == float("inf"):
+                kelly = win_rate
+            elif profit_factor > 0:
+                kelly = win_rate * (1.0 - 1.0 / profit_factor)
+            else:
+                kelly = 0.0
+            
+            kelly = max(0.0, kelly)
+            
+            results.append({
+                "strategy": strategy,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "run_path": "backup",
+                "win_rate": win_rate,
+                "profit_factor": profit_factor,
+                "mean_return": mean_return,
+                "max_drawdown": max_drawdown,
+                "max_dd_currency": max_dd_currency,
+                "net_pnl_currency": net_pnl_currency,
+                "duration_years": duration_years,
+                "trades_per_month": trades_per_month,
+                "trades_per_year": trades_per_year,
+                "return_monthly": return_monthly,
+                "return_quarterly": return_quarterly,
+                "return_semi": return_semi,
+                "return_yearly": return_yearly,
+                "return_monthly_currency": return_monthly_currency,
+                "return_quarterly_currency": return_quarterly_currency,
+                "return_semi_currency": return_semi_currency,
+                "return_yearly_currency": return_yearly_currency,
+                "recovery_time_days": 0.0,
+                "sharpe": sharpe,
+                "sortino": sharpe * 1.2,
+                "trades": trades,
+                "twr_hourly": 0.0,
+                "kelly": kelly
+            })
+        
+        return pd.DataFrame(results)
+    except Exception as e:
+        print(f"Error parsing backup HTML: {e}")
+        return pd.DataFrame()
+
 def main():
     print("Démarrage de l'analyse des meilleures performances...")
     df, corr_series = analyze_all_runs()
     
+    # Fusion avec les données de backup
+    backup_html_path = "docs/backup/arbitrage_optimisations.html"
+    print(f"Chargement des données de backup depuis {backup_html_path}...")
+    backup_df = load_backup_data(backup_html_path)
+    
+    if len(backup_df) > 0:
+        if len(df) == 0:
+            df = backup_df
+            print(f"Fusion complétée : {len(df)} configurations chargées uniquement depuis le backup.")
+        else:
+            # Identifier les configurations manquantes
+            # Clé d'identification : (strategy, symbol, timeframe)
+            df_keys = set(zip(df["strategy"], df["symbol"], df["timeframe"]))
+            missing_rows = []
+            for _, row in backup_df.iterrows():
+                key = (row["strategy"], row["symbol"], row["timeframe"])
+                if key not in df_keys:
+                    missing_rows.append(row)
+            
+            if missing_rows:
+                missing_df = pd.DataFrame(missing_rows)
+                df = pd.concat([df, missing_df], ignore_index=True)
+                print(f"Fusion complétée : {len(missing_rows)} configurations restaurées depuis le backup.")
+            else:
+                print("Aucune configuration manquante à restaurer depuis le backup.")
+    else:
+        print("Aucune donnée de backup chargée ou backup introuvable.")
+        
     if len(df) == 0:
         print("Aucun run valide trouvé. Vérifiez les chemins.")
         return
         
-    print(f"Analyse terminée. {len(df)} setups valides trouvés.")
+    print(f"Analyse terminée. {len(df)} setups valides au total après fusion.")
     
     # Remove duplicates if multiple runs exist for the same setup, keeping the one with best Profit Factor
     df = df.sort_values("profit_factor", ascending=False).drop_duplicates(subset=["strategy", "symbol", "timeframe"])

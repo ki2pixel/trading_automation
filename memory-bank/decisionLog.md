@@ -2,6 +2,10 @@
 
 > Ce document trace les décisions techniques majeures et leur justification.
 
+## [2026-07-02 15:00:00] - Architecture Dual-Portefeuille et Intégration Binance API
+- **Décision** : Séparation stricte des portefeuilles et de la gestion de balance entre les actions (gérées via Trading212 en EUR) et les crypto-actifs (gérées via Binance en USDT) au sein du moteur de Paper Trading. Migration des tables SQL `trading212_prices` $\rightarrow$ `live_prices` et `trading212_candles_1m` $\rightarrow$ `live_candles_1m` pour unifier les données de marché. Intégration d'un routeur dynamique dans le moteur de paper trading basé sur le suffixe des actifs (ex: `*.usdt` redirigé vers l'écosystème Binance).
+- **Justification** : Trading212 interdit le trading algorithmique sur crypto-actifs et n'offre pas de vente à d'API Spot ouverte pour les cryptos. Binance fournit une API Spot Testnet idéale et un écosystème 24/7 complet. La séparation évite d'avoir une surcharge arbitraire de Kelly weight pour les cryptos, préserve la logique financière spécifique à chaque écosystème, et permet une modélisation propre sans pollution mutuelle.
+
 ## [2026-05-30 16:15:00] - Initialisation de la documentation
 - **Décision** : Nettoyage de l'historique hérité du projet précédent et initialisation des fichiers du Memory Bank Protocol (`productContext.md`, `activeContext.md`, `systemPatterns.md`, `decisionLog.md`, `progress.md`) pour le projet `trading_automation_v2`.
 - **Justification** : Repartir sur une base propre adaptée aux règles et au domaine financier de ce projet.

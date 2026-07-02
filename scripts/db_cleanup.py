@@ -2,7 +2,7 @@ import os
 import sys
 from dotenv import load_dotenv
 
-sys.path.insert(0, "/home/kidpixel/trading_automation-main")
+sys.path.insert(0, "/home/kidpixel/trading_automation_v2")
 load_dotenv()
 
 from backtest_engine.live.connection import get_db_connection, get_redis_client
@@ -11,8 +11,8 @@ from backtest_engine.live.paper_trading.db_setup import SEED_CONFIGS
 def clean_database():
     print("Starting database cleanup...")
     
-    # 0. Get authorized tickers from db_setup
-    authorized_tickers = list(set(config["asset"] for config in SEED_CONFIGS))
+    # 0. Get authorized tickers from db_setup and normalize to lowercase
+    authorized_tickers = list(set(config["asset"].lower() for config in SEED_CONFIGS))
     print(f"Authorized tickers (total {len(authorized_tickers)}): {sorted(authorized_tickers)}")
     
     # 1. PostgreSQL Cleanup
@@ -21,11 +21,11 @@ def clean_database():
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 # Find tickers in database
-                cur.execute("SELECT DISTINCT ticker FROM trading212_prices;")
-                db_tickers = [row[0] for row in cur.fetchall()]
+                cur.execute("SELECT DISTINCT ticker FROM live_prices;")
+                db_tickers = [row[0].lower() for row in cur.fetchall()]
                 
-                cur.execute("SELECT DISTINCT ticker FROM trading212_candles_1m;")
-                candle_tickers = [row[0] for row in cur.fetchall()]
+                cur.execute("SELECT DISTINCT ticker FROM live_candles_1m;")
+                candle_tickers = [row[0].lower() for row in cur.fetchall()]
                 
                 all_db_tickers = list(set(db_tickers + candle_tickers))
                 print(f"Tickers currently in PostgreSQL: {all_db_tickers}")
@@ -34,23 +34,23 @@ def clean_database():
                 print(f"Obsolete tickers to clean in PostgreSQL: {tickers_to_clean}")
                 
                 if tickers_to_clean:
-                    # Delete from trading212_prices
+                    # Delete from live_prices
                     cur.execute(
-                        "DELETE FROM trading212_prices WHERE ticker = ANY(%s);",
+                        "DELETE FROM live_prices WHERE LOWER(ticker) = ANY(%s);",
                         (tickers_to_clean,)
                     )
                     prices_deleted = cur.rowcount
                     
-                    # Delete from trading212_candles_1m
+                    # Delete from live_candles_1m
                     cur.execute(
-                        "DELETE FROM trading212_candles_1m WHERE ticker = ANY(%s);",
+                        "DELETE FROM live_candles_1m WHERE LOWER(ticker) = ANY(%s);",
                         (tickers_to_clean,)
                     )
                     candles_deleted = cur.rowcount
                     
                     conn.commit()
-                    print(f"[PostgreSQL] Successfully deleted {prices_deleted} rows from trading212_prices.")
-                    print(f"[PostgreSQL] Successfully deleted {candles_deleted} rows from trading212_candles_1m.")
+                    print(f"[PostgreSQL] Successfully deleted {prices_deleted} rows from live_prices.")
+                    print(f"[PostgreSQL] Successfully deleted {candles_deleted} rows from live_candles_1m.")
                 else:
                     print("[PostgreSQL] No obsolete tickers found to clean.")
     except Exception as e:
@@ -68,7 +68,7 @@ def clean_database():
             deleted_keys_count = 0
             for k in redis_keys:
                 k_str = k.decode("utf-8") if isinstance(k, bytes) else k
-                ticker = k_str.split("price:")[1]
+                ticker = k_str.split("price:")[1].lower()
                 if ticker not in authorized_tickers:
                     if redis_client.delete(k):
                         deleted_keys_count += 1
@@ -84,14 +84,14 @@ def clean_database():
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT ticker FROM trading212_prices ORDER BY ticker;")
-                remaining_prices = [row[0] for row in cur.fetchall()]
+                cur.execute("SELECT ticker FROM live_prices ORDER BY ticker;")
+                remaining_prices = [row[0].lower() for row in cur.fetchall()]
                 
-                cur.execute("SELECT DISTINCT ticker FROM trading212_candles_1m ORDER BY ticker;")
-                remaining_candles = [row[0] for row in cur.fetchall()]
+                cur.execute("SELECT DISTINCT ticker FROM live_candles_1m ORDER BY ticker;")
+                remaining_candles = [row[0].lower() for row in cur.fetchall()]
                 
-                print(f"Remaining tickers in trading212_prices (total {len(remaining_prices)}): {remaining_prices}")
-                print(f"Remaining tickers in trading212_candles_1m (total {len(remaining_candles)}): {remaining_candles}")
+                print(f"Remaining tickers in live_prices (total {len(remaining_prices)}): {remaining_prices}")
+                print(f"Remaining tickers in live_candles_1m (total {len(remaining_candles)}): {remaining_candles}")
                 
                 # Check for any remaining unauthorized tickers
                 unauthorized_remaining = [t for t in (remaining_prices + remaining_candles) if t not in authorized_tickers]

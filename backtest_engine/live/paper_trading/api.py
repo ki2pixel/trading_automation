@@ -33,16 +33,21 @@ class ConfigUpdate(BaseModel):
 def _get_portfolio_sync():
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT cash_balance, allocated_balance, total_nav, last_updated FROM paper_portfolio_balance LIMIT 1")
-            row = cur.fetchone()
-            if not row:
-                return {"cash_balance": 0, "allocated_balance": 0, "total_nav": 0, "last_updated": None}
-            return {
-                "cash_balance": float(row[0]),
-                "allocated_balance": float(row[1]),
-                "total_nav": float(row[2]),
-                "last_updated": row[3].replace(tzinfo=timezone.utc).isoformat() if row[3] else None
-            }
+            cur.execute("SELECT source, cash_balance, allocated_balance, total_nav, last_updated FROM paper_portfolio_balance")
+            rows = cur.fetchall()
+            portfolio = {}
+            for r in rows:
+                source = r[0]
+                portfolio[source] = {
+                    "cash_balance": float(r[1]),
+                    "allocated_balance": float(r[2]),
+                    "total_nav": float(r[3]),
+                    "last_updated": r[4].replace(tzinfo=timezone.utc).isoformat() if r[4] else None
+                }
+            for s in ('trading212', 'bybit'):
+                if s not in portfolio:
+                    portfolio[s] = {"cash_balance": 0.0, "allocated_balance": 0.0, "total_nav": 0.0, "last_updated": None}
+            return portfolio
 
 def _get_positions_sync():
     with get_db_connection() as conn:
@@ -126,6 +131,9 @@ def load_market_hours():
 _market_hours = load_market_hours()
 
 def is_market_open(asset: str) -> bool:
+    if asset.lower().endswith("usdt"):
+        return True
+        
     if asset not in _market_hours:
         return False
         
