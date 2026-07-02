@@ -20,9 +20,34 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global background_tasks
-    polling_interval = int(os.getenv("T212_POLLING_INTERVAL", "60"))
+    global background_tasks, t212_ingestor, bybit_ingestor
     import asyncio
+    
+    # 1. Initialize Trading 212 Client and Ingestor dynamically if not initialized (Uvicorn worker re-import)
+    if t212_ingestor is None:
+        t212_config = Trading212Config()
+        try:
+            t212_config.validate()
+            t212_client = Trading212Client(t212_config)
+            t212_ingestor = Trading212PriceIngestor(t212_client)
+            print("[Runner] Trading 212 client and ingestor initialized dynamically in lifespan.")
+        except Exception as e:
+            print(f"[Runner] Trading 212 not configured: {e}. Skipping.")
+            t212_ingestor = None
+            
+    # 2. Initialize Bybit Client and Ingestor dynamically if not initialized (Uvicorn worker re-import)
+    if bybit_ingestor is None:
+        bybit_config = BybitConfig()
+        try:
+            bybit_config.validate()
+            bybit_client = BybitClient(bybit_config)
+            bybit_ingestor = BybitPriceIngestor(bybit_client)
+            print("[Runner] Bybit client and ingestor initialized dynamically in lifespan.")
+        except Exception as e:
+            print(f"[Runner] Bybit not configured: {e}. Skipping.")
+            bybit_ingestor = None
+
+    polling_interval = int(os.getenv("T212_POLLING_INTERVAL", "60"))
     
     if t212_ingestor is not None:
         background_tasks.append(
