@@ -24,6 +24,7 @@ class BybitConfig:
         self.api_key = os.getenv("BYBIT_API_KEY")
         self.api_secret = os.getenv("BYBIT_API_SECRET")
         self.env = os.getenv("BYBIT_ENV", "testnet").lower()
+        self.base_currency = os.getenv("BYBIT_BASE_CURRENCY", "USDC").upper()
         
         self.base_url = os.getenv("BYBIT_BASE_URL")
         if not self.base_url:

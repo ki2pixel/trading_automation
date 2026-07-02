@@ -1,6 +1,11 @@
 import os
 import psycopg2
 import json
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -369,7 +374,7 @@ SEED_CONFIGS = [
     },
     {
         "strategy": "cybernetic_hilbert",
-        "asset": "ltcusdt",
+        "asset": "ltcusdc",
         "timeframe": "45m",
         "kelly_weight": 0.0054,
         "indicator_params": {
@@ -383,7 +388,7 @@ SEED_CONFIGS = [
     },
     {
         "strategy": "cybernetic_hilbert",
-        "asset": "dotusdt",
+        "asset": "dotusdc",
         "timeframe": "60m",
         "kelly_weight": 0.0057,
         "indicator_params": {
@@ -421,6 +426,42 @@ def init_db():
                     END $$;
                 """)
 
+                # 0.1 Migration: Migrate USDT assets/tickers to USDC for Bybit safely (idempotent)
+                cur.execute("""
+                    -- live_prices: Delete duplicates before updating
+                    DELETE FROM live_prices 
+                    WHERE ticker LIKE '%usdt' 
+                      AND REPLACE(ticker, 'usdt', 'usdc') IN (SELECT ticker FROM live_prices);
+                    
+                    UPDATE live_prices SET ticker = REPLACE(ticker, 'usdt', 'usdc') 
+                    WHERE ticker LIKE '%usdt' AND source = 'bybit';
+                    
+                    -- live_candles_1m: Delete duplicates before updating
+                    DELETE FROM live_candles_1m c_usdt
+                    WHERE c_usdt.ticker LIKE '%usdt'
+                      AND EXISTS (
+                          SELECT 1 FROM live_candles_1m c_usdc
+                          WHERE c_usdc.ticker = REPLACE(c_usdt.ticker, 'usdt', 'usdc')
+                            AND c_usdc.timestamp_minute = c_usdt.timestamp_minute
+                      );
+                    
+                    UPDATE live_candles_1m SET ticker = REPLACE(ticker, 'usdt', 'usdc') 
+                    WHERE ticker LIKE '%usdt';
+                    
+                    -- paper_strategy_configs: Delete duplicates before updating
+                    DELETE FROM paper_strategy_configs cfg_usdt
+                    WHERE cfg_usdt.asset LIKE '%usdt'
+                      AND EXISTS (
+                          SELECT 1 FROM paper_strategy_configs cfg_usdc
+                          WHERE cfg_usdc.strategy_name = cfg_usdt.strategy_name
+                            AND cfg_usdc.asset = REPLACE(cfg_usdt.asset, 'usdt', 'usdc')
+                            AND cfg_usdc.timeframe = cfg_usdt.timeframe
+                      );
+                    
+                    UPDATE paper_strategy_configs SET asset = REPLACE(asset, 'usdt', 'usdc') 
+                    WHERE asset LIKE '%usdt';
+                """)
+
                 # 1. Create Portfolio Balance table
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS paper_portfolio_balance (
@@ -429,13 +470,15 @@ def init_db():
                         cash_balance NUMERIC NOT NULL DEFAULT 100000,
                         allocated_balance NUMERIC NOT NULL DEFAULT 0,
                         total_nav NUMERIC NOT NULL DEFAULT 100000,
+                        secured_balance NUMERIC NOT NULL DEFAULT 0,
                         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 
-                # Migrate paper_portfolio_balance to add source if it doesn't exist
+                # Migrate paper_portfolio_balance to add source and secured_balance if they don't exist
                 cur.execute("""
                     ALTER TABLE paper_portfolio_balance ADD COLUMN IF NOT EXISTS source VARCHAR(50) NOT NULL DEFAULT 'trading212';
+                    ALTER TABLE paper_portfolio_balance ADD COLUMN IF NOT EXISTS secured_balance NUMERIC NOT NULL DEFAULT 0;
                     -- Ensure UNIQUE constraint on source column
                     DO $$
                     BEGIN
@@ -549,6 +592,39 @@ def init_db():
                 """)
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_eval_timestamp ON paper_evaluations (timestamp DESC)")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_paper_eval_strat_asset ON paper_evaluations (strategy_name, asset)")
+
+                # 7. Create Conversion Accumulator table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS conversion_accumulator (
+                        id SERIAL PRIMARY KEY,
+                        source VARCHAR(50) NOT NULL DEFAULT 'bybit',
+                        amount NUMERIC NOT NULL,
+                        trade_ref VARCHAR(100) DEFAULT '',
+                        drained BOOLEAN NOT NULL DEFAULT FALSE,
+                        conversion_id VARCHAR(100) DEFAULT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        drained_at TIMESTAMP WITH TIME ZONE DEFAULT NULL
+                    )
+                """)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_conv_acc_source_drained ON conversion_accumulator (source, drained)")
+
+                # 8. Create Conversion Audit Log table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS conversion_audit_log (
+                        id SERIAL PRIMARY KEY,
+                        client_order_id VARCHAR(100) NOT NULL UNIQUE,
+                        broker_order_id VARCHAR(100),
+                        status VARCHAR(50) NOT NULL,
+                        qty_usdc NUMERIC NOT NULL,
+                        filled_qty_eur NUMERIC DEFAULT 0,
+                        avg_fill_price NUMERIC DEFAULT 0,
+                        fee_usdc NUMERIC DEFAULT 0,
+                        error_message TEXT,
+                        dry_run BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_conv_audit_status ON conversion_audit_log (status)")
                 
                 # Add run_status column if it doesn't exist
                 cur.execute("""

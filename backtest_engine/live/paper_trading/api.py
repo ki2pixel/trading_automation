@@ -62,7 +62,7 @@ class ConfigToggle(BaseModel):
 def _get_portfolio_sync():
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT source, cash_balance, allocated_balance, total_nav, last_updated FROM paper_portfolio_balance")
+            cur.execute("SELECT source, cash_balance, allocated_balance, total_nav, last_updated, secured_balance FROM paper_portfolio_balance")
             rows = cur.fetchall()
             portfolio = {}
             for r in rows:
@@ -71,11 +71,12 @@ def _get_portfolio_sync():
                     "cash_balance": float(r[1]),
                     "allocated_balance": float(r[2]),
                     "total_nav": float(r[3]),
-                    "last_updated": r[4].replace(tzinfo=timezone.utc).isoformat() if r[4] else None
+                    "last_updated": r[4].replace(tzinfo=timezone.utc).isoformat() if r[4] else None,
+                    "secured_balance": float(r[5])
                 }
             for s in ('trading212', 'bybit'):
                 if s not in portfolio:
-                    portfolio[s] = {"cash_balance": 0.0, "allocated_balance": 0.0, "total_nav": 0.0, "last_updated": None}
+                    portfolio[s] = {"cash_balance": 0.0, "allocated_balance": 0.0, "total_nav": 0.0, "last_updated": None, "secured_balance": 0.0}
             return portfolio
 
 def _get_positions_sync():

@@ -131,8 +131,8 @@ class TestPaperTradingEngine:
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, asset, qty, entry_price" in last_query:
                 return [(1, "AAPL", 10, 100.0)]
-            if "SELECT source, cash_balance FROM paper_portfolio_balance" in last_query:
-                return [("trading212", 4995.58), ("bybit", 10000.0)]
+            if "FROM paper_portfolio_balance" in last_query:
+                return [("trading212", 4995.58, 0.0), ("bybit", 10000.0, 0.0)]
             return []
             
         mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
@@ -196,8 +196,8 @@ class TestPaperTradingEngine:
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, asset, qty, entry_price" in last_query:
                 return [(1, "AAPL", 10, 100.0)]
-            if "SELECT source, cash_balance FROM paper_portfolio_balance" in last_query:
-                return [("trading212", 100000.0), ("bybit", 10000.0)]
+            if "FROM paper_portfolio_balance" in last_query:
+                return [("trading212", 100000.0, 0.0), ("bybit", 10000.0, 0.0)]
             return []
             
         mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
@@ -526,5 +526,94 @@ class TestPaperTradingEngine:
         assert len(tx_calls) == 1
         tx_total_value = tx_calls[0][0][1][4]
         assert tx_total_value == total_cost_arg
+
+
+    @patch('backtest_engine.live.paper_trading.engine.get_eurusd_rate')
+    @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
+    @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
+    def test_bybit_secured_profit_routing(self, mock_get_redis_client, mock_strat_registry_get, mock_get_eurusd_rate):
+        # GIVEN: A crypto position for ltcusdt (Bybit) with a profitable exit trigger
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        
+        from datetime import datetime, timezone
+        from decimal import Decimal
+        import pandas as pd
+        
+        mock_get_eurusd_rate.return_value = Decimal('1.10')
+        mock_get_redis_client.return_value = None
+        
+        # Candles for historical reference
+        from datetime import timedelta
+        start_time = datetime(2023, 10, 4, 12, 0, tzinfo=timezone.utc)
+        mock_candles = [
+            (start_time + timedelta(minutes=i), 100.0, 100.0, 100.0, 100.0)
+            for i in range(2500)
+        ]
+        
+        def mock_fetchone():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT id, qty, entry_price FROM paper_positions" in last_query:
+                return (99, Decimal("10.0"), Decimal("100.0"))
+            if "SELECT price FROM live_prices" in last_query:
+                return [120.0]
+            if "SELECT current_price FROM paper_positions WHERE id = %s" in last_query:
+                return [100.0]
+            return None
+
+        def mock_fetchall():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT id, strategy_name, asset, timeframe" in last_query:
+                return [(904, "cybernetic_hilbert", "ltcusdt", "45m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {"enable_take_profit": True, "take_profit_pct": 5.0})]
+            if "SELECT timestamp_minute, open, high, low, close" in last_query:
+                return mock_candles
+            return []
+
+        mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
+        mock_cursor.fetchall = MagicMock(side_effect=mock_fetchall)
+
+        # Mock StrategyRegistry to return a result
+        mock_strat_info = MagicMock()
+        mock_strat_registry_get.return_value = mock_strat_info
+        
+        df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
+        df_1m.set_index("timestamp_minute", inplace=True)
+        df_aggregated = df_1m.resample("45min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+        
+        result_bars = df_aggregated.copy()
+        result_bars["long_entry"] = False
+        result_bars["long_exit"] = False
+        
+        mock_run_result = MagicMock()
+        mock_run_result.bars = result_bars
+        mock_strat_info.run_function.return_value = mock_run_result
+        mock_strat_info.overrides_from_mapping_function.return_value = MagicMock()
+
+        engine = PaperTradingEngine(db_url="sqlite:///:memory:")
+        engine.is_market_open = MagicMock(return_value=True)
+
+        # WHEN: _evaluate_and_execute_strategies is executed
+        engine._evaluate_and_execute_strategies(mock_conn)
+
+        # THEN:
+        portfolio_update_calls = [
+            call for call in mock_cursor.execute.call_args_list
+            if "UPDATE paper_portfolio_balance" in call[0][0]
+        ]
+        assert len(portfolio_update_calls) == 1
+        query, params = portfolio_update_calls[0][0]
+        assert "secured_balance = secured_balance +" in query
+        assert "cash_balance = cash_balance +" in query
+        
+        cash_balance_added = params[0]
+        secured_balance_added = params[1]
+        allocated_balance_removed = params[2]
+        source_arg = params[3]
+        
+        assert source_arg == 'bybit'
+        assert abs(cash_balance_added - Decimal('1001.0')) < Decimal('0.0001')
+        assert abs(secured_balance_added - Decimal('179.818181')) < Decimal('0.0001')
+        assert abs(allocated_balance_removed - Decimal('1000.0')) < Decimal('0.0001')
 
 

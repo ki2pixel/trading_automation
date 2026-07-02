@@ -46,10 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('kpi-t212-allocated').textContent = formatCurrency(t212.allocated_balance);
             
             // Crypto (Bybit)
-            const bybit = data.bybit || { total_nav: 0, cash_balance: 0, allocated_balance: 0 };
+            const bybit = data.bybit || { total_nav: 0, cash_balance: 0, allocated_balance: 0, secured_balance: 0 };
             document.getElementById('kpi-bybit-nav').textContent = formatUSDT(bybit.total_nav);
             document.getElementById('kpi-bybit-cash').textContent = formatUSDT(bybit.cash_balance);
             document.getElementById('kpi-bybit-allocated').textContent = formatUSDT(bybit.allocated_balance);
+            document.getElementById('kpi-bybit-secured').textContent = formatCurrency(bybit.secured_balance || 0);
         } catch (e) { console.error('Error fetching portfolio', e); }
     };
 

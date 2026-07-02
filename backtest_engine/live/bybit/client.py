@@ -119,12 +119,12 @@ class BybitClient:
         response = self._request("GET", "/v5/market/kline", params=params)
         return response.json()
 
-    def get_account_summary(self) -> Dict[str, Any]:
+    def get_account_summary(self, coin: str = "USDC") -> Dict[str, Any]:
         """Retrieves account balance information (Signed)."""
         # Unified account balance endpoint
         params = {
             "accountType": "UNIFIED",
-            "coin": "USDT"
+            "coin": coin
         }
         response = self._request("GET", "/v5/account/wallet-balance", params=params, signed=True)
         return response.json()

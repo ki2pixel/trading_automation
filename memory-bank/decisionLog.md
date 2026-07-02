@@ -1,5 +1,13 @@
 # Journal des Décisions
 
+## [2026-07-02 23:15:00] - Conception de la Passerelle de Conversion Réelle Crypto-Fiat (Bybit Live)
+- **Décision** : Analyse des vecteurs de conversion et des risques associés à la transition en environnement réel Bybit (UTA, MiCA) suite au rapport `Analyse-Conversion-API-Bybit-EUR.md` :
+  1. **Choix du Routage** : Option A (API Spot `EURUSDT` avec `marketUnit="quoteCoin"`) retenue au lieu de l'Option B (Convert API OTC) pour les faibles montants, en raison de frais explicites inférieurs (0,10% - 0,20% Taker vs 0,15% - 0,40% spread OTC) et d'une exécution déterministe.
+  2. **Buffer de Rétention** : Utilisation d'un patron d'accumulateur (Buffer de Rétention) avec un seuil de déclenchement à 15 USDT pour respecter le seuil minimal de commande Spot de Bybit (1-5 USDT) et éviter les rejets.
+  3. **Contrôle de Marge UTA (Haircut Loss)** : Mise en place obligatoire d'un simulateur de marge pré-trade interrogeant `GET /v5/account/info` avant conversion, afin de s'assurer que le retrait de collatéral (l'EUR ayant un ratio de collatéral de 0%) ne pousse pas le taux de marge de maintien (MMR) au-dessus de 100% (seuil de liquidation).
+  4. **Routage MiCA (Juridiction EEE)** : Migration recommandée des stratégies vers une devise de base USDC (stablecoin conforme MiCA avec ratio collatéral de 100% dans l'UTA) pour éliminer le besoin de "Double-Hop Routing" (USDT -> USDC -> EUR) et réduire les frais cumulés.
+- **Justification** : Prévenir les rejets d'ordres par le moteur de matching de Bybit, prémunir le compte UTA contre les liquidations accidentelles induites par la perte de collatéral marge, et respecter le cadre réglementaire européen MiCA tout en minimisant les frais de transaction.
+
 ## [2026-07-02 22:15:00] - Enrichissement et Stabilisation du Dashboard Paper Trading
 - **Décision** : Enrichissement de l'interface de monitoring Paper Trading avec de nouvelles fonctionnalités et correction de la résilience de l'ingesteur :
   1. Intégration de `Lightweight Charts` v4.1.3 avec une échelle double Y (NAV sur l'axe gauche, prix des bougies sur l'axe droit) pour superposer la courbe de stratégie vs Buy & Hold sans distorsion.

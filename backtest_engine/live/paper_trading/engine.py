@@ -17,6 +17,54 @@ def print(*args, **kwargs):
     else:
         logger.info(message)
 
+
+def get_eurusd_rate(conn=None):
+    """
+    Retrieve the EUR/USD exchange rate (1 EUR = X USD).
+    Queries the live_prices table first. If unavailable, falls back to a public API
+    with a strict timeout, and finally to a static fallback (1.08).
+    """
+    from decimal import Decimal
+    
+    # 1. Query the database first
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT price FROM live_prices WHERE ticker = 'eurusd'")
+                row = cur.fetchone()
+                if row and row[0] is not None:
+                    return Decimal(str(row[0]))
+        except Exception as e:
+            print(f"[PaperTrader] DB query for eurusd failed: {e}")
+            
+    # 2. Query public API with strict timeout
+    import urllib.request
+    import json
+    urls = [
+        "https://open.er-api.com/v6/latest/EUR",
+        "https://api.exchangerate-api.com/v4/latest/EUR"
+    ]
+    for url in urls:
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={'User-Agent': 'AntigravityPaperTrader/1.0'}
+            )
+            with urllib.request.urlopen(req, timeout=1.5) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode('utf-8'))
+                    rates = data.get("rates", {})
+                    usd_rate = rates.get("USD")
+                    if usd_rate is not None:
+                        return Decimal(str(usd_rate))
+        except Exception as api_err:
+            print(f"[PaperTrader] Public API call to {url} failed: {api_err}")
+            
+    # 3. Static fallback
+    print("[PaperTrader] Using static fallback (1.08) for EUR/USD rate.")
+    return Decimal("1.08")
+
+
 class PaperTradingEngine:
     def __init__(self, db_url=None):
         self.db_url = db_url or os.getenv("DATABASE_URL")
@@ -66,7 +114,7 @@ class PaperTradingEngine:
         """
         Check if the market is open for a given asset based on Mon-Fri and defined hours.
         """
-        if asset.lower().endswith("usdt"):
+        if asset.lower().endswith(("usdt", "usdc")):
             return True
             
         if asset not in self.market_hours:
@@ -144,43 +192,50 @@ class PaperTradingEngine:
                     except Exception as api_err:
                         print(f"[PaperTrader] Failed to fetch account summary from Trading 212 API: {api_err}")
 
-                # If Bybit Client is active, fetch real-time cash balance (USDT) and update DB
+                # If Bybit Client is active, fetch real-time cash balance (USDC/USDT) and update DB
                 if getattr(self, "bybit_client", None) is not None:
                     try:
-                        summary = self.bybit_client.get_account_summary()
-                        usdt_balance = Decimal("0")
+                        base_coin = self.bybit_client.config.base_currency
+                        summary = self.bybit_client.get_account_summary(coin=base_coin)
+                        bybit_balance = Decimal("0")
                         for acc in summary.get("result", {}).get("list", []):
                             for coin_info in acc.get("coin", []):
-                                if coin_info.get("coin") == "USDT":
-                                    usdt_balance = Decimal(coin_info.get("walletBalance", "0"))
+                                if coin_info.get("coin") == base_coin:
+                                    bybit_balance = Decimal(coin_info.get("walletBalance", "0"))
                                     break
-                        if usdt_balance > 0:
+                        if bybit_balance > 0:
                             cur.execute(
                                 "UPDATE paper_portfolio_balance SET cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'",
-                                (usdt_balance,)
+                                (bybit_balance,)
                             )
                     except Exception as api_err:
                         print(f"[PaperTrader] Failed to fetch account summary from Bybit API: {api_err}")
 
-                # Fetch cash balances for both ecosystems
-                cur.execute("SELECT source, cash_balance FROM paper_portfolio_balance")
-                balances = {r[0]: Decimal(str(r[1])) for r in cur.fetchall()}
+                # Fetch cash and secured balances for both ecosystems
+                cur.execute("SELECT source, cash_balance, secured_balance FROM paper_portfolio_balance")
+                rows = cur.fetchall()
+                balances = {r[0]: Decimal(str(r[1])) for r in rows}
+                secured_balances = {r[0]: Decimal(str(r[2])) for r in rows}
                 
                 t212_cash = balances.get("trading212", Decimal("100000"))
                 bybit_cash = balances.get("bybit", Decimal("10000"))
+                bybit_secured = secured_balances.get("bybit", Decimal("0"))
 
                 # Get open positions
                 cur.execute("SELECT id, asset, qty, entry_price FROM paper_positions")
                 positions = cur.fetchall()
                 
                 t212_nav = t212_cash
-                bybit_nav = bybit_cash
+                
+                # Retrieve exchange rate to integrate secured_balance (in EUR) converted to USDC/USDT in Bybit total NAV
+                eurusd_rate = get_eurusd_rate(conn)
+                bybit_nav = bybit_cash + (bybit_secured * eurusd_rate)
                 
                 for pos_id, asset, qty, entry_price in positions:
                     qty = Decimal(str(qty))
                     entry_price = Decimal(str(entry_price))
                     asset_lower = asset.lower()
-                    is_crypto = asset_lower.endswith("usdt")
+                    is_crypto = asset_lower.endswith(("usdt", "usdc"))
                     
                     if not self.is_market_open(asset):
                         # Keep previous current_price if closed
@@ -264,6 +319,9 @@ class PaperTradingEngine:
                 with conn.cursor() as cur:
                     cur.execute("DELETE FROM paper_evaluations WHERE timestamp < NOW() - INTERVAL '48 hours'")
                 conn.commit()
+                # 4. Run conversion pipeline (Live mode only)
+                if os.getenv("BYBIT_CONVERSION_ENABLED", "false").lower() == "true":
+                    self._run_conversion_pipeline(conn)
         except Exception as e:
             print(f"[PaperTrader] Error in run_cycle: {e}")
 
@@ -344,6 +402,8 @@ class PaperTradingEngine:
             # Check market hours
             if not self.is_market_open(asset):
                 continue
+                
+            source = 'bybit' if asset.lower().endswith(("usdt", "usdc")) else 'trading212'
                 
             # Check if we have an active position for this strategy + asset
             with conn.cursor() as cur:
@@ -535,7 +595,7 @@ class PaperTradingEngine:
                         
                     # Calculate quantity to buy
                     # Determine source depending on asset type
-                    source = 'bybit' if asset.lower().endswith("usdt") else 'trading212'
+                    source = 'bybit' if asset.lower().endswith(("usdt", "usdc")) else 'trading212'
                     
                     # First fetch total portfolio NAV and cash balance
                     with conn.cursor() as cur:
@@ -770,14 +830,26 @@ class PaperTradingEngine:
                             # 1. Remove position
                             cur.execute("DELETE FROM paper_positions WHERE id = %s", (pos_id,))
                             
-                            # 2. Add cash back (net revenue) and remove allocated balance from correct source
-                            cur.execute("""
-                                UPDATE paper_portfolio_balance 
-                                SET cash_balance = cash_balance + %s,
-                                    allocated_balance = GREATEST(0, allocated_balance - %s),
-                                    last_updated = CURRENT_TIMESTAMP
-                                WHERE source = %s
-                            """, (net_revenue, qty * entry_price, source))
+                            # 2. Add cash back and remove allocated balance from correct source
+                            if pnl > 0 and source == 'bybit':
+                                eurusd_rate = get_eurusd_rate(conn)
+                                pnl_eur = pnl / eurusd_rate
+                                cur.execute("""
+                                    UPDATE paper_portfolio_balance 
+                                    SET cash_balance = cash_balance + %s,
+                                        secured_balance = secured_balance + %s,
+                                        allocated_balance = GREATEST(0, allocated_balance - %s),
+                                        last_updated = CURRENT_TIMESTAMP
+                                    WHERE source = %s
+                                """, (total_entry_cost, pnl_eur, qty * entry_price, source))
+                            else:
+                                cur.execute("""
+                                    UPDATE paper_portfolio_balance 
+                                    SET cash_balance = cash_balance + %s,
+                                        allocated_balance = GREATEST(0, allocated_balance - %s),
+                                        last_updated = CURRENT_TIMESTAMP
+                                    WHERE source = %s
+                                """, (net_revenue, qty * entry_price, source))
                             
                             # 3. Log transaction (log net revenue received in total_value)
                             cur.execute("""
@@ -844,5 +916,37 @@ class PaperTradingEngine:
 
     def stop(self):
         self._running = False
+
+    def _run_conversion_pipeline(self, conn):
+        """
+        Pipeline de conversion USDC → EUR via Bybit Spot.
+        Exécuté uniquement si BYBIT_CONVERSION_ENABLED=true.
+        """
+        try:
+            from backtest_engine.live.bybit.conversion.accumulator import AccumulatorBuffer
+            from backtest_engine.live.bybit.conversion.margin_simulator import UTAMarginSimulator
+            from backtest_engine.live.bybit.conversion.spot_router import SpotConversionRouter
+            from decimal import Decimal
+            import os
+
+            if not getattr(self, "bybit_client", None):
+                return
+
+            threshold_str = os.getenv("BYBIT_CONVERSION_THRESHOLD", "15.00")
+            threshold = Decimal(threshold_str)
+            dry_run = os.getenv("BYBIT_CONVERSION_DRY_RUN", "true").lower() == "true"
+
+            accumulator = AccumulatorBuffer(threshold=threshold)
+            margin_sim = UTAMarginSimulator(self.bybit_client)
+            router = SpotConversionRouter(
+                self.bybit_client, accumulator, margin_sim, dry_run=dry_run
+            )
+
+            result = router.try_convert(conn)
+            if result:
+                print(f"[PaperTrader] Conversion result: {result.status.value} "
+                      f"({result.qty_usdc} USDC)")
+        except Exception as e:
+            print(f"[PaperTrader] Conversion pipeline error: {e}")
 
 

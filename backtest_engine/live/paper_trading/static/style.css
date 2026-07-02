@@ -333,6 +333,15 @@ h1, h2, h3, h4 {
     border: 1px solid rgba(240, 185, 11, 0.2);
 }
 
+.kpi-card.highlight-secured::before {
+    background: #10b981; /* Emerald/Stablecoin Green */
+}
+
+.kpi-card.highlight-secured {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(22, 30, 49, 0.7) 100%);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
 .kpi-title {
     color: var(--text-muted);
     font-size: 0.8rem;

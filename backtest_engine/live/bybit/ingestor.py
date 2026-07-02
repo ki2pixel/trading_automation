@@ -19,10 +19,15 @@ class BybitPriceIngestor(BasePriceIngestor):
         cache_path: Optional[str] = None
     ):
         self.client = client
-        self.symbols = symbols or ["LTCUSDT", "DOTUSDT"]
+        self.symbols = symbols or self._resolve_symbols()
         self.cache_path = cache_path or os.getenv("BYBIT_PRICE_CACHE_PATH") or "/tmp/bybit_prices.json"
         self._running = False
         self._init_db()
+
+    def _resolve_symbols(self) -> List[str]:
+        base = self.client.config.base_currency
+        raw_assets = os.getenv("BYBIT_ASSETS", "LTC,DOT").split(",")
+        return [f"{asset.strip().upper()}{base}" for asset in raw_assets]
 
     def _init_db(self) -> None:
         """Creates the live prices and candles tables if DATABASE_URL is set."""
