@@ -436,3 +436,95 @@ class TestPaperTradingEngine:
         assert "last_error = NULL" in active_update_calls[0][0]
         assert active_update_calls[0][1] == (1,)
 
+    @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
+    @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
+    def test_bybit_crypto_transaction_fees(self, mock_strat_registry_get, mock_get_redis_client):
+        # GIVEN: A crypto configuration for ltcusdt (Bybit)
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        
+        from datetime import datetime, timezone
+        from decimal import Decimal
+        import pandas as pd
+        
+        mock_candles = [
+            (datetime(2023, 10, 4, 12 + i // 60, i % 60, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
+            for i in range(120)
+        ]
+        
+        def mock_fetchone():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT id, qty, entry_price FROM paper_positions" in last_query:
+                return None # No position open
+            if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+                return [10000.0, 10000.0]
+            if "SELECT price FROM live_prices" in last_query:
+                return [10.0]
+            return None
+
+        def mock_fetchall():
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "SELECT id, strategy_name, asset, timeframe" in last_query:
+                return [(904, "cybernetic_hilbert", "ltcusdt", "45m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
+            if "SELECT timestamp_minute, open, high, low, close" in last_query:
+                return mock_candles
+            return []
+
+        mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
+        mock_cursor.fetchall = MagicMock(side_effect=mock_fetchall)
+
+        # Mock StrategyRegistry to trigger a BUY signal
+        mock_strat_info = MagicMock()
+        mock_strat_registry_get.return_value = mock_strat_info
+        
+        df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
+        df_1m.set_index("timestamp_minute", inplace=True)
+        df_aggregated = df_1m.resample("45min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+        
+        last_closed_time = df_aggregated.index[-2]
+        result_bars = df_aggregated.copy()
+        result_bars["long_entry"] = False
+        result_bars["long_exit"] = False
+        result_bars.loc[last_closed_time, "long_entry"] = True # Buy signal
+        
+        mock_run_result = MagicMock()
+        mock_run_result.bars = result_bars
+        mock_strat_info.run_function.return_value = mock_run_result
+        mock_strat_info.overrides_from_mapping_function.return_value = MagicMock()
+
+        engine = PaperTradingEngine(db_url="sqlite:///:memory:")
+        engine.is_market_open = MagicMock(return_value=True)
+
+        # WHEN: _evaluate_and_execute_strategies is executed
+        engine._evaluate_and_execute_strategies(mock_conn)
+
+        # THEN: The BUY cost should include the 0.1% Bybit fee
+        # 10% Kelly of 10k NAV = 1000 USDT allocated, at 10.2 USDT price -> 98.039216 units
+        # Rounded to 6 decimals (precision by default): 98.039216
+        # Cost = 98.039216 * 10.2 = 1000.0000032
+        # Fee = 1000.0000032 * 0.001 = 1.0000000032
+        # Total buy cost = 1001.0000032032
+        balance_update_calls = [
+            call for call in mock_cursor.execute.call_args_list
+            if "UPDATE paper_portfolio_balance" in call[0][0] and "cash_balance = cash_balance -" in call[0][0]
+        ]
+        assert len(balance_update_calls) == 1
+        total_cost_arg = balance_update_calls[0][0][1][0]
+        allocated_arg = balance_update_calls[0][0][1][1]
+        source_arg = balance_update_calls[0][0][1][2]
+        
+        # Verify that total deducted cost is higher than allocated value by exactly 0.1%
+        assert source_arg == 'bybit'
+        assert abs(total_cost_arg - allocated_arg * Decimal('1.001')) < Decimal('0.00001')
+        
+        # Verify transaction log records total cost including fee
+        tx_calls = [
+            call for call in mock_cursor.execute.call_args_list
+            if "INSERT INTO paper_transactions" in call[0][0] and "BUY" in call[0][0]
+        ]
+        assert len(tx_calls) == 1
+        tx_total_value = tx_calls[0][0][1][4]
+        assert tx_total_value == total_cost_arg
+
+

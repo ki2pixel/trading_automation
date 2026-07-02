@@ -570,18 +570,24 @@ class PaperTradingEngine:
                         )
                         continue
                         
+                    fee_rate = Decimal("0.0010") if source == 'bybit' else Decimal("0.0")
                     actual_cost = qty * current_price
-                    if actual_cost > cash_balance:
-                        # Safety adjust
-                        qty = cash_balance / current_price
+                    buy_fee = actual_cost * fee_rate
+                    total_buy_cost = actual_cost + buy_fee
+                    
+                    if total_buy_cost > cash_balance:
+                        # Safety adjust considering the fee
+                        qty = cash_balance / (current_price * (Decimal("1.0") + fee_rate))
                         qty = round(qty, qty_precision)
                         actual_cost = qty * current_price
+                        buy_fee = actual_cost * fee_rate
+                        total_buy_cost = actual_cost + buy_fee
                         if qty <= 0:
                             self._log_evaluation(
                                 conn, strategy_name, asset, timeframe,
                                 price=current_price, signal_type='ENTRY',
                                 signal_triggered=True, status='REJECTED',
-                                fail_reason='Kelly size or cash availability results in zero qty',
+                                fail_reason='Kelly size or cash availability results in zero qty after fee adjustment',
                                 details={
                                     "cash_balance": float(cash_balance),
                                     "qty_precision": qty_precision
@@ -598,23 +604,23 @@ class PaperTradingEngine:
                                 VALUES (%s, %s, %s, %s, %s, 0, CURRENT_TIMESTAMP)
                             """, (asset, strategy_name, qty, current_price, current_price))
                             
-                            # 2. Deduct cash from correct source
+                            # 2. Deduct cash from correct source (deduct total cost with fee, but allocate only actual cost)
                             cur.execute("""
                                 UPDATE paper_portfolio_balance 
                                 SET cash_balance = cash_balance - %s, 
                                     allocated_balance = allocated_balance + %s,
                                     last_updated = CURRENT_TIMESTAMP
                                 WHERE source = %s
-                            """, (actual_cost, actual_cost, source))
+                            """, (total_buy_cost, actual_cost, source))
                             
                             # 3. Log transaction
                             cur.execute("""
                                 INSERT INTO paper_transactions (asset, strategy_name, action, qty, price, total_value, timestamp)
                                 VALUES (%s, %s, 'BUY', %s, %s, %s, CURRENT_TIMESTAMP)
-                            """, (asset, strategy_name, qty, current_price, actual_cost))
+                            """, (asset, strategy_name, qty, current_price, total_buy_cost))
                             
                         conn.commit()
-                        print(f"[PaperTrader] Executed virtual BUY for {asset} ({strategy_name}): {qty} units @ {current_price} € (Cost: {actual_cost} €)")
+                        print(f"[PaperTrader] Executed virtual BUY for {asset} ({strategy_name}): {qty} units @ {current_price} € (Cost: {actual_cost} €, Fee: {buy_fee} €, Total: {total_buy_cost} €)")
                         
                         self._log_evaluation(
                             conn, strategy_name, asset, timeframe, 
@@ -737,30 +743,36 @@ class PaperTradingEngine:
                 if trigger_exit:
                     # Execute SELL
                     actual_revenue = qty * current_price
-                    pnl = actual_revenue - (qty * entry_price)
+                    fee_rate = Decimal("0.0010") if source == 'bybit' else Decimal("0.0")
+                    sell_fee = actual_revenue * fee_rate
+                    net_revenue = actual_revenue - sell_fee
+                    
+                    # Entry cost with fee was: (qty * entry_price) * (1 + fee_rate)
+                    total_entry_cost = (qty * entry_price) * (Decimal("1.0") + fee_rate)
+                    pnl = net_revenue - total_entry_cost
                     
                     try:
                         with conn.cursor() as cur:
                             # 1. Remove position
                             cur.execute("DELETE FROM paper_positions WHERE id = %s", (pos_id,))
                             
-                            # 2. Add cash back and remove allocated balance from correct source
+                            # 2. Add cash back (net revenue) and remove allocated balance from correct source
                             cur.execute("""
                                 UPDATE paper_portfolio_balance 
                                 SET cash_balance = cash_balance + %s,
                                     allocated_balance = GREATEST(0, allocated_balance - %s),
                                     last_updated = CURRENT_TIMESTAMP
                                 WHERE source = %s
-                            """, (actual_revenue, qty * entry_price, source))
+                            """, (net_revenue, qty * entry_price, source))
                             
-                            # 3. Log transaction
+                            # 3. Log transaction (log net revenue received in total_value)
                             cur.execute("""
                                 INSERT INTO paper_transactions (asset, strategy_name, action, qty, price, total_value, timestamp)
                                 VALUES (%s, %s, 'SELL', %s, %s, %s, CURRENT_TIMESTAMP)
-                            """, (asset, strategy_name, qty, current_price, actual_revenue))
+                            """, (asset, strategy_name, qty, current_price, net_revenue))
                             
                         conn.commit()
-                        print(f"[PaperTrader] Executed virtual SELL for {asset} ({strategy_name}) [Reason: {exit_reason}]: {qty} units @ {current_price} € (PnL: {pnl} €)")
+                        print(f"[PaperTrader] Executed virtual SELL for {asset} ({strategy_name}) [Reason: {exit_reason}]: {qty} units @ {current_price} € (PnL: {pnl} €, Fee: {sell_fee} €, Net Revenue: {net_revenue} €)")
                         
                         self._log_evaluation(
                             conn, strategy_name, asset, timeframe,
@@ -770,7 +782,7 @@ class PaperTradingEngine:
                             details={
                                 "qty": float(qty),
                                 "entry_price": float(entry_price),
-                                "revenue": float(actual_revenue),
+                                "revenue": float(net_revenue),
                                 "pnl": float(pnl),
                                 "exit_reason": exit_reason
                             }
