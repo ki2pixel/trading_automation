@@ -46,9 +46,6 @@ class BybitConfig:
                             os.environ[k] = v
 
     def validate(self) -> None:
-        """Validates that credentials are set."""
+        """Validates configuration."""
         if not self.api_key or not self.api_secret:
-            raise ValueError(
-                "Missing Bybit credentials. Ensure BYBIT_API_KEY and "
-                "BYBIT_API_SECRET are set in environment or .env file."
-            )
+            print("[BybitConfig] WARNING: Bybit API Key or Secret is missing. Private signed endpoints will fail, but public endpoints (price ingestion) will work.")

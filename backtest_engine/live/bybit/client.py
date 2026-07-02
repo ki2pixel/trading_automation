@@ -40,6 +40,8 @@ class BybitClient:
         req_params = params.copy() if params else {}
 
         if signed:
+            if not self.config.api_key or not self.config.api_secret:
+                raise ValueError("Missing Bybit credentials. Cannot perform signed requests.")
             timestamp = str(int(time.time() * 1000))
             if method == "GET":
                 # For GET, parameters are in the query string

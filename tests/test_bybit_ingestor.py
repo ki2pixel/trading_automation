@@ -154,3 +154,18 @@ class TestBybitIngestor(unittest.TestCase):
             unittest.mock.ANY,
             ("ltcusdt", datetime.fromtimestamp(1672531260.0, tz=timezone.utc), Decimal("102.0"), Decimal("103.0"), Decimal("102.0"), Decimal("102.5"))
         )
+
+    def test_public_only_mode(self):
+        # Setup config and client without credentials
+        with patch.dict("os.environ", {"BYBIT_API_KEY": "", "BYBIT_API_SECRET": ""}):
+            config = BybitConfig()
+            client = BybitClient(config)
+            
+            # Check that validation does not raise ValueError
+            config.validate()
+            
+            # Check that a signed request raises ValueError
+            with self.assertRaises(ValueError) as ctx:
+                client.get_account_summary()
+            self.assertIn("Cannot perform signed requests", str(ctx.exception))
+
