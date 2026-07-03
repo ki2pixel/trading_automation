@@ -276,9 +276,12 @@ async def login(request: Request):
 
     if "application/x-www-form-urlencoded" in content_type:
         is_form = True
-        form_data = await request.form()
-        username = form_data.get("username")
-        password = form_data.get("password")
+        import urllib.parse
+        body_bytes = await request.body()
+        body_str = body_bytes.decode("utf-8")
+        form_data = urllib.parse.parse_qs(body_str)
+        username = form_data.get("username", [None])[0]
+        password = form_data.get("password", [None])[0]
     else:
         try:
             payload = await request.json()
