@@ -1,5 +1,13 @@
 # Journal des Décisions
 
+## [2026-07-03 22:50:00] - Phase 1 Sécurité Critique validée (Paper Trading Backend)
+- **Décision** : Implémentation des 4 mesures de sécurité critiques de l'audit pour le backend Paper Trading FastAPI :
+  1. **Séparation HMAC** : Utilisation d'une variable d'environnement `HMAC_SECRET` dédiée pour la signature de session (séparée du mot de passe utilisateur, auto-générée en dev/test, requise en prod).
+  2. **Protection CSRF** : Implémentation du middleware `CSRFMiddleware` (Double Submit Cookie) vérifiant le header `X-CSRFToken` par rapport au cookie `csrftoken` non HttpOnly sur les requêtes mutantes. Intégration côté client via un intercepteur fetch dans `app.js`.
+  3. **Validation Pydantic** : Modèle `IndicatorParamsModel` validant `indicator_params` via `model_validator` pour rejeter les injections (structures imbriquées de type listes/dict) tout en autorisant les clés dynamiques via `extra='allow'`.
+  4. **En-têtes CORS/CSP** : Configuration des en-têtes de sécurité de production via `CORSMiddleware` (whitelist stricte, `X-CSRFToken` et `Content-Type` autorisés) et `SecurityHeadersMiddleware` (CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`).
+- **Justification** : Éliminer les risques critiques d'invalidation de mot de passe comme clé HMAC, d'attaques CSRF sur les endpoints mutants d'administration du Paper Trading, de contournement ou d'injections malveillantes via les paramètres de stratégies, et d'expositions inter-origines non sécurisées.
+
 ## [2026-07-02 23:15:00] - Conception de la Passerelle de Conversion Réelle Crypto-Fiat (Bybit Live)
 - **Décision** : Analyse des vecteurs de conversion et des risques associés à la transition en environnement réel Bybit (UTA, MiCA) suite au rapport `Analyse-Conversion-API-Bybit-EUR.md` :
   1. **Choix du Routage** : Option A (API Spot `EURUSDT` avec `marketUnit="quoteCoin"`) retenue au lieu de l'Option B (Convert API OTC) pour les faibles montants, en raison de frais explicites inférieurs (0,10% - 0,20% Taker vs 0,15% - 0,40% spread OTC) et d'une exécution déterministe.

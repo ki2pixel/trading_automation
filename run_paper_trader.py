@@ -4,7 +4,9 @@ import asyncio
 import time
 import base64
 import logging
+import secrets
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from contextlib import asynccontextmanager
@@ -43,6 +45,22 @@ if not PAPER_TRADER_PASSWORD and not is_testing:
 if is_testing and not PAPER_TRADER_PASSWORD:
     PAPER_TRADER_PASSWORD = "test_password"
 
+# HMAC Secret for session token signing (separate from user password)
+HMAC_SECRET = os.getenv("HMAC_SECRET")
+if not HMAC_SECRET and not is_testing:
+    if is_production:
+        raise ValueError(
+            "Configuration Error: HMAC_SECRET environment variable is missing! "
+            "This is required in production. Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    else:
+        HMAC_SECRET = secrets.token_hex(32)
+        logger.warning("[CONFIG] HMAC_SECRET not set — auto-generated for dev. Set HMAC_SECRET in production.")
+
+# Fallback for testing environment
+if is_testing and not HMAC_SECRET:
+    HMAC_SECRET = secrets.token_hex(32)
+
 def create_session_token(username: str, expires: int, secret: str) -> str:
     message = f"{username}:{expires}".encode("utf-8")
     sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
@@ -71,11 +89,10 @@ class CookieSessionAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         session_token = request.cookies.get("paper_trader_session")
-        expected_password = os.getenv("PAPER_TRADER_PASSWORD") or PAPER_TRADER_PASSWORD
 
         authenticated = False
-        if session_token and expected_password:
-            authenticated = verify_session_token(session_token, expected_password)
+        if session_token and HMAC_SECRET:
+            authenticated = verify_session_token(session_token, HMAC_SECRET)
 
         if not authenticated:
             # For API requests, return JSON 401
@@ -89,6 +106,84 @@ class CookieSessionAuthMiddleware(BaseHTTPMiddleware):
             return RedirectResponse(url="/login.html", status_code=307)
 
         return await call_next(request)
+
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """
+    Double Submit Cookie pattern for CSRF protection.
+
+    Sets a `csrftoken` cookie (HttpOnly=False so JS can read it).
+    Verifies that mutating requests (POST/PUT/DELETE/PATCH) carry a
+    matching X-CSRFToken header. Login and logout are exempt.
+    """
+    EXEMPT_PATHS = frozenset({"/api/login", "/api/logout"})
+    MUTATING_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
+
+    async def dispatch(self, request: Request, call_next):
+        # Skip CSRF for safe methods — just ensure cookie is set
+        if request.method not in self.MUTATING_METHODS:
+            response = await call_next(request)
+            self._ensure_csrf_cookie(request, response)
+            return response
+
+        path = request.url.path
+        if len(path) > 1 and path.endswith("/"):
+            path = path.rstrip("/")
+
+        # Skip CSRF for exempt paths
+        if path in self.EXEMPT_PATHS:
+            response = await call_next(request)
+            self._ensure_csrf_cookie(request, response)
+            return response
+
+        # Validate CSRF token: cookie must match header
+        cookie_token = request.cookies.get("csrftoken")
+        header_token = request.headers.get("X-CSRFToken")
+
+        if not cookie_token or not header_token or not hmac.compare_digest(cookie_token, header_token):
+            return JSONResponse(
+                content={"detail": "CSRF token missing or invalid"},
+                status_code=403
+            )
+
+        response = await call_next(request)
+        return response
+
+    def _ensure_csrf_cookie(self, request: Request, response: Response):
+        """Set CSRF cookie if not already present on the request."""
+        if not request.cookies.get("csrftoken"):
+            is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+            csrf_token = secrets.token_hex(32)
+            response.set_cookie(
+                key="csrftoken",
+                value=csrf_token,
+                max_age=30 * 24 * 3600,
+                path="/",
+                httponly=False,  # JS must read this cookie
+                secure=is_prod,
+                samesite="lax"
+            )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to every response."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'; "
+            "connect-src 'self'"
+        )
+        is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+        if is_prod:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
 
 engine = None
 background_task = None
@@ -142,8 +237,28 @@ async def lifespan(app: FastAPI):
 # Initialize app
 app = FastAPI(title="Paper Trading Dashboard API", lifespan=lifespan)
 
-# Add Cookie Session Auth Middleware to protect dashboard and API endpoints
-app.add_middleware(CookieSessionAuthMiddleware)
+# Middlewares in Starlette LIFO order (last added = first executed):
+# Execution order: CORS → SecurityHeaders → Auth → CSRF
+app.add_middleware(CSRFMiddleware)               # 1st added → last executed
+app.add_middleware(CookieSessionAuthMiddleware)  # 2nd added → 3rd executed
+app.add_middleware(SecurityHeadersMiddleware)     # 3rd added → 2nd executed
+
+# CORS must execute first — added last (LIFO)
+_allowed_origins: list[str] = []
+if is_production:
+    _render_url = os.getenv("RENDER_EXTERNAL_URL", "")
+    if _render_url:
+        _allowed_origins.append(_render_url)
+else:
+    _allowed_origins = ["http://localhost:8081", "http://127.0.0.1:8081"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["X-CSRFToken", "Content-Type"],
+)
 
 # Include API endpoints
 app.include_router(paper_trading_router)
@@ -164,7 +279,7 @@ def login(payload: LoginRequest):
         )
         
     expires = int(time.time()) + 30 * 24 * 3600
-    token = create_session_token(payload.username, expires, expected_password)
+    token = create_session_token(payload.username, expires, HMAC_SECRET)
     
     is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
     

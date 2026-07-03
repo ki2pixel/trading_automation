@@ -1,7 +1,23 @@
-// Global fetch interceptor to handle session expiration (401 Unauthorized)
+// Helper to read CSRF token from cookie
+function getCsrfToken() {
+    const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
+// Global fetch interceptor to handle session expiration (401) and CSRF tokens
 const originalFetch = window.fetch;
-window.fetch = async function(...args) {
-    const response = await originalFetch(...args);
+window.fetch = async function(url, options = {}) {
+    // Automatically add CSRF token for mutating requests
+    const method = (options.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+        options.headers = options.headers || {};
+        if (options.headers instanceof Headers) {
+            options.headers.set('X-CSRFToken', getCsrfToken());
+        } else {
+            options.headers['X-CSRFToken'] = getCsrfToken();
+        }
+    }
+    const response = await originalFetch(url, options);
     if (response.status === 401) {
         window.location.href = '/login.html';
     }

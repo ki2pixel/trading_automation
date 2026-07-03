@@ -8,7 +8,8 @@ from datetime import timezone, datetime
 from decimal import Decimal
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, model_validator
+from typing import Any
 from contextlib import contextmanager
 from backtest_engine.live.utils import is_crypto_asset
 
@@ -46,13 +47,67 @@ def get_db_connection():
         raise HTTPException(status_code=500, detail=f"Database connection error: {e}")
 
 
+
+
+class IndicatorParamsModel(BaseModel):
+    """
+    Validated indicator parameters for paper trading strategy configs.
+
+    Common engine keys are typed explicitly. Strategy-specific keys
+    from overrides_from_mapping_function are allowed via extra='allow'
+    but all values must be primitive types (no nested dicts/lists).
+    """
+    model_config = ConfigDict(extra='allow')
+
+    # Precision & currency keys (used directly by engine.py)
+    quantity_precision: int | None = None
+    account_currency: str | None = None
+    asset_currency: str | None = None
+    point_value: float | None = None
+
+    # Bracket exit keys
+    use_net_bracket_exits: bool | None = None
+    enable_stop_loss: bool | None = None
+    enable_take_profit: bool | None = None
+    take_profit_pct: float | None = None
+    stop_loss_pct: float | None = None
+    take_profit_net_percent: float | None = None
+    stop_loss_net_percent: float | None = None
+
+    # Trailing stop keys
+    enable_trailing_stop: bool | None = None
+    trail_profit_pct: float | None = None
+    trail_loss_pct: float | None = None
+
+    # Safety stop keys
+    use_safety_stop: bool | None = None
+    safety_stop_applies_to: str | None = None
+    safety_stop_mode: str | None = None
+    safety_max_net_loss_mode: str | None = None
+    safety_max_net_loss_cash: float | None = None
+    safety_max_net_loss_percent: float | None = None
+    safety_max_bars_in_trade: int | None = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def validate_primitive_types(cls, data: Any) -> Any:
+        """Reject nested dicts/lists in any input fields to prevent injection."""
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if isinstance(v, (dict, list)):
+                    raise ValueError(
+                        f"Nested structures are not allowed in indicator_params (key: {k}), got {type(v).__name__}"
+                    )
+        return data
+
+
 class ConfigUpdate(BaseModel):
     initial_capital: float
     initial_capital_bucket: float
     max_capital_bucket: float
     max_entry_price: float
     is_active: bool
-    indicator_params: dict | None = None
+    indicator_params: IndicatorParamsModel | None = None
 
 
 class ConfigToggle(BaseModel):
@@ -196,7 +251,7 @@ def _update_config_sync(config_id: int, payload: ConfigUpdate):
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             if payload.indicator_params is not None:
-                params_json = json.dumps(payload.indicator_params)
+                params_json = json.dumps(payload.indicator_params.model_dump(exclude_none=True))
                 cur.execute("""
                     UPDATE paper_strategy_configs 
                     SET initial_capital = %s, initial_capital_bucket = %s, 
