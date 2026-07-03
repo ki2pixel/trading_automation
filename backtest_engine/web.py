@@ -424,6 +424,9 @@ def _estimate_payload(payload: dict[str, Any], repo_root: Path) -> dict[str, Any
     }
 
 
+logger = logging.getLogger("backtest_optimizer")
+
+
 def _api_error(message: str, status_code: int = 400) -> JSONResponse:
     if status_code >= 500:
         correlation_id = str(uuid4())
@@ -902,7 +905,6 @@ def create_optimizer_app(
     app = FastAPI(title="Backtest Optimizer API", version="0.2.0")
     app.state.optimizer_store = store
 
-    logger = logging.getLogger("backtest_optimizer")
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
