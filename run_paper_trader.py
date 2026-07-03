@@ -14,10 +14,11 @@ from backtest_engine.live.paper_trading.db_setup import init_db
 
 engine = None
 background_task = None
+keepalive_task = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global background_task, engine
+    global background_task, keepalive_task, engine
     
     # Run DB schema check/seed
     print("[PaperTrader] Initializing database...")
@@ -34,10 +35,24 @@ async def lifespan(app: FastAPI):
         )
         print("[PaperTrader] Started background async engine task.")
     
+    # Start database keep-alive heartbeat task
+    from backtest_engine.live.connection import run_postgres_keep_alive_task
+    keepalive_task = asyncio.create_task(
+        run_postgres_keep_alive_task()
+    )
+    print("[PaperTrader] Started background async PostgreSQL keep-alive task.")
+    
     yield
     
     if engine is not None:
         engine.stop()
+    if keepalive_task is not None:
+        keepalive_task.cancel()
+        try:
+            await keepalive_task
+        except asyncio.CancelledError:
+            pass
+        print("[PaperTrader] Stopped background async PostgreSQL keep-alive task.")
     if background_task is not None:
         try:
             await background_task

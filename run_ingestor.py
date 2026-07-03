@@ -14,7 +14,7 @@ from backtest_engine.live.bybit.config import BybitConfig
 from backtest_engine.live.bybit.client import BybitClient
 from backtest_engine.live.bybit.ingestor import BybitPriceIngestor
 
-from backtest_engine.live.connection import get_db_connection, get_redis_client
+from backtest_engine.live.connection import get_db_connection, get_redis_client, run_postgres_keep_alive_task
 
 from contextlib import asynccontextmanager
 
@@ -65,12 +65,24 @@ async def lifespan(app: FastAPI):
         )
         print("[Runner] Started background async Bybit polling task.")
         
+    # Start database keep-alive heartbeat task
+    background_tasks.append(
+        asyncio.create_task(
+            run_postgres_keep_alive_task()
+        )
+    )
+    print("[Runner] Started background async PostgreSQL keep-alive task.")
+        
     yield
     
     if t212_ingestor is not None:
         t212_ingestor._running = False
     if bybit_ingestor is not None:
         bybit_ingestor._running = False
+        
+    # Cancel all background tasks to ensure clean exit
+    for task in background_tasks:
+        task.cancel()
         
     for task in background_tasks:
         try:

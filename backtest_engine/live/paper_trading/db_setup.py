@@ -428,38 +428,47 @@ def init_db():
 
                 # 0.1 Migration: Migrate USDT assets/tickers to USDC for Bybit safely (idempotent)
                 cur.execute("""
-                    -- live_prices: Delete duplicates before updating
-                    DELETE FROM live_prices 
-                    WHERE ticker LIKE '%usdt' 
-                      AND REPLACE(ticker, 'usdt', 'usdc') IN (SELECT ticker FROM live_prices);
-                    
-                    UPDATE live_prices SET ticker = REPLACE(ticker, 'usdt', 'usdc') 
-                    WHERE ticker LIKE '%usdt' AND source = 'bybit';
-                    
-                    -- live_candles_1m: Delete duplicates before updating
-                    DELETE FROM live_candles_1m c_usdt
-                    WHERE c_usdt.ticker LIKE '%usdt'
-                      AND EXISTS (
-                          SELECT 1 FROM live_candles_1m c_usdc
-                          WHERE c_usdc.ticker = REPLACE(c_usdt.ticker, 'usdt', 'usdc')
-                            AND c_usdc.timestamp_minute = c_usdt.timestamp_minute
-                      );
-                    
-                    UPDATE live_candles_1m SET ticker = REPLACE(ticker, 'usdt', 'usdc') 
-                    WHERE ticker LIKE '%usdt';
-                    
-                    -- paper_strategy_configs: Delete duplicates before updating
-                    DELETE FROM paper_strategy_configs cfg_usdt
-                    WHERE cfg_usdt.asset LIKE '%usdt'
-                      AND EXISTS (
-                          SELECT 1 FROM paper_strategy_configs cfg_usdc
-                          WHERE cfg_usdc.strategy_name = cfg_usdt.strategy_name
-                            AND cfg_usdc.asset = REPLACE(cfg_usdt.asset, 'usdt', 'usdc')
-                            AND cfg_usdc.timeframe = cfg_usdt.timeframe
-                      );
-                    
-                    UPDATE paper_strategy_configs SET asset = REPLACE(asset, 'usdt', 'usdc') 
-                    WHERE asset LIKE '%usdt';
+                    DO $$
+                    BEGIN
+                        -- live_prices migration
+                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'live_prices') THEN
+                            DELETE FROM live_prices 
+                            WHERE ticker LIKE '%usdt' 
+                              AND REPLACE(ticker, 'usdt', 'usdc') IN (SELECT ticker FROM live_prices);
+                            
+                            UPDATE live_prices SET ticker = REPLACE(ticker, 'usdt', 'usdc') 
+                            WHERE ticker LIKE '%usdt' AND source = 'bybit';
+                        END IF;
+                        
+                        -- live_candles_1m migration
+                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'live_candles_1m') THEN
+                            DELETE FROM live_candles_1m c_usdt
+                            WHERE c_usdt.ticker LIKE '%usdt'
+                              AND EXISTS (
+                                  SELECT 1 FROM live_candles_1m c_usdc
+                                  WHERE c_usdc.ticker = REPLACE(c_usdt.ticker, 'usdt', 'usdc')
+                                    AND c_usdc.timestamp_minute = c_usdt.timestamp_minute
+                              );
+                            
+                            UPDATE live_candles_1m SET ticker = REPLACE(ticker, 'usdt', 'usdc') 
+                            WHERE ticker LIKE '%usdt';
+                        END IF;
+                        
+                        -- paper_strategy_configs migration
+                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'paper_strategy_configs') THEN
+                            DELETE FROM paper_strategy_configs cfg_usdt
+                            WHERE cfg_usdt.asset LIKE '%usdt'
+                              AND EXISTS (
+                                  SELECT 1 FROM paper_strategy_configs cfg_usdc
+                                  WHERE cfg_usdc.strategy_name = cfg_usdt.strategy_name
+                                    AND cfg_usdc.asset = REPLACE(cfg_usdt.asset, 'usdt', 'usdc')
+                                    AND cfg_usdc.timeframe = cfg_usdt.timeframe
+                              );
+                            
+                            UPDATE paper_strategy_configs SET asset = REPLACE(asset, 'usdt', 'usdc') 
+                            WHERE asset LIKE '%usdt';
+                        END IF;
+                    END $$;
                 """)
 
                 # 1. Create Portfolio Balance table

@@ -22,7 +22,7 @@ def get_db_pool() -> Optional[pool.ThreadedConnectionPool]:
         if db_url:
             try:
                 min_conn = int(os.getenv("DB_POOL_MIN", "2"))
-                max_conn = int(os.getenv("DB_POOL_MAX", "20"))
+                max_conn = int(os.getenv("DB_POOL_MAX", "5"))
                 _db_pool = pool.ThreadedConnectionPool(min_conn, max_conn, db_url)
                 print(f"[ConnectionManager] PostgreSQL ThreadedConnectionPool initialized (min={min_conn}, max={max_conn})")
             except Exception as e:
@@ -46,13 +46,60 @@ def get_db_connection() -> Generator[psycopg2.extensions.connection, None, None]
         return
 
     conn = pool.getconn()
+    if conn.closed:
+        try:
+            pool.putconn(conn, close=True)
+        except Exception:
+            pass
+        conn = pool.getconn()
+
+    is_operational_error = False
     try:
         yield conn
+    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+        is_operational_error = True
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     except Exception:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         raise
     finally:
-        pool.putconn(conn)
+        try:
+            if is_operational_error or conn.closed:
+                pool.putconn(conn, close=True)
+            else:
+                pool.putconn(conn)
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+async def run_postgres_keep_alive_task(interval_seconds: int = 14400) -> None:
+    """Heartbeat task to keep PostgreSQL alive on Aiven (preventing 24h idle spindown)."""
+    import asyncio
+    print(f"[KeepAlive] Starting PostgreSQL keep-alive loop (interval: {interval_seconds}s)...")
+    while True:
+        try:
+            db_url = os.getenv("DATABASE_URL")
+            if db_url:
+                with get_db_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT 1;")
+                        cur.fetchone()
+                print("[KeepAlive] PostgreSQL heartbeat (SELECT 1;) executed successfully.")
+            else:
+                print("[KeepAlive] DATABASE_URL not set, skipping heartbeat.")
+        except Exception as e:
+            print(f"[KeepAlive] PostgreSQL heartbeat failed: {e}")
+        
+        await asyncio.sleep(interval_seconds)
 
 # Redis Client
 _redis_client: Optional[redis.Redis] = None

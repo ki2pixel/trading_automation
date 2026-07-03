@@ -6,12 +6,15 @@
 ## Prochaines Étapes
 - Suivre le bon fonctionnement de l'ingesteur de prix Bybit/Trading212 sur Render en mode public-only (sans clés d'API Bybit requises).
 - Confirmer que l'accumulation des bougies réelles de Bybit (LTCUSDT, DOTUSDT) se fait correctement dans `live_candles_1m`.
+- Suivre le bon fonctionnement de l'ingesteur de prix Bybit/Trading212 sur Render après migration de Supabase vers Aiven.
+- Valider le bon fonctionnement du heartbeat keep-alive (SELECT 1; toutes les 4h) pour éviter la mise en veille Aiven.
 - Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les données saines en temps réel.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-03 01:35:00] - Conception et exécution de la migration PostgreSQL vers Aiven : Réduction du pool DB_POOL_MAX=5 pour Aiven, gestionnaire de contexte résilient psycopg2 (OperationalError/InterfaceError), tâche heartbeat SELECT 1; toutes les 4h dans FastAPI, et création du script de transfert de données `scripts/db_migrate_data.py` (45 tests unitaires passés).
 - [2026-07-02 23:55:00] - Migration Bybit Live et conversion USDC/EUR : Transition du mode Paper Trading vers le mode Réel sur Bybit avec intégration de la devise USDC, du buffer d'accumulation, du simulateur de marge UTA et du routeur d'ordres Spot EURUSDC (12/12 tests unitaires passés).
 - [2026-07-02 23:15:00] - Conception de la Passerelle Live Bybit : Intégration et analyse de l'Analyse-Conversion-API-Bybit-EUR.md pour préparer le passage en réel (choix API Spot, Buffer de rétention, Haircut Loss de l'UTA et conformité MiCA).
 - [2026-07-02 22:45:00] - Stabilisation et sécurisation des plus-values Bybit : Intégration de la colonne secured_balance dans paper_portfolio_balance, implémentation d'un utilitaire résilient pour le taux eurusd, adaptation du calcul du NAV de Bybit et mise à jour complète de l'API et du dashboard UI (12/12 tests unitaires passés).
