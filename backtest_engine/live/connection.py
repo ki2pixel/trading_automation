@@ -428,3 +428,6 @@ def get_redis_client() -> Optional[redis.Redis]:
                 print(f"[ConnectionManager] Failed to connect to Redis: {e}")
                 _redis_client = None
     return _redis_client
+
+get_sync_connection = get_db_connection
+

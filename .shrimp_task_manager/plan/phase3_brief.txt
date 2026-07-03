@@ -1,0 +1,20 @@
+Phase 3 — Architecture & DRY
+
+Objective: Restructure backend codebase to eliminate duplication, centralize connection handling, and decouple business logic from infrastructure.
+
+Key Requirements:
+1. BaseStrategyRunner:
+   - Extract common strategy helper functions: _normalize_trades, _build_state_from_broker, _to_strategy_ohlcv, _apply_overrides, and common setup/metrics logic.
+   - Create abstract class BaseStrategyRunner in backtest_engine/strategies/strategy_base.py.
+   - Provide concrete implementations or refactored base classes for existing strategies, specifically focusing on hma_crossover.py and momentum_based_zigzag.py while ensuring StrategyRegistry continues to work.
+   - Target reduction: >=80% code duplication reduction.
+
+2. Database Connection Centralization:
+   - Make connection.py the single entry point for database connections.
+   - Expose get_async_pool() for async (FastAPI) and get_sync_connection() (as an alias of get_db_connection()) for sync workers.
+   - Remove duplicate connection creation code in api.py and db_setup.py.
+
+3. Mocks & Engine Refactoring:
+   - Refactor engine.py (which is >500 lines) by extracting business logic (signals execution, trades, NAV updates) into a new module signal_executor.py.
+   - Engine.py should keep infrastructure, loop/lifecycle, Redis and DB orchestrations, reduced to <=250 lines.
+   - Ensure the new logic is testable with mocks of DB and Redis.

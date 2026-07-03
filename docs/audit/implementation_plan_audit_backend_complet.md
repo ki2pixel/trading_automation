@@ -12,7 +12,7 @@
 |:------|:---------|:------------|:-------|:-----------|:-------|
 | **Phase 1 — Sécurité Critique** | P0 Bloquant | §1.1, §1.2, §1.3, Checklist CORS/CSP | L | 5-7 jours | 🟢 Terminé |
 | **Phase 2 — Performance & DB** | P1 Haute | §3.2 (pool async), §3.2 (N+1), §3.2 (buffer I/O) | M | 3-5 jours | 🟢 Terminé |
-| **Phase 3 — Architecture & DRY** | P2 Moyen | §2.2 (BaseStrategyRunner), §2.2 (connexions DB), §2.2 (engine.py) | XL | 7-10 jours | 🔴 À faire |
+| **Phase 3 — Architecture & DRY** | P2 Moyen | §2.2 (BaseStrategyRunner), §2.2 (connexions DB), §2.2 (engine.py) | XL | 7-10 jours | 🟢 Terminé |
 | **Phase 4 — Robustesse** | P2 Moyen | §4.2 (exceptions), §4.2 (fuites info), §4.2 (timeouts réseau) | S | 2-3 jours | 🔴 À faire |
 | **Phase 5 — Hygiène** | P2 Amélioration | §5.2 (dépendances), dette technique résiduelle | S | 1-2 jours | 🔴 À faire |
 | **Total** | | **14 items actifs** | | **18-27 jours** | |
@@ -175,12 +175,12 @@
   - Toutes les stratégies dans `backtest_engine/strategies/`
   - **Nouveau** : `backtest_engine/strategies/strategy_base.py`
 - **Actions** :
-  - [ ] Auditer les fonctions dupliquées à travers les stratégies : `_normalize_trades`, `_build_state_from_broker`, `_apply_overrides`, boucle de simulation principale
-  - [ ] Créer une classe abstraite `BaseStrategyRunner` dans `strategy_base.py` encapsulant la logique commune
-  - [ ] Définir les points d'extension (méthodes abstraites) pour la logique spécifique à chaque stratégie
-  - [ ] Migrer chaque stratégie existante pour hériter de `BaseStrategyRunner`
-  - [ ] Valider la compatibilité avec le `StrategyRegistry` existant
-  - [ ] Objectif : réduction de ≥80% de la duplication mesurée en lignes de code
+  - [x] Auditer les fonctions dupliquées à travers les stratégies : `_normalize_trades`, `_build_state_from_broker`, `_apply_overrides`, boucle de simulation principale
+  - [x] Créer une classe abstraite `BaseStrategyRunner` dans `strategy_base.py` encapsulant la logique commune
+  - [x] Définir les points d'extension (méthodes abstraites) pour la logique spécifique à chaque stratégie
+  - [x] Migrer chaque stratégie existante pour hériter de `BaseStrategyRunner`
+  - [x] Valider la compatibilité avec le `StrategyRegistry` existant
+  - [x] Objectif : réduction de ≥80% de la duplication mesurée en lignes de code
 - **Effort** : L (4-5 jours)
 
 ### Tâche 3.2 — Centralisation des connexions DB (§2.2 — Duplication connexion)
@@ -191,10 +191,10 @@
   - [api.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/api.py)
   - [db_setup.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/db_setup.py)
 - **Actions** :
-  - [ ] Faire de `connection.py` le point d'entrée unique pour toute connexion DB (sync et async)
-  - [ ] Supprimer les créations de connexions dupliquées dans `api.py` et `db_setup.py`
-  - [ ] Exposer une interface claire : `get_async_pool()` pour FastAPI, `get_sync_connection()` pour les workers
-  - [ ] Tester que tous les modules utilisent exclusivement `connection.py`
+  - [x] Faire de `connection.py` le point d'entrée unique pour toute connexion DB (sync et async)
+  - [x] Supprimer les créations de connexions dupliquées dans `api.py` et `db_setup.py`
+  - [x] Exposer une interface claire : `get_async_pool()` pour FastAPI, `get_sync_connection()` pour les workers
+  - [x] Tester que tous les modules utilisent exclusivement `connection.py`
 - **Effort** : S (1 jour)
 
 ### Tâche 3.3 — Refactoring de `engine.py` (§2.2 — Complexité engine)
@@ -204,21 +204,21 @@
   - [engine.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/engine.py) (500+ lignes)
   - **Nouveau** : `backtest_engine/live/paper_trading/signal_executor.py`
 - **Actions** :
-  - [ ] Identifier les blocs de logique métier dans `engine.py` : évaluation des signaux, exécution des trades, calcul du NAV
-  - [ ] Extraire la logique métier dans un module `signal_executor.py`
-  - [ ] Garder dans `engine.py` uniquement l'infrastructure : connexions DB, Redis, orchestration des cycles
-  - [ ] Améliorer la testabilité : `signal_executor.py` doit être testable sans infrastructure (mock DB/Redis)
-  - [ ] Vérifier l'absence de régression sur le Paper Trading
+  - [x] Identifier les blocs de logique métier dans `engine.py` : évaluation des signaux, exécution des trades, calcul du NAV
+  - [x] Extraire la logique métier dans un module `signal_executor.py`
+  - [x] Garder dans `engine.py` uniquement l'infrastructure : connexions DB, Redis, orchestration des cycles
+  - [x] Améliorer la testabilité : `signal_executor.py` doit être testable sans infrastructure (mock DB/Redis)
+  - [x] Vérifier l'absence de régression sur le Paper Trading
 - **Effort** : M (2-3 jours)
 
 ### Critères de Complétion Phase 3
 
-- [ ] `BaseStrategyRunner` existe et toutes les stratégies en héritent
-- [ ] `connection.py` est le point d'entrée unique pour les connexions DB
-- [ ] `engine.py` est réduit à l'orchestration infrastructure (≤250 lignes)
-- [ ] `signal_executor.py` est testable indépendamment avec des mocks
-- [ ] Le `StrategyRegistry` continue de fonctionner sans modification de l'API publique
-- [ ] Tests de non-régression : backtest et Paper Trading passent
+- [x] `BaseStrategyRunner` existe et toutes les stratégies en héritent
+- [x] `connection.py` est le point d'entrée unique pour les connexions DB
+- [x] `engine.py` est réduit à l'orchestration infrastructure (≤250 lignes)
+- [x] `signal_executor.py` est testable indépendamment avec des mocks
+- [x] Le `StrategyRegistry` continue de fonctionner sans modification de l'API publique
+- [x] Tests de non-régression : backtest et Paper Trading passent
 
 ---
 

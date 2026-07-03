@@ -410,7 +410,8 @@ def init_db():
         return
 
     try:
-        with psycopg2.connect(DATABASE_URL) as conn:
+        from backtest_engine.live.connection import get_sync_connection
+        with get_sync_connection() as conn:
             with conn.cursor() as cur:
                 # 0. Migration: Check and rename old tables if they exist
                 cur.execute("""

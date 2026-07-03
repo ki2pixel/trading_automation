@@ -14,6 +14,7 @@ import pandas as pd
 from ..metrics import MetricsInput, compute_metrics
 from ..reports import BacktestRunResult
 from ..configuration import coerce_strategy_parameters, load_strategy_config
+from .strategy_base import BaseStrategyRunner
 
 
 def clear_hma_feature_cache() -> None:
@@ -118,22 +119,6 @@ def _load_strategy_module() -> ModuleType:
         return _HMA_MODULE
 
 
-def _to_strategy_ohlcv(data: pd.DataFrame) -> pd.DataFrame:
-    out = data.copy()
-    # Converted strategies expect lowercase OHLCV columns and a DateTimeIndex.
-    for col in ["open", "high", "low", "close", "volume"]:
-        if col not in out.columns:
-            raise ValueError(f"Missing required column: {col}")
-    return out[["open", "high", "low", "close", "volume"]].copy()
-
-
-def _apply_overrides(config: Any, overrides: HMAConfigOverrides) -> Any:
-    for key, value in asdict(overrides).items():
-        if value is not None and hasattr(config, key):
-            setattr(config, key, value)
-    return config
-
-
 def run_hma_crossover(
     data: pd.DataFrame,
     symbol: str,
@@ -159,9 +144,9 @@ def run_hma_crossover(
 
     module = _load_strategy_module()
     config = module.HMACrossoverConfig()
-    config = _apply_overrides(config, overrides)
+    config = BaseStrategyRunner._apply_overrides(config, overrides)
 
-    bars = _to_strategy_ohlcv(data)
+    bars = BaseStrategyRunner._to_strategy_ohlcv(data)
     state, trades = module.run_hma_crossover_strategy(
         bars, 
         config,

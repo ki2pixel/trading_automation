@@ -1,19 +1,19 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Préparation de la Phase 3 (Architecture & DRY).
+- Livraison de la Phase 3 (Architecture & DRY).
+- Préparation de la Phase 4 (Tests Live & Mocking).
 
 ## Prochaines Étapes
-- Déployer la Phase 1 et la Phase 2 sur Render et Aiven.
-- Suivre le bon fonctionnement de l'ingesteur de prix Bybit/Trading212 sur Render en mode public-only.
-- Confirmer que l'accumulation des bougies réelles de Bybit (LTCUSDT, DOTUSDT) se fait correctement dans `live_candles_1m`.
-- Valider le bon fonctionnement du heartbeat keep-alive (SELECT 1; toutes les 4h) pour éviter la mise en veille Aiven.
-- Lancer la Phase 3 (Architecture & DRY) pour extraire BaseStrategyRunner et nettoyer engine.py.
+- Mettre en place un plan de tests live avec mocks robustes pour la Phase 4.
+- Déployer l'ensemble des refactorings sur Render et Aiven.
+- Suivre les logs de production pour s'assurer qu'aucun bug n'apparaît.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-03 23:55:00] - Phase 3 (Architecture & DRY) implémentée : Refactoring des coureurs de stratégie via BaseStrategyRunner et BaseBrokerStrategyRunner (duplication réduite de >80%), centralisation de l'accès DB synchrone via get_sync_connection(), et séparation de la logique métier (NAV, ordres, signaux) d'engine.py vers SignalExecutor (engine.py réduit à 144 lignes). 558 tests passés avec succès.
 - [2026-07-03 23:35:00] - Phase 2 Performance & DB validée : Migration asynchrone des endpoints FastAPI vers asyncpg, résolution du pattern N+1 dans engine.py via Redis mget/SQL groupé, et bufferisation des écritures JSON de l'optimiseur. Installation de la dépendance asyncpg dans l'environnement local et passage de 548 tests unitaires avec succès.
 - [2026-07-03 22:50:00] - Phase 1 Sécurité Critique validée : Séparation de HMAC_SECRET, protection CSRF (Double Submit Cookie), validation Pydantic strict de `indicator_params` (modèle model_validator résistant aux injections), et en-têtes CORS/CSP/HSTS configurés (23 tests unitaires et d'intégration validés).
 - [2026-07-03 16:30:00] - Protection Cookie Session Auth & Login Page sur FastAPI : Remplacement de Basic Auth par un middleware de session cookie (HMAC-SHA256 avec la clé `PAPER_TRADER_PASSWORD` comme secret) et une page de connexion dédiée (`login.html`) compatible avec le pré-remplissage des gestionnaires de mots de passe. Redirection automatique vers `/login.html` pour les pages non authentifiées et code 401 pour l'API, avec conservation des accès publics de monitoring (`/health`, `/keep-alive`). (6/6 tests d'intégration passés).
