@@ -5,6 +5,8 @@ from typing import Dict, Any, Optional
 from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.connection import get_db_connection, get_redis_client
 from backtest_engine.live.ingestion.base import BasePriceIngestor
+from backtest_engine.live.utils import T212_STATIC_MAPPING
+
 
 class Trading212PriceIngestor(BasePriceIngestor):
     """Tâche d'ingestion de prix pour récupérer les cotations via positions."""
@@ -14,13 +16,6 @@ class Trading212PriceIngestor(BasePriceIngestor):
         self.cache_path = cache_path or os.getenv("T212_PRICE_CACHE_PATH") or "/tmp/t212_prices.json"
         self._init_db()
 
-    def _get_db_connection(self):
-        """Returns a PostgreSQL connection if DATABASE_URL is configured."""
-        db_url = os.getenv("DATABASE_URL")
-        if not db_url:
-            return None
-        import psycopg2
-        return psycopg2.connect(db_url)
 
     def _init_db(self) -> None:
         """Creates the prices table if DATABASE_URL is set."""
@@ -67,29 +62,7 @@ class Trading212PriceIngestor(BasePriceIngestor):
             return self.read_cache()
             
         # Translation map: Internal T212 API tickers -> User's frontend/warmup tickers
-        TICKER_TRANSLATION = {
-            'TIMd_EQ': 'ZEAL.CO',
-            'NOVCd_EQ': 'NVO',
-            'EVDd_EQ': 'EVD.DE',
-            'GE9d_EQ': 'GMAB',
-            'FPEd_EQ': 'FPE.DE',
-            'SAPd_EQ': 'SAP',
-            'NOTd1_EQ': 'NVS',
-            'AMSe_EQ': 'AMS.MC',
-            'DPWd_EQ': 'dpwdeeur',
-            'TW10d_EQ': 'teniteur',
-            'AKZAa_EQ': 'akzanleur',
-            'DAId_EQ': 'daideeur',
-            'MRKd_EQ': 'mrkdeeur',
-            'VNAd_EQ': 'vnadeeur',
-            'ACp_EQ': 'acfreur',
-            'LXSd_EQ': 'lxsdeeur',
-            'RANDa_EQ': 'randnleur',
-            'RUIp_EQ': 'rifreur',
-            'ABI_BE_EQ': 'abibeeur',
-            'PROX_BE_EQ': 'belgbeeur',
-            'CAp_EQ': 'cafreur'
-        }
+        TICKER_TRANSLATION = {v: k for k, v in T212_STATIC_MAPPING.items()}
             
         prices: Dict[str, float] = {}
         for pos in positions:

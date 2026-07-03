@@ -3,34 +3,14 @@ import json
 import time
 from typing import Dict, List, Any, Optional
 from backtest_engine.live.trading212.client import Trading212Client
+from backtest_engine.live.utils import T212_STATIC_MAPPING
 
 class Trading212TickerResolver:
     """Service to map shortlist assets to precise Trading 212 tickers in EUR."""
 
     # Static validated mappings for the 21 unique assets to T212 EUR tickers
-    STATIC_MAPPING = {
-        "ZEAL.CO": "TIMd_EQ",             # Zeal Network (Xetra, EUR)
-        "NVO": "NOVCd_EQ",                 # Novo Nordisk (Xetra, EUR)
-        "EVD.DE": "EVDd_EQ",               # CTS Eventim (Xetra, EUR)
-        "GMAB": "GE9d_EQ",                 # Genmab (Xetra, EUR)
-        "FPE.DE": "FPEd_EQ",               # Fuchs (Xetra, EUR)
-        "dpwdeeur": "DPWd_EQ",             # DHL Group / Deutsche Post (Xetra, EUR)
-        "teniteur": "TW10d_EQ",             # Tenaris (Xetra, EUR)
-        "akzanleur": "AKZAa_EQ",           # Akzo Nobel (Amsterdam, EUR)
-        "daideeur": "DAId_EQ",             # Mercedes-Benz Group / Daimler (Xetra, EUR)
-        "SAP": "SAPd_EQ",                  # SAP (Xetra, EUR)
-        "mrkdeeur": "MRKd_EQ",             # Merck KGaA (Xetra, EUR)
-        "AMS.MC": "AMSe_EQ",               # Amadeus IT (Madrid, EUR)
-        "vnadeeur": "VNAd_EQ",             # Vonovia (Xetra, EUR)
-        "acfreur": "ACp_EQ",               # Accor (Paris, EUR)
-        "lxsdeeur": "LXSd_EQ",             # LANXESS (Xetra, EUR)
-        "randnleur": "RANDa_EQ",           # Randstad (Amsterdam, EUR)
-        "rifreur": "RUIp_EQ",              # Rubis (Paris, EUR)
-        "abibeeur": "ABI_BE_EQ",           # AB InBev (Brussels, EUR)
-        "belgbeeur": "PROX_BE_EQ",         # Proximus (Brussels, EUR)
-        "cafreur": "CAp_EQ",               # Carrefour (Paris, EUR)
-        "NVS": "NOTd1_EQ"                  # Novartis (Xetra, EUR)
-    }
+    STATIC_MAPPING = T212_STATIC_MAPPING
+
 
     def __init__(
         self,

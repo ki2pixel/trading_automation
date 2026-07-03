@@ -109,6 +109,10 @@ def _is_upstash_quota_exhausted(redis_url: str, api_key: str, email: str) -> boo
     if "upstash" not in redis_url.lower():
         return False
 
+    if not email or not api_key:
+        print("[UpstashAPI] Missing email or API key, skipping Upstash API check.")
+        return False
+
     import urllib.request
     import urllib.parse
     import json
@@ -222,10 +226,24 @@ class FailoverRedisClient:
         self._secondary_url = secondary_url
         
         pool_max = int(os.getenv("REDIS_POOL_MAX", "40"))
-        self._primary_client = redis.Redis.from_url(primary_url, decode_responses=True, max_connections=pool_max)
+        self._primary_client = redis.Redis.from_url(
+            primary_url,
+            decode_responses=True,
+            max_connections=pool_max,
+            socket_timeout=5,
+            socket_connect_timeout=5,
+            retry_on_timeout=True
+        )
         self._secondary_client = None
         if secondary_url:
-            self._secondary_client = redis.Redis.from_url(secondary_url, decode_responses=True, max_connections=pool_max)
+            self._secondary_client = redis.Redis.from_url(
+                secondary_url,
+                decode_responses=True,
+                max_connections=pool_max,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                retry_on_timeout=True
+            )
             
         self._active_client = self._primary_client
         self._is_failed_over = False
@@ -288,19 +306,22 @@ def get_redis_client() -> Optional[redis.Redis]:
             # Load Upstash credentials
             redis_api = os.getenv("REDIS_API")
             redis_2_api = os.getenv("REDIS_2_API")
-            upstash_email = os.getenv("UPSTASH_EMAIL", "ki2pixel@gmail.com")
-            upstash_2_email = os.getenv("UPSTASH_2_EMAIL", "ki2pixel@gmail.com")
+            upstash_email = os.getenv("UPSTASH_EMAIL")
+            upstash_2_email = os.getenv("UPSTASH_2_EMAIL")
 
             # Default route
             use_secondary = False
 
-            if redis_api:
+            if redis_api and upstash_email:
                 print("[ConnectionManager] Checking primary Redis database quota via Upstash API...")
                 if _is_upstash_quota_exhausted(redis_url, redis_api, upstash_email):
                     print("[ConnectionManager] Primary Redis database quota exhausted or suspended. Routing directly to secondary.")
                     use_secondary = True
                 else:
                     print("[ConnectionManager] Primary Redis database quota is OK.")
+            else:
+                if redis_api:
+                    print("[ConnectionManager] Warning: REDIS_API is defined but UPSTASH_EMAIL is missing. Skipping quota check.")
 
             try:
                 client = FailoverRedisClient(redis_url, redis_url_2)
@@ -324,7 +345,14 @@ def get_redis_client() -> Optional[redis.Redis]:
         else:
             try:
                 pool_max = int(os.getenv("REDIS_POOL_MAX", "40"))
-                _redis_client = redis.Redis.from_url(redis_url, decode_responses=True, max_connections=pool_max)
+                _redis_client = redis.Redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    max_connections=pool_max,
+                    socket_timeout=5,
+                    socket_connect_timeout=5,
+                    retry_on_timeout=True
+                )
                 _redis_client.ping()
                 print("[ConnectionManager] Redis client connected successfully.")
             except Exception as e:

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from contextlib import contextmanager
+from backtest_engine.live.utils import is_crypto_asset
 
 router = APIRouter(prefix="/api")
 
@@ -160,48 +161,11 @@ def load_market_hours():
 
 _market_hours = load_market_hours()
 
+from backtest_engine.live.utils import is_market_open as _utils_is_market_open
+
 def is_market_open(asset: str) -> bool:
-    if asset.lower().endswith("usdt"):
-        return True
-        
-    if asset not in _market_hours:
-        return False
-        
-    config = _market_hours[asset]
-    timezone_name = config.get("timezone")
-    
-    import datetime as dt
-    from datetime import datetime
-    utc_now = datetime.now(dt.timezone.utc)
-    
-    local_time = None
-    if timezone_name:
-        try:
-            from zoneinfo import ZoneInfo
-            local_time = utc_now.astimezone(ZoneInfo(timezone_name))
-        except Exception:
-            try:
-                import pytz
-                local_time = utc_now.astimezone(pytz.timezone(timezone_name))
-            except Exception:
-                pass
-                
-    if local_time is None:
-        tz_offset_str = config.get("tz_offset", "+00:00")
-        sign = 1 if tz_offset_str[0] == "+" else -1
-        try:
-            hours_offset = int(tz_offset_str[1:3])
-            mins_offset = int(tz_offset_str[4:6])
-            import pytz
-            local_time = utc_now.astimezone(pytz.FixedOffset(sign * (hours_offset * 60 + mins_offset)))
-        except Exception:
-            local_time = utc_now
-            
-    if local_time.weekday() >= 5:
-        return False
-        
-    current_time_str = local_time.strftime("%H:%M")
-    return config["open"] <= current_time_str <= config["close"]
+    return _utils_is_market_open(asset, _market_hours)
+
 
 def _get_configs_sync():
     with get_db_connection() as conn:
@@ -349,7 +313,7 @@ def _panic_close_all_sync():
                 if live_price is None:
                     live_price = Decimal(str(current_price))
                     
-                source = 'bybit' if asset.lower().endswith("usdt") else 'trading212'
+                source = 'bybit' if is_crypto_asset(asset) else 'trading212'
                 fee_rate = Decimal("0.0010") if source == 'bybit' else Decimal("0.0")
                 
                 actual_revenue = qty * live_price
@@ -437,6 +401,7 @@ async def get_transactions():
 @router.get("/evaluations")
 async def get_evaluations(limit: int = 100, status: str | None = None, asset: str | None = None):
     try:
+        limit = min(max(1, limit), 10000)
         return await asyncio.to_thread(_get_evaluations_sync, limit, status, asset)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -461,6 +426,7 @@ async def update_config(config_id: int, payload: ConfigUpdate):
 @router.get("/candles")
 async def get_candles(ticker: str, limit: int = 1000):
     try:
+        limit = min(max(1, limit), 10000)
         return await asyncio.to_thread(_get_candles_sync, ticker, limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

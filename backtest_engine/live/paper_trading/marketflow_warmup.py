@@ -4,42 +4,15 @@ import psycopg2
 from datetime import datetime, timedelta
 import pytz
 
-# RapidAPI configuration
-API_KEY = os.getenv("RAPIDAPI_KEY", "62fd8a4295msh8bb906bd3512057p1c112cjsn626a14c8fcd7")
+API_KEY = os.getenv("RAPIDAPI_KEY")
+if not API_KEY:
+    raise ValueError("[WarmUp] RAPIDAPI_KEY not set. Cannot proceed.")
 API_HOST = "marketflow-all-in-one-market-finance-api.p.rapidapi.com"
 URL = f"https://{API_HOST}/v2/chart/price"
 
-# Ticker Mapping: Trading 212 -> MarketFlow format (EXCHANGE:SYMBOL)
-TICKER_MAPPING = {
-    "ZEAL.CO": "FWB:TIMA",  # Zeal Network
-    "NVO": "NYSE:NVO",
-    "EVD.DE": "FWB:EVD",
-    "GMAB": "NASDAQ:GMAB",
-    "FPE.DE": "FWB:FPE",
-    "SAP": "FWB:SAP",
-    "NVS": "NYSE:NVS",
-    "AMS.MC": "BME:AMS",
-    "dpwdeeur": "FWB:DPW",
-    "teniteur": "MIL:TEN",
-    "akzanleur": "EURONEXT:AKZA",
-    "daideeur": "FWB:MBG",
-    "mrkdeeur": "FWB:MRK",
-    "vnadeeur": "FWB:VNA",
-    "acfreur": "EURONEXT:AC",
-    "lxsdeeur": "FWB:LXS",
-    "randnleur": "EURONEXT:RAND",
-    "rifreur": "EURONEXT:RI",
-    "abibeeur": "EURONEXT:ABI",
-    "belgbeeur": "EURONEXT:PROX", # Proximus
-    "cafreur": "EURONEXT:CA"
-}
+from backtest_engine.live.utils import TICKER_MAPPING
+from backtest_engine.live.connection import get_db_connection
 
-def get_db_connection():
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url:
-        print("[WarmUp] DATABASE_URL non définie. Impossible de se connecter.")
-        return None
-    return psycopg2.connect(db_url)
 
 def fetch_candles(mf_symbol, range_limit=1440):
     querystring = {"symbol": mf_symbol, "timeframe": "1", "range": str(range_limit)}
@@ -140,18 +113,18 @@ def run_warmup():
     print("Démarrage du Warm-Up (MarketFlow API)")
     print("========================================")
     
-    conn = get_db_connection()
-    if not conn:
+    try:
+        with get_db_connection() as conn:
+            for t212_ticker, mf_symbol in TICKER_MAPPING.items():
+                print(f"\nTraitement de {t212_ticker} (via {mf_symbol})...")
+                candles = fetch_candles(mf_symbol, range_limit=1440)
+                
+                if candles:
+                    parse_and_insert(t212_ticker, candles, conn)
+    except Exception as e:
+        print(f"[WarmUp] Erreur durant le warm-up : {e}")
         return
         
-    for t212_ticker, mf_symbol in TICKER_MAPPING.items():
-        print(f"\nTraitement de {t212_ticker} (via {mf_symbol})...")
-        candles = fetch_candles(mf_symbol, range_limit=1440)
-        
-        if candles:
-            parse_and_insert(t212_ticker, candles, conn)
-            
-    conn.close()
     print("\n[WarmUp] Processus terminé.")
 
 if __name__ == "__main__":

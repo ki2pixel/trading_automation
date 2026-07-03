@@ -3,19 +3,10 @@ import json
 import time
 from datetime import datetime
 import logging
+import threading
+from backtest_engine.live.utils import is_crypto_asset, is_market_open
 
-# Intercept print calls to route through logging system
 logger = logging.getLogger("papertrader")
-
-def print(*args, **kwargs):
-    message = " ".join(str(arg) for arg in args)
-    msg_lower = message.lower()
-    if "warning" in msg_lower:
-        logger.warning(message)
-    elif "error" in msg_lower or "failed" in msg_lower or "exception" in msg_lower:
-        logger.error(message)
-    else:
-        logger.info(message)
 
 
 def get_eurusd_rate(conn=None):
@@ -35,7 +26,7 @@ def get_eurusd_rate(conn=None):
                 if row and row[0] is not None:
                     return Decimal(str(row[0]))
         except Exception as e:
-            print(f"[PaperTrader] DB query for eurusd failed: {e}")
+            logger.error(f"[PaperTrader] DB query for eurusd failed: {e}")
             
     # 2. Query public API with strict timeout
     import urllib.request
@@ -58,10 +49,10 @@ def get_eurusd_rate(conn=None):
                     if usd_rate is not None:
                         return Decimal(str(usd_rate))
         except Exception as api_err:
-            print(f"[PaperTrader] Public API call to {url} failed: {api_err}")
+            logger.error(f"[PaperTrader] Public API call to {url} failed: {api_err}")
             
     # 3. Static fallback
-    print("[PaperTrader] Using static fallback (1.08) for EUR/USD rate.")
+    logger.info("[PaperTrader] Using static fallback (1.08) for EUR/USD rate.")
     return Decimal("1.08")
 
 
@@ -73,6 +64,7 @@ class PaperTradingEngine:
         )
         self.market_hours = self._load_market_hours()
         self._running = False
+        self._cycle_lock = threading.Lock()
 
         # Initialize Trading 212 Client resiliently
         from backtest_engine.live.trading212.config import Trading212Config
@@ -81,10 +73,10 @@ class PaperTradingEngine:
             config = Trading212Config()
             config.validate()
             self.t212_client = Trading212Client(config)
-            print("[PaperTrader] Trading 212 API client successfully initialized.")
+            logger.info("[PaperTrader] Trading 212 API client successfully initialized.")
             self.t212_init_error = None
         except Exception as e:
-            print(f"[PaperTrader] Trading 212 credentials not configured or invalid, running in local-only mode: {e}")
+            logger.info(f"[PaperTrader] Trading 212 credentials not configured or invalid, running in local-only mode: {e}")
             self.t212_client = None
             self.t212_init_error = str(e)
 
@@ -95,10 +87,10 @@ class PaperTradingEngine:
             bybit_config = BybitConfig()
             bybit_config.validate()
             self.bybit_client = BybitClient(bybit_config)
-            print("[PaperTrader] Bybit API client successfully initialized.")
+            logger.info("[PaperTrader] Bybit API client successfully initialized.")
             self.bybit_init_error = None
         except Exception as e:
-            print(f"[PaperTrader] Bybit credentials not configured or invalid: {e}")
+            logger.info(f"[PaperTrader] Bybit credentials not configured or invalid: {e}")
             self.bybit_client = None
             self.bybit_init_error = str(e)
 
@@ -107,64 +99,21 @@ class PaperTradingEngine:
             with open(self.market_hours_path, 'r') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"[PaperTrader] Error loading market hours: {e}")
+            logger.error(f"[PaperTrader] Error loading market hours: {e}")
             return {}
 
     def is_market_open(self, asset):
         """
         Check if the market is open for a given asset based on Mon-Fri and defined hours.
         """
-        if asset.lower().endswith(("usdt", "usdc")):
-            return True
-            
-        if asset not in self.market_hours:
-            return False
-            
-        config = self.market_hours[asset]
-        if config.get("is_crypto", False) or config.get("exchange") == "CRYPTO":
-            return True
-            
-        timezone_name = config.get("timezone")
-        
-        # Current UTC time
         import datetime as dt
-        utc_now = datetime.now(dt.timezone.utc)
-        
-        local_time = None
-        if timezone_name:
-            try:
-                from zoneinfo import ZoneInfo
-                local_time = utc_now.astimezone(ZoneInfo(timezone_name))
-            except Exception:
-                try:
-                    import pytz
-                    local_time = utc_now.astimezone(pytz.timezone(timezone_name))
-                except Exception as e:
-                    print(f"[PaperTrader] Failed to resolve timezone {timezone_name} for {asset}: {e}")
-                    
-        if local_time is None:
-            # Fallback to static offset parsing if timezone resolution failed
-            tz_offset_str = config.get("tz_offset", "+00:00")
-            sign = 1 if tz_offset_str[0] == "+" else -1
-            try:
-                hours_offset = int(tz_offset_str[1:3])
-                mins_offset = int(tz_offset_str[4:6])
-                import pytz
-                local_time = utc_now.astimezone(pytz.FixedOffset(sign * (hours_offset * 60 + mins_offset)))
-            except Exception as e:
-                print(f"[PaperTrader] Failed to parse static offset {tz_offset_str} for {asset}: {e}")
-                local_time = utc_now
-        
-        # Check if it's weekend (Monday = 0, Sunday = 6)
-        # Ne pas appliquer l'exclusion du week-end si c'est de la crypto
-        if not config.get("is_crypto", False) and config.get("exchange") != "CRYPTO":
-            if local_time.weekday() >= 5:
-                return False
-            
-        current_time_str = local_time.strftime("%H:%M")
-        
-        # Lexicographical comparison works for HH:MM format
-        return config["open"] <= current_time_str <= config["close"]
+        current_time = None
+        try:
+            current_time = datetime.now(dt.timezone.utc)
+        except Exception:
+            pass
+        return is_market_open(asset, self.market_hours, current_time=current_time)
+
 
     def _update_portfolio_nav(self, conn):
         """
@@ -190,7 +139,7 @@ class PaperTradingEngine:
                                 (api_cash,)
                             )
                     except Exception as api_err:
-                        print(f"[PaperTrader] Failed to fetch account summary from Trading 212 API: {api_err}")
+                        logger.error(f"[PaperTrader] Failed to fetch account summary from Trading 212 API: {api_err}")
 
                 # If Bybit Client is active, fetch real-time cash balance (USDC/USDT) and update DB
                 if getattr(self, "bybit_client", None) is not None:
@@ -209,7 +158,7 @@ class PaperTradingEngine:
                                 (bybit_balance,)
                             )
                     except Exception as api_err:
-                        print(f"[PaperTrader] Failed to fetch account summary from Bybit API: {api_err}")
+                        logger.error(f"[PaperTrader] Failed to fetch account summary from Bybit API: {api_err}")
 
                 # Fetch cash and secured balances for both ecosystems
                 cur.execute("SELECT source, cash_balance, secured_balance FROM paper_portfolio_balance")
@@ -235,7 +184,7 @@ class PaperTradingEngine:
                     qty = Decimal(str(qty))
                     entry_price = Decimal(str(entry_price))
                     asset_lower = asset.lower()
-                    is_crypto = asset_lower.endswith(("usdt", "usdc"))
+                    is_crypto = is_crypto_asset(asset)
                     
                     if not self.is_market_open(asset):
                         # Keep previous current_price if closed
@@ -257,7 +206,7 @@ class PaperTradingEngine:
                             if redis_val is not None:
                                 current_price = Decimal(str(redis_val))
                         except Exception as re:
-                            print(f"[PaperTrader] Redis read error for {asset_lower}: {re}")
+                            logger.error(f"[PaperTrader] Redis read error for {asset_lower}: {re}")
 
                     # 2. Fallback to SQL DB
                     if current_price is None:
@@ -272,7 +221,7 @@ class PaperTradingEngine:
                                     updated_at = updated_at.replace(tzinfo=timezone.utc)
                                 age = datetime.now(timezone.utc) - updated_at
                                 if age > timedelta(minutes=3):
-                                    print(f"[PaperTrader] WARNING: price for {asset_lower} is stale (age: {age.total_seconds()}s). Using it anyway.")
+                                    logger.warning(f"[PaperTrader] WARNING: price for {asset_lower} is stale (age: {age.total_seconds()}s). Using it anyway.")
                     
                     # 3. Fallback to last known position price
                     if current_price is not None:
@@ -302,28 +251,35 @@ class PaperTradingEngine:
                 cur.execute("UPDATE paper_portfolio_balance SET total_nav = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'", (bybit_nav,))
                 conn.commit()
         except Exception as e:
-            print(f"[PaperTrader] Error updating NAV: {e}")
+            logger.error(f"[PaperTrader] Error updating NAV: {e}")
             conn.rollback()
 
     def run_cycle(self):
         """Single execution cycle for the paper trader."""
-        from backtest_engine.live.connection import get_db_connection
-        
+        if not self._cycle_lock.acquire(blocking=False):
+            logger.warning("[PaperTrader] Cycle already in progress, skipping.")
+            return
+
         try:
-            with get_db_connection() as conn:
-                # 1. Update NAV and active position prices
-                self._update_portfolio_nav(conn)
-                # 2. Evaluate active strategies and execute signals
-                self._evaluate_and_execute_strategies(conn)
-                # 3. Clean up old evaluations (Anti-Bloat)
-                with conn.cursor() as cur:
-                    cur.execute("DELETE FROM paper_evaluations WHERE timestamp < NOW() - INTERVAL '48 hours'")
-                conn.commit()
-                # 4. Run conversion pipeline (Live mode only)
-                if os.getenv("BYBIT_CONVERSION_ENABLED", "false").lower() == "true":
-                    self._run_conversion_pipeline(conn)
-        except Exception as e:
-            print(f"[PaperTrader] Error in run_cycle: {e}")
+            from backtest_engine.live.connection import get_db_connection
+            
+            try:
+                with get_db_connection() as conn:
+                    # 1. Update NAV and active position prices
+                    self._update_portfolio_nav(conn)
+                    # 2. Evaluate active strategies and execute signals
+                    self._evaluate_and_execute_strategies(conn)
+                    # 3. Clean up old evaluations (Anti-Bloat)
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM paper_evaluations WHERE timestamp < NOW() - INTERVAL '48 hours'")
+                    conn.commit()
+                    # 4. Run conversion pipeline (Live mode only)
+                    if os.getenv("BYBIT_CONVERSION_ENABLED", "false").lower() == "true":
+                        self._run_conversion_pipeline(conn)
+            except Exception as e:
+                logger.error(f"[PaperTrader] Error in run_cycle: {e}")
+        finally:
+            self._cycle_lock.release()
 
     def _log_evaluation(self, conn, strategy_name, asset, timeframe, price, signal_type, signal_triggered, status, fail_reason=None, details=None):
         import json
@@ -356,7 +312,7 @@ class PaperTradingEngine:
             try:
                 details_json = json.dumps(serialize_details(details))
             except Exception as e:
-                print(f"[PaperTrader] JSON serialization error for details: {e}")
+                logger.error(f"[PaperTrader] JSON serialization error for details: {e}")
                 details_json = "{}"
 
         try:
@@ -374,7 +330,7 @@ class PaperTradingEngine:
                 ))
             conn.commit()
         except Exception as e:
-            print(f"[PaperTrader] Error logging evaluation: {e}")
+            logger.error(f"[PaperTrader] Error logging evaluation: {e}")
             try:
                 conn.rollback()
             except Exception:
@@ -399,11 +355,12 @@ class PaperTradingEngine:
             configs = cur.fetchall()
             
         for config_id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params in configs:
+            indicator_params = indicator_params or {}
             # Check market hours
             if not self.is_market_open(asset):
                 continue
                 
-            source = 'bybit' if asset.lower().endswith(("usdt", "usdc")) else 'trading212'
+            source = 'bybit' if is_crypto_asset(asset) else 'trading212'
                 
             # Check if we have an active position for this strategy + asset
             with conn.cursor() as cur:
@@ -434,7 +391,7 @@ class PaperTradingEngine:
                         cur.execute("UPDATE paper_strategy_configs SET run_status = 'waiting_data' WHERE id = %s", (config_id,))
                     conn.commit()
                 except Exception as e:
-                    print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
+                    logger.error(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
                 self._log_evaluation(
                     conn, strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
@@ -483,7 +440,7 @@ class PaperTradingEngine:
                         cur.execute("UPDATE paper_strategy_configs SET run_status = 'waiting_data' WHERE id = %s", (config_id,))
                     conn.commit()
                 except Exception as e:
-                    print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
+                    logger.error(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
                 self._log_evaluation(
                     conn, strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
@@ -532,7 +489,7 @@ class PaperTradingEngine:
                 conn.commit()
                 
             except Exception as strat_err:
-                print(f"[PaperTrader] Error running strategy {strategy_name} for {asset}: {strat_err}")
+                logger.error(f"[PaperTrader] Error running strategy {strategy_name} for {asset}: {strat_err}")
                 try:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -542,7 +499,7 @@ class PaperTradingEngine:
                         """, (str(strat_err), config_id))
                     conn.commit()
                 except Exception as e:
-                    print(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
+                    logger.error(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
                 self._log_evaluation(
                     conn, strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
@@ -561,7 +518,7 @@ class PaperTradingEngine:
                     if redis_val is not None:
                         current_price = Decimal(str(redis_val))
                 except Exception as re:
-                    print(f"[PaperTrader] Redis read error: {re}")
+                    logger.error(f"[PaperTrader] Redis read error: {re}")
             if current_price is None:
                 with conn.cursor() as cur:
                     cur.execute("SELECT price FROM live_prices WHERE ticker = %s", (asset.lower(),))
@@ -583,7 +540,7 @@ class PaperTradingEngine:
                 if long_entry_signal:
                     # Check maximum entry price rule
                     if current_price > Decimal(str(max_entry_price)):
-                        print(f"[PaperTrader] Entry rejected for {asset}: price ({current_price}) exceeds max_entry_price ({max_entry_price})")
+                        logger.info(f"[PaperTrader] Entry rejected for {asset}: price ({current_price}) exceeds max_entry_price ({max_entry_price})")
                         self._log_evaluation(
                             conn, strategy_name, asset, timeframe, 
                             price=current_price, signal_type='ENTRY', 
@@ -626,6 +583,16 @@ class PaperTradingEngine:
                         )
                         continue
                         
+                    if current_price is None or current_price <= Decimal("0"):
+                        logger.warning(f"[PaperTrader] Invalid current_price for {asset} on {strategy_name}: {current_price}")
+                        self._log_evaluation(
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='ENTRY',
+                            signal_triggered=True, status='FAILED',
+                            fail_reason=f'Invalid price: {current_price}'
+                        )
+                        continue
+
                     qty = allocated_cash / current_price
                     # Handle fractional precision
                     qty_precision = indicator_params.get("quantity_precision", 6)
@@ -694,7 +661,7 @@ class PaperTradingEngine:
                             """, (asset, strategy_name, qty, current_price, total_buy_cost))
                             
                         conn.commit()
-                        print(f"[PaperTrader] Executed virtual BUY for {asset} ({strategy_name}): {qty} units @ {current_price} € (Cost: {actual_cost} €, Fee: {buy_fee} €, Total: {total_buy_cost} €)")
+                        logger.info(f"[PaperTrader] Executed virtual BUY for {asset} ({strategy_name}): {qty} units @ {current_price} € (Cost: {actual_cost} €, Fee: {buy_fee} €, Total: {total_buy_cost} €)")
                         
                         self._log_evaluation(
                             conn, strategy_name, asset, timeframe, 
@@ -708,7 +675,7 @@ class PaperTradingEngine:
                             }
                         )
                     except Exception as db_err:
-                        print(f"[PaperTrader] Database error executing BUY: {db_err}")
+                        logger.error(f"[PaperTrader] Database error executing BUY: {db_err}")
                         conn.rollback()
                         self._log_evaluation(
                             conn, strategy_name, asset, timeframe, 
@@ -858,7 +825,7 @@ class PaperTradingEngine:
                             """, (asset, strategy_name, qty, current_price, net_revenue))
                             
                         conn.commit()
-                        print(f"[PaperTrader] Executed virtual SELL for {asset} ({strategy_name}) [Reason: {exit_reason}]: {qty} units @ {current_price} € (PnL: {pnl} €, Fee: {sell_fee} €, Net Revenue: {net_revenue} €)")
+                        logger.info(f"[PaperTrader] Executed virtual SELL for {asset} ({strategy_name}) [Reason: {exit_reason}]: {qty} units @ {current_price} € (PnL: {pnl} €, Fee: {sell_fee} €, Net Revenue: {net_revenue} €)")
                         
                         self._log_evaluation(
                             conn, strategy_name, asset, timeframe,
@@ -874,7 +841,7 @@ class PaperTradingEngine:
                             }
                         )
                     except Exception as db_err:
-                        print(f"[PaperTrader] Database error executing SELL: {db_err}")
+                        logger.error(f"[PaperTrader] Database error executing SELL: {db_err}")
                         conn.rollback()
                         self._log_evaluation(
                             conn, strategy_name, asset, timeframe,
@@ -898,13 +865,13 @@ class PaperTradingEngine:
 
     def start_loop(self, interval_seconds=60):
         self._running = True
-        print(f"[PaperTrader] Starting paper trading loop (interval: {interval_seconds}s)...")
+        logger.info(f"[PaperTrader] Starting paper trading loop (interval: {interval_seconds}s)...")
         while self._running:
             self.run_cycle()
             time.sleep(interval_seconds)
 
     async def start_loop_async(self, interval_seconds=60):
-        print(f"[PaperTrader] Starting async paper trading loop (interval: {interval_seconds}s)...")
+        logger.info(f"[PaperTrader] Starting async paper trading loop (interval: {interval_seconds}s)...")
         import asyncio
         self._running = True
         while self._running:
@@ -944,9 +911,9 @@ class PaperTradingEngine:
 
             result = router.try_convert(conn)
             if result:
-                print(f"[PaperTrader] Conversion result: {result.status.value} "
-                      f"({result.qty_usdc} USDC)")
+                logger.info(f"[PaperTrader] Conversion result: {result.status.value} "
+                            f"({result.qty_usdc} USDC)")
         except Exception as e:
-            print(f"[PaperTrader] Conversion pipeline error: {e}")
+            logger.error(f"[PaperTrader] Conversion pipeline error: {e}")
 
 

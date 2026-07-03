@@ -7,6 +7,8 @@ try:
 except ImportError:
     pass
 
+from backtest_engine.live.utils import is_crypto_asset
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 SEED_CONFIGS = [
@@ -651,13 +653,13 @@ def init_db():
                 for config in SEED_CONFIGS:
                     params_json = json.dumps(config.get('indicator_params', {}))
                     # Uniform Kelly weight (e.g. 0.1) for stocks, but keep original for crypto
-                    is_crypto = config['asset'].lower().endswith("usdt")
+                    is_crypto = is_crypto_asset(config['asset'])
                     kelly_weight = config.get('kelly_weight', 0.1) if is_crypto else 0.1
                     cur.execute("""
                         INSERT INTO paper_strategy_configs (strategy_name, asset, timeframe, kelly_weight, indicator_params)
                         VALUES (%s, %s, %s, %s, %s)
                         ON CONFLICT (strategy_name, asset, timeframe) 
-                        DO UPDATE SET kelly_weight = EXCLUDED.kelly_weight, indicator_params = EXCLUDED.indicator_params
+                        DO NOTHING
                     """, (config['strategy'], config['asset'], config['timeframe'], kelly_weight, params_json))
 
             conn.commit()

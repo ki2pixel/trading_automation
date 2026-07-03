@@ -124,6 +124,21 @@ def migrate_data():
                     values_to_insert.append(tuple(row_vals))
                 
                 execute_values(tgt_cur, query, values_to_insert)
+                
+                # 3. Automatically realign primary key sequence if 'id' column exists
+                if "id" in columns:
+                    try:
+                        tgt_cur.execute(f"SELECT pg_get_serial_sequence('{table_name}', 'id');")
+                        seq_name = tgt_cur.fetchone()[0]
+                        if seq_name:
+                            tgt_cur.execute(f"SELECT setval('{seq_name}', COALESCE(MAX(id), 1)) FROM {table_name};")
+                            new_val = tgt_cur.fetchone()[0]
+                            print(f"[Migrate] Automatically set sequence '{seq_name}' to {new_val}.")
+                        else:
+                            print(f"[Migrate] No sequence associated with 'id' in table {table_name}.")
+                    except Exception as seq_err:
+                        print(f"[Migrate] Warning: Could not realign sequence for {table_name}: {seq_err}")
+                
                 tgt_conn.commit()
                 print(f"[Migrate] Successfully inserted/updated {len(rows)} rows in target.")
                 

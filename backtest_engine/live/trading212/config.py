@@ -15,7 +15,7 @@ class Trading212Config:
             if os.path.exists(".env"):
                 self.dotenv_path = ".env"
             else:
-                self.dotenv_path = "/home/kidpixel/trading_automation-main/.env"
+                self.dotenv_path = "/home/kidpixel/trading_automation_v2/.env"
         else:
             self.dotenv_path = dotenv_path
 
