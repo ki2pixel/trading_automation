@@ -1,9 +1,11 @@
 import os
+import ssl
 import psycopg2
 from psycopg2 import pool
 from contextlib import contextmanager
 import redis
 from typing import Generator, Optional
+from urllib.parse import urlparse, parse_qs
 
 # Load env variables if python-dotenv is available
 try:
@@ -12,8 +14,75 @@ try:
 except ImportError:
     pass
 
-# PostgreSQL Pool
+# PostgreSQL Pool (Synchronous — psycopg2)
 _db_pool: Optional[pool.ThreadedConnectionPool] = None
+
+# PostgreSQL Pool (Asynchronous — asyncpg, FastAPI only)
+_async_pool = None  # Optional[asyncpg.Pool], lazy-imported
+
+
+def _build_asyncpg_ssl(dsn: str):
+    """Parse sslmode from DSN and return an ssl.SSLContext if required."""
+    parsed = urlparse(dsn)
+    qs = parse_qs(parsed.query)
+    sslmode = qs.get("sslmode", ["prefer"])[0]
+
+    if sslmode in ("require", "verify-ca", "verify-full"):
+        ctx = ssl.create_default_context()
+        # Aiven uses valid CA certs, but if sslmode is just 'require'
+        # we don't verify the server certificate (matches psycopg2 behaviour)
+        if sslmode == "require":
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    return False  # asyncpg interprets False as "no SSL"
+
+
+async def init_async_pool(dsn: str, min_size: int = 2, max_size: int = 10):
+    """
+    Initialize the asyncpg connection pool for FastAPI async endpoints.
+
+    Must be called once during application startup (lifespan).
+    The existing psycopg2 pool is NOT affected.
+    """
+    import asyncpg
+
+    global _async_pool
+    if _async_pool is not None:
+        return _async_pool
+
+    ssl_ctx = _build_asyncpg_ssl(dsn)
+
+    min_sz = int(os.getenv("ASYNC_DB_POOL_MIN", str(min_size)))
+    max_sz = int(os.getenv("ASYNC_DB_POOL_MAX", str(max_size)))
+
+    _async_pool = await asyncpg.create_pool(
+        dsn,
+        min_size=min_sz,
+        max_size=max_sz,
+        ssl=ssl_ctx,
+        command_timeout=30,
+    )
+    print(f"[ConnectionManager] asyncpg Pool initialized (min={min_sz}, max={max_sz}, ssl={ssl_ctx is not False})")
+    return _async_pool
+
+
+async def get_async_pool():
+    """Return the asyncpg pool. Raises RuntimeError if not initialized."""
+    if _async_pool is None:
+        raise RuntimeError(
+            "asyncpg pool not initialized. Call init_async_pool() during app startup."
+        )
+    return _async_pool
+
+
+async def close_async_pool():
+    """Gracefully close the asyncpg pool during application shutdown."""
+    global _async_pool
+    if _async_pool is not None:
+        await _async_pool.close()
+        _async_pool = None
+        print("[ConnectionManager] asyncpg Pool closed.")
 
 def get_db_pool() -> Optional[pool.ThreadedConnectionPool]:
     global _db_pool

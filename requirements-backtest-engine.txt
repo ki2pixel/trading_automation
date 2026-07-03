@@ -11,4 +11,5 @@ pytest>=9.0,<10
 scipy>=1.15,<2
 statsmodels>=0.14,<1
 psycopg2-binary>=2.9,<3
+asyncpg>=0.29,<1
 redis>=5.0

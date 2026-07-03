@@ -195,17 +195,24 @@ class TestCSRFProtection:
         )
         assert response.status_code == 403
 
-    @patch("backtest_engine.live.paper_trading.api.get_db_connection")
+    @patch("backtest_engine.live.paper_trading.api._get_pool")
     @patch.dict(os.environ, {"PAPER_TRADER_USER": "test_user", "PAPER_TRADER_PASSWORD": "test_password"})
-    def test_post_with_valid_csrf_succeeds(self, mock_get_db_conn):
+    def test_post_with_valid_csrf_succeeds(self, mock_get_pool):
         """POST with matching CSRF token should succeed (if endpoint is valid)."""
-        # Mock DB connection to avoid running destructive query on live DB
-        from unittest.mock import MagicMock
-        mock_conn = MagicMock()
-        mock_get_db_conn.return_value.__enter__.return_value = mock_conn
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = []
+        # Mock asyncpg pool chain: pool.acquire() -> conn.fetch()
+        from unittest.mock import AsyncMock, MagicMock
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.transaction = MagicMock()
+        mock_transaction = AsyncMock()
+        mock_conn.transaction.return_value = mock_transaction
+        
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=False)
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
+        mock_get_pool.return_value = mock_pool
 
         client.cookies.clear()
         # First GET health to ensure a csrf cookie exists

@@ -11,7 +11,7 @@
 | Phase | Priorité | Items Audit | Effort | Durée Est. | Statut |
 |:------|:---------|:------------|:-------|:-----------|:-------|
 | **Phase 1 — Sécurité Critique** | P0 Bloquant | §1.1, §1.2, §1.3, Checklist CORS/CSP | L | 5-7 jours | 🟢 Terminé |
-| **Phase 2 — Performance & DB** | P1 Haute | §3.2 (pool async), §3.2 (N+1), §3.2 (buffer I/O) | M | 3-5 jours | 🔴 À faire |
+| **Phase 2 — Performance & DB** | P1 Haute | §3.2 (pool async), §3.2 (N+1), §3.2 (buffer I/O) | M | 3-5 jours | 🟢 Terminé |
 | **Phase 3 — Architecture & DRY** | P2 Moyen | §2.2 (BaseStrategyRunner), §2.2 (connexions DB), §2.2 (engine.py) | XL | 7-10 jours | 🔴 À faire |
 | **Phase 4 — Robustesse** | P2 Moyen | §4.2 (exceptions), §4.2 (fuites info), §4.2 (timeouts réseau) | S | 2-3 jours | 🔴 À faire |
 | **Phase 5 — Hygiène** | P2 Amélioration | §5.2 (dépendances), dette technique résiduelle | S | 1-2 jours | 🔴 À faire |
@@ -118,11 +118,11 @@
   - [api.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/api.py)
   - [engine.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/engine.py)
 - **Actions** :
-  - [ ] Installer `asyncpg` et le déclarer dans les requirements
-  - [ ] Créer un pool asynchrone avec `asyncpg.create_pool()` dans `connection.py`
-  - [ ] Migrer tous les endpoints FastAPI vers des requêtes asynchrones via le pool `asyncpg`
-  - [ ] Conserver `psycopg2` pour les workers synchrones (backtest, optimisation) — pas de régression
-  - [ ] Tester la concurrence sous charge (10+ requêtes simultanées) pour vérifier l'absence de blocages
+  - [x] Installer `asyncpg` et le déclarer dans les requirements
+  - [x] Créer un pool asynchrone avec `asyncpg.create_pool()` dans `connection.py`
+  - [x] Migrer tous les endpoints FastAPI vers des requêtes asynchrones via le pool `asyncpg`
+  - [x] Conserver `psycopg2` pour les workers synchrones (backtest, optimisation) — pas de régression
+  - [x] Tester la concurrence sous charge (10+ requêtes simultanées) pour vérifier l'absence de blocages
 - **Effort** : M (2-3 jours)
 
 ### Tâche 2.2 — Résolution du pattern N+1 (§3.2 — Requêtes N+1)
@@ -131,10 +131,10 @@
 - **Fichiers impactés** :
   - [engine.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/engine.py) (`_update_portfolio_nav`)
 - **Actions** :
-  - [ ] Remplacer la boucle de requêtes individuelles par une requête unique : `SELECT * FROM live_prices WHERE ticker IN ($1, $2, ...)`
-  - [ ] Mettre à jour les positions en mémoire à partir du résultat groupé
-  - [ ] Effectuer un `UPDATE` groupé (ou `executemany`) pour persister les MAJ de NAV
-  - [ ] Mesurer l'amélioration : objectif ≥ 5x pour un portefeuille de 10+ positions
+  - [x] Remplacer la boucle de requêtes individuelles par une requête unique : `SELECT * FROM live_prices WHERE ticker IN ($1, $2, ...)`
+  - [x] Mettre à jour les positions en mémoire à partir du résultat groupé
+  - [x] Effectuer un `UPDATE` groupé (ou `executemany`) pour persister les MAJ de NAV
+  - [x] Mesurer l'amélioration : objectif ≥ 5x pour un portefeuille de 10+ positions
 - **Effort** : S (0.5-1 jour)
 
 ### Tâche 2.3 — Buffer I/O pour la sérialisation JSON (§3.2 — Surcharge JSON)
@@ -143,19 +143,19 @@
 - **Fichiers impactés** :
   - Fichier contenant `_json_dump` (module optimisation)
 - **Actions** :
-  - [ ] Implémenter un buffer en mémoire (liste Python) pour les "best rows" de l'optimisation
-  - [ ] Écrire sur le disque par lots (toutes les N=50 itérations ou à la fin du trial)
-  - [ ] Ajouter un flush forcé en cas d'interruption (`atexit` ou `finally`)
-  - [ ] Mesurer la réduction des appels I/O
+  - [x] Implémenter un buffer en mémoire (liste Python) pour les "best rows" de l'optimisation
+  - [x] Écrire sur le disque par lots (toutes les N=50 itérations ou à la fin du trial)
+  - [x] Ajouter un flush forcé en cas d'interruption (`atexit` ou `finally`)
+  - [x] Mesurer la réduction des appels I/O
 - **Effort** : XS (0.5 jour)
 
 ### Critères de Complétion Phase 2
 
-- [ ] Les endpoints FastAPI utilisent un pool de connexions asynchrone (`asyncpg`)
-- [ ] La fonction `_update_portfolio_nav` exécute au maximum 2 requêtes SQL (1 SELECT groupé + 1 UPDATE groupé) quel que soit le nombre de positions
-- [ ] Les écritures JSON d'optimisation sont bufferisées (pas d'I/O à chaque itération)
-- [ ] Tests de charge : aucun deadlock ou blocage sous 10 requêtes concurrentes
-- [ ] `psycopg2` reste opérationnel pour les workers synchrones (pas de régression backtest)
+- [x] Les endpoints FastAPI utilisent un pool de connexions asynchrone (`asyncpg`)
+- [x] La fonction `_update_portfolio_nav` exécute au maximum 2 requêtes SQL (1 SELECT groupé + 1 UPDATE groupé) quel que soit le nombre de positions
+- [x] Les écritures JSON d'optimisation sont bufferisées (pas d'I/O à chaque itération)
+- [x] Tests de charge : aucun deadlock ou blocage sous 10 requêtes concurrentes
+- [x] `psycopg2` reste opérationnel pour les workers synchrones (pas de régression backtest)
 
 ---
 

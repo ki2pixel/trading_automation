@@ -1,19 +1,20 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Sécurisation critique du backend Paper Trading (HMAC secret, CSRF, validation stricte Pydantic, en-têtes CORS/CSP).
+- Préparation de la Phase 3 (Architecture & DRY).
 
 ## Prochaines Étapes
-- Déployer la Phase 1 Sécurité Critique en configurant la clé `HMAC_SECRET` sur le service Render.
-- Suivre le bon fonctionnement de l'ingesteur de prix Bybit/Trading212 sur Render en mode public-only (sans clés d'API Bybit requises).
+- Déployer la Phase 1 et la Phase 2 sur Render et Aiven.
+- Suivre le bon fonctionnement de l'ingesteur de prix Bybit/Trading212 sur Render en mode public-only.
 - Confirmer que l'accumulation des bougies réelles de Bybit (LTCUSDT, DOTUSDT) se fait correctement dans `live_candles_1m`.
 - Valider le bon fonctionnement du heartbeat keep-alive (SELECT 1; toutes les 4h) pour éviter la mise en veille Aiven.
-- Mettre en route et surveiller les stratégies depuis le dashboard Paper Trading avec les données saines en temps réel.
+- Lancer la Phase 3 (Architecture & DRY) pour extraire BaseStrategyRunner et nettoyer engine.py.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-03 23:35:00] - Phase 2 Performance & DB validée : Migration asynchrone des endpoints FastAPI vers asyncpg, résolution du pattern N+1 dans engine.py via Redis mget/SQL groupé, et bufferisation des écritures JSON de l'optimiseur. Installation de la dépendance asyncpg dans l'environnement local et passage de 548 tests unitaires avec succès.
 - [2026-07-03 22:50:00] - Phase 1 Sécurité Critique validée : Séparation de HMAC_SECRET, protection CSRF (Double Submit Cookie), validation Pydantic strict de `indicator_params` (modèle model_validator résistant aux injections), et en-têtes CORS/CSP/HSTS configurés (23 tests unitaires et d'intégration validés).
 - [2026-07-03 16:30:00] - Protection Cookie Session Auth & Login Page sur FastAPI : Remplacement de Basic Auth par un middleware de session cookie (HMAC-SHA256 avec la clé `PAPER_TRADER_PASSWORD` comme secret) et une page de connexion dédiée (`login.html`) compatible avec le pré-remplissage des gestionnaires de mots de passe. Redirection automatique vers `/login.html` pour les pages non authentifiées et code 401 pour l'API, avec conservation des accès publics de monitoring (`/health`, `/keep-alive`). (6/6 tests d'intégration passés).
 - [2026-07-03 12:27:00] - Résolution des Actions Structurelles (Sprint 1) : Centralisation des configurations et de la fonction `is_market_open` dans `utils.py`, suppression des overrides de `print` et du code mort dans `ingestor.py`, sécurisation de Redis (timeouts), bridage de `limit` sur FastAPI et correction du seeding DB.

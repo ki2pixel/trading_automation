@@ -1,6 +1,6 @@
 import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from decimal import Decimal
 
@@ -78,15 +78,17 @@ class TestPaperTradingEngine:
         
         assert engine.is_market_open("TEST.ASSET") == False
 
-    @patch('backtest_engine.live.paper_trading.api.get_db_connection')
-    def test_api_config_update(self, mock_get_db_connection):
-        # Mock DB connection
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_get_db_connection.return_value.__enter__.return_value = mock_conn
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        
-        mock_cursor.rowcount = 1
+    @patch('backtest_engine.live.paper_trading.api._get_pool')
+    def test_api_config_update(self, mock_get_pool):
+        # Mock asyncpg pool chain: pool.acquire() -> conn.execute()
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(return_value="UPDATE 1")
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=False)
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
+        mock_get_pool.return_value = mock_pool
         
         payload = {
             "initial_capital": 2000,
@@ -101,11 +103,16 @@ class TestPaperTradingEngine:
         assert response.json() == {"status": "success", "message": "Configuration updated"}
         
         # Check if execute was called properly
-        mock_cursor.execute.assert_called_once()
-        args, kwargs = mock_cursor.execute.call_args
-        
-        assert "UPDATE paper_strategy_configs" in args[0]
-        assert args[1] == (2000.0, 500.0, 1500.0, 50.0, False, 'inactive', 1)
+        mock_conn.execute.assert_called_once()
+        call_args = mock_conn.execute.call_args
+        query = call_args[0][0]
+        assert "UPDATE paper_strategy_configs" in query
+        # asyncpg uses positional $N params
+        assert call_args[0][1] == 2000.0  # initial_capital
+        assert call_args[0][2] == 500.0   # initial_capital_bucket
+        assert call_args[0][5] == False   # is_active
+        assert call_args[0][6] == 'inactive'  # run_status
+        assert call_args[0][7] == 1  # config_id
 
     def test_update_portfolio_nav_active_api(self):
         # GIVEN: A database connection returning initial balances, and an active Trading 212 Client returning a total value
@@ -130,9 +137,11 @@ class TestPaperTradingEngine:
         def mock_fetchall():
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, asset, qty, entry_price" in last_query:
-                return [(1, "AAPL", 10, 100.0)]
+                return [(1, "AAPL", 10, 100.0, 150.0)]
             if "FROM paper_portfolio_balance" in last_query:
                 return [("trading212", 4995.58, 0.0), ("bybit", 10000.0, 0.0)]
+            if "SELECT ticker, price, updated_at FROM live_prices" in last_query:
+                return [("aapl", 150.0, None)]
             return []
             
         mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
@@ -195,9 +204,11 @@ class TestPaperTradingEngine:
         def mock_fetchall():
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, asset, qty, entry_price" in last_query:
-                return [(1, "AAPL", 10, 100.0)]
+                return [(1, "AAPL", 10, 100.0, 150.0)]
             if "FROM paper_portfolio_balance" in last_query:
                 return [("trading212", 100000.0, 0.0), ("bybit", 10000.0, 0.0)]
+            if "SELECT ticker, price, updated_at FROM live_prices" in last_query:
+                return [("aapl", 150.0, None)]
             return []
             
         mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)

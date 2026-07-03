@@ -10,7 +10,6 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 from typing import Any
-from contextlib import contextmanager
 from backtest_engine.live.utils import is_crypto_asset
 
 router = APIRouter(prefix="/api")
@@ -35,18 +34,14 @@ logger.setLevel(logging.INFO)
 deque_handler = DequeLogHandler()
 logger.addHandler(deque_handler)
 
-@contextmanager
-def get_db_connection():
-    from backtest_engine.live.connection import get_db_connection as get_pooled_conn
+
+async def _get_pool():
+    """Get the asyncpg pool. Raises HTTPException if unavailable."""
+    from backtest_engine.live.connection import get_async_pool
     try:
-        with get_pooled_conn() as conn:
-            yield conn
-    except RuntimeError as re:
-        raise HTTPException(status_code=500, detail=str(re))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database connection error: {e}")
-
-
+        return await get_async_pool()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 class IndicatorParamsModel(BaseModel):
@@ -114,94 +109,6 @@ class ConfigToggle(BaseModel):
     is_active: bool
 
 
-# Helper functions for threadpool execution
-def _get_portfolio_sync():
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT source, cash_balance, allocated_balance, total_nav, last_updated, secured_balance FROM paper_portfolio_balance")
-            rows = cur.fetchall()
-            portfolio = {}
-            for r in rows:
-                source = r[0]
-                portfolio[source] = {
-                    "cash_balance": float(r[1]),
-                    "allocated_balance": float(r[2]),
-                    "total_nav": float(r[3]),
-                    "last_updated": r[4].replace(tzinfo=timezone.utc).isoformat() if r[4] else None,
-                    "secured_balance": float(r[5])
-                }
-            for s in ('trading212', 'bybit'):
-                if s not in portfolio:
-                    portfolio[s] = {"cash_balance": 0.0, "allocated_balance": 0.0, "total_nav": 0.0, "last_updated": None, "secured_balance": 0.0}
-            return portfolio
-
-def _get_positions_sync():
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, asset, strategy_name, qty, entry_price, current_price, pnl, updated_at FROM paper_positions")
-            rows = cur.fetchall()
-            return [
-                {
-                    "id": r[0], "asset": r[1], "strategy_name": r[2], "qty": float(r[3]),
-                    "entry_price": float(r[4]), "current_price": float(r[5]), "pnl": float(r[6]),
-                    "updated_at": r[7].replace(tzinfo=timezone.utc).isoformat() if r[7] else None
-                } for r in rows
-            ]
-
-def _get_transactions_sync():
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value FROM paper_transactions ORDER BY timestamp DESC LIMIT 100")
-            rows = cur.fetchall()
-            return [
-                {
-                    "id": r[0], "timestamp": r[1].replace(tzinfo=timezone.utc).isoformat() if r[1] else None, "asset": r[2],
-                    "strategy_name": r[3], "action": r[4], "qty": float(r[5]), "price": float(r[6]),
-                    "total_value": float(r[7])
-                } for r in rows
-            ]
-
-def _get_evaluations_sync(limit: int = 100, status: str | None = None, asset: str | None = None):
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            query = """
-                SELECT id, timestamp, strategy_name, asset, timeframe, price, signal_type, signal_triggered, status, fail_reason, details
-                FROM paper_evaluations
-            """
-            conditions = []
-            params = []
-            
-            if status:
-                conditions.append("status = %s")
-                params.append(status)
-            if asset:
-                conditions.append("asset = %s")
-                params.append(asset)
-                
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
-                
-            query += " ORDER BY timestamp DESC LIMIT %s"
-            params.append(limit)
-            
-            cur.execute(query, tuple(params))
-            rows = cur.fetchall()
-            return [
-                {
-                    "id": r[0],
-                    "timestamp": r[1].replace(tzinfo=timezone.utc).isoformat() if r[1] else None,
-                    "strategy_name": r[2],
-                    "asset": r[3],
-                    "timeframe": r[4],
-                    "price": float(r[5]) if r[5] is not None else None,
-                    "signal_type": r[6],
-                    "signal_triggered": r[7],
-                    "status": r[8],
-                    "fail_reason": r[9],
-                    "details": r[10] if r[10] else {}
-                } for r in rows
-            ]
-
 MARKET_HOURS_PATH = os.path.join(
     os.path.dirname(__file__), "../../../configs/market_hours.json"
 )
@@ -222,95 +129,260 @@ def is_market_open(asset: str) -> bool:
     return _utils_is_market_open(asset, _market_hours)
 
 
-def _get_configs_sync():
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT id, strategy_name, asset, timeframe, kelly_weight, 
-                       initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, is_active, indicator_params, run_status, last_error
-                FROM paper_strategy_configs
-                ORDER BY id ASC
-            """)
-            rows = cur.fetchall()
+# ─── Async API Endpoints (asyncpg) ───────────────────────────────────────────
+
+@router.get("/portfolio")
+async def get_portfolio():
+    pool = await _get_pool()
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT source, cash_balance, allocated_balance, total_nav, last_updated, secured_balance "
+                "FROM paper_portfolio_balance"
+            )
+            portfolio = {}
+            for r in rows:
+                source = r["source"]
+                portfolio[source] = {
+                    "cash_balance": float(r["cash_balance"]),
+                    "allocated_balance": float(r["allocated_balance"]),
+                    "total_nav": float(r["total_nav"]),
+                    "last_updated": r["last_updated"].replace(tzinfo=timezone.utc).isoformat() if r["last_updated"] else None,
+                    "secured_balance": float(r["secured_balance"]),
+                }
+            for s in ('trading212', 'bybit'):
+                if s not in portfolio:
+                    portfolio[s] = {"cash_balance": 0.0, "allocated_balance": 0.0, "total_nav": 0.0, "last_updated": None, "secured_balance": 0.0}
+            return portfolio
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@router.get("/positions")
+async def get_positions():
+    pool = await _get_pool()
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, asset, strategy_name, qty, entry_price, current_price, pnl, updated_at "
+                "FROM paper_positions"
+            )
             return [
                 {
-                    "id": r[0], "strategy_name": r[1], "asset": r[2], "timeframe": r[3],
-                    "kelly_weight": float(r[4]), "initial_capital": float(r[5]),
-                    "initial_capital_bucket": float(r[6]), "max_capital_bucket": float(r[7]),
-                    "max_entry_price": float(r[8]), "is_active": r[9],
-                    "indicator_params": r[10] if r[10] else {},
-                    "status": "inactive" if not r[9] else (r[11] if r[11] else "active"),
-                    "last_error": r[12],
-                    "market_open": is_market_open(r[2])
+                    "id": r["id"], "asset": r["asset"], "strategy_name": r["strategy_name"],
+                    "qty": float(r["qty"]), "entry_price": float(r["entry_price"]),
+                    "current_price": float(r["current_price"]), "pnl": float(r["pnl"]),
+                    "updated_at": r["updated_at"].replace(tzinfo=timezone.utc).isoformat() if r["updated_at"] else None,
                 } for r in rows
             ]
-
-def _update_config_sync(config_id: int, payload: ConfigUpdate):
-    import json
-    run_status = "active" if payload.is_active else "inactive"
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            if payload.indicator_params is not None:
-                params_json = json.dumps(payload.indicator_params.model_dump(exclude_none=True))
-                cur.execute("""
-                    UPDATE paper_strategy_configs 
-                    SET initial_capital = %s, initial_capital_bucket = %s, 
-                        max_capital_bucket = %s, max_entry_price = %s, is_active = %s,
-                        indicator_params = %s, run_status = %s, last_error = NULL
-                    WHERE id = %s
-                """, (payload.initial_capital, payload.initial_capital_bucket, 
-                      payload.max_capital_bucket, payload.max_entry_price, payload.is_active,
-                      params_json, run_status, config_id))
-            else:
-                cur.execute("""
-                    UPDATE paper_strategy_configs 
-                    SET initial_capital = %s, initial_capital_bucket = %s, 
-                        max_capital_bucket = %s, max_entry_price = %s, is_active = %s,
-                        run_status = %s, last_error = NULL
-                    WHERE id = %s
-                """, (payload.initial_capital, payload.initial_capital_bucket, 
-                      payload.max_capital_bucket, payload.max_entry_price, payload.is_active,
-                      run_status, config_id))
-            conn.commit()
-            if cur.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Config not found")
-            return {"status": "success", "message": "Configuration updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
-def _get_candles_sync(ticker: str, limit: int = 1000):
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT timestamp_minute, open, high, low, close 
-                FROM live_candles_1m 
-                WHERE LOWER(ticker) = LOWER(%s) 
-                ORDER BY timestamp_minute DESC 
-                LIMIT %s
-            """, (ticker, limit))
-            rows = cur.fetchall()
+@router.get("/transactions")
+async def get_transactions():
+    pool = await _get_pool()
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
+                "FROM paper_transactions ORDER BY timestamp DESC LIMIT 100"
+            )
             return [
                 {
-                    "time": int(r[0].replace(tzinfo=timezone.utc).timestamp()),
-                    "open": float(r[1]),
-                    "high": float(r[2]),
-                    "low": float(r[3]),
-                    "close": float(r[4])
+                    "id": r["id"],
+                    "timestamp": r["timestamp"].replace(tzinfo=timezone.utc).isoformat() if r["timestamp"] else None,
+                    "asset": r["asset"], "strategy_name": r["strategy_name"],
+                    "action": r["action"], "qty": float(r["qty"]),
+                    "price": float(r["price"]), "total_value": float(r["total_value"]),
+                } for r in rows
+            ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@router.get("/evaluations")
+async def get_evaluations(limit: int = 100, status: str | None = None, asset: str | None = None):
+    pool = await _get_pool()
+    try:
+        limit = min(max(1, limit), 10000)
+
+        query = (
+            "SELECT id, timestamp, strategy_name, asset, timeframe, price, "
+            "signal_type, signal_triggered, status, fail_reason, details "
+            "FROM paper_evaluations"
+        )
+        conditions = []
+        params = []
+        param_idx = 1
+
+        if status:
+            conditions.append(f"status = ${param_idx}")
+            params.append(status)
+            param_idx += 1
+        if asset:
+            conditions.append(f"asset = ${param_idx}")
+            params.append(asset)
+            param_idx += 1
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += f" ORDER BY timestamp DESC LIMIT ${param_idx}"
+        params.append(limit)
+
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, *params)
+            return [
+                {
+                    "id": r["id"],
+                    "timestamp": r["timestamp"].replace(tzinfo=timezone.utc).isoformat() if r["timestamp"] else None,
+                    "strategy_name": r["strategy_name"],
+                    "asset": r["asset"],
+                    "timeframe": r["timeframe"],
+                    "price": float(r["price"]) if r["price"] is not None else None,
+                    "signal_type": r["signal_type"],
+                    "signal_triggered": r["signal_triggered"],
+                    "status": r["status"],
+                    "fail_reason": r["fail_reason"],
+                    "details": json.loads(r["details"]) if isinstance(r["details"], str) else (r["details"] if r["details"] else {}),
+                } for r in rows
+            ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@router.get("/configs")
+async def get_configs():
+    pool = await _get_pool()
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, strategy_name, asset, timeframe, kelly_weight, "
+                "initial_capital, initial_capital_bucket, max_capital_bucket, "
+                "max_entry_price, is_active, indicator_params, run_status, last_error "
+                "FROM paper_strategy_configs ORDER BY id ASC"
+            )
+            result = []
+            for r in rows:
+                indicator_params = r["indicator_params"]
+                # asyncpg returns JSONB as Python dict/list directly
+                if isinstance(indicator_params, str):
+                    indicator_params = json.loads(indicator_params)
+                elif indicator_params is None:
+                    indicator_params = {}
+
+                result.append({
+                    "id": r["id"], "strategy_name": r["strategy_name"],
+                    "asset": r["asset"], "timeframe": r["timeframe"],
+                    "kelly_weight": float(r["kelly_weight"]),
+                    "initial_capital": float(r["initial_capital"]),
+                    "initial_capital_bucket": float(r["initial_capital_bucket"]),
+                    "max_capital_bucket": float(r["max_capital_bucket"]),
+                    "max_entry_price": float(r["max_entry_price"]),
+                    "is_active": r["is_active"],
+                    "indicator_params": indicator_params,
+                    "status": "inactive" if not r["is_active"] else (r["run_status"] if r["run_status"] else "active"),
+                    "last_error": r["last_error"],
+                    "market_open": is_market_open(r["asset"]),
+                })
+            return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@router.put("/configs/{config_id}")
+async def update_config(config_id: int, payload: ConfigUpdate):
+    pool = await _get_pool()
+    try:
+        run_status = "active" if payload.is_active else "inactive"
+        async with pool.acquire() as conn:
+            if payload.indicator_params is not None:
+                params_json = json.dumps(payload.indicator_params.model_dump(exclude_none=True))
+                result = await conn.execute(
+                    "UPDATE paper_strategy_configs "
+                    "SET initial_capital = $1, initial_capital_bucket = $2, "
+                    "    max_capital_bucket = $3, max_entry_price = $4, is_active = $5, "
+                    "    indicator_params = $6, run_status = $7, last_error = NULL "
+                    "WHERE id = $8",
+                    payload.initial_capital, payload.initial_capital_bucket,
+                    payload.max_capital_bucket, payload.max_entry_price, payload.is_active,
+                    params_json, run_status, config_id,
+                )
+            else:
+                result = await conn.execute(
+                    "UPDATE paper_strategy_configs "
+                    "SET initial_capital = $1, initial_capital_bucket = $2, "
+                    "    max_capital_bucket = $3, max_entry_price = $4, is_active = $5, "
+                    "    run_status = $6, last_error = NULL "
+                    "WHERE id = $7",
+                    payload.initial_capital, payload.initial_capital_bucket,
+                    payload.max_capital_bucket, payload.max_entry_price, payload.is_active,
+                    run_status, config_id,
+                )
+            # asyncpg execute returns status string like "UPDATE 1"
+            if result == "UPDATE 0":
+                raise HTTPException(status_code=404, detail="Config not found")
+            return {"status": "success", "message": "Configuration updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@router.get("/candles")
+async def get_candles(ticker: str, limit: int = 1000):
+    pool = await _get_pool()
+    try:
+        limit = min(max(1, limit), 10000)
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT timestamp_minute, open, high, low, close "
+                "FROM live_candles_1m "
+                "WHERE LOWER(ticker) = LOWER($1) "
+                "ORDER BY timestamp_minute DESC "
+                "LIMIT $2",
+                ticker, limit,
+            )
+            return [
+                {
+                    "time": int(r["timestamp_minute"].replace(tzinfo=timezone.utc).timestamp()),
+                    "open": float(r["open"]),
+                    "high": float(r["high"]),
+                    "low": float(r["low"]),
+                    "close": float(r["close"]),
                 } for r in reversed(rows)
             ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
-def _get_price_feed_status_sync():
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT source, MAX(updated_at) 
-                FROM live_prices 
-                GROUP BY source
-            """)
-            rows = cur.fetchall()
+@router.get("/status/heartbeat")
+async def get_heartbeat():
+    pool = await _get_pool()
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT source, MAX(updated_at) AS max_updated "
+                "FROM live_prices GROUP BY source"
+            )
             now = datetime.now(timezone.utc)
             status_map = {}
-            for source, max_updated in rows:
+            for r in rows:
+                source = r["source"]
+                max_updated = r["max_updated"]
                 if not max_updated:
                     status_map[source] = {"status": "offline", "last_update": None, "seconds_ago": None}
                     continue
@@ -319,198 +391,143 @@ def _get_price_feed_status_sync():
                 else:
                     max_updated = max_updated.astimezone(timezone.utc)
                 seconds_ago = (now - max_updated).total_seconds()
-                
+
                 if seconds_ago < 30:
-                    status = "fresh"
+                    feed_status = "fresh"
                 elif seconds_ago < 120:
-                    status = "stale"
+                    feed_status = "stale"
                 else:
-                    status = "offline"
-                    
+                    feed_status = "offline"
+
                 status_map[source] = {
-                    "status": status,
+                    "status": feed_status,
                     "last_update": max_updated.isoformat(),
-                    "seconds_ago": seconds_ago
+                    "seconds_ago": seconds_ago,
                 }
             for s in ('trading212', 'bybit'):
                 if s not in status_map:
                     status_map[s] = {"status": "offline", "last_update": None, "seconds_ago": None}
             return status_map
-
-
-def _panic_close_all_sync():
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, asset, strategy_name, qty, entry_price, current_price FROM paper_positions")
-            positions = cur.fetchall()
-            
-            from backtest_engine.live.connection import get_redis_client
-            redis_client = get_redis_client()
-            
-            closed_count = 0
-            for pos_id, asset, strategy_name, qty, entry_price, current_price in positions:
-                qty = Decimal(str(qty))
-                entry_price = Decimal(str(entry_price))
-                
-                live_price = None
-                if redis_client:
-                    try:
-                        redis_val = redis_client.get(f"price:{asset.lower()}")
-                        if redis_val is not None:
-                            live_price = Decimal(str(redis_val))
-                    except Exception:
-                        pass
-                if live_price is None:
-                    cur.execute("SELECT price FROM live_prices WHERE ticker = %s", (asset.lower(),))
-                    price_row = cur.fetchone()
-                    if price_row:
-                        live_price = Decimal(str(price_row[0]))
-                if live_price is None:
-                    live_price = Decimal(str(current_price))
-                    
-                source = 'bybit' if is_crypto_asset(asset) else 'trading212'
-                fee_rate = Decimal("0.0010") if source == 'bybit' else Decimal("0.0")
-                
-                actual_revenue = qty * live_price
-                sell_fee = actual_revenue * fee_rate
-                net_revenue = actual_revenue - sell_fee
-                
-                total_entry_cost = (qty * entry_price) * (Decimal("1.0") + fee_rate)
-                pnl = net_revenue - total_entry_cost
-                
-                # Delete position
-                cur.execute("DELETE FROM paper_positions WHERE id = %s", (pos_id,))
-                
-                # Update balance
-                cur.execute("""
-                    UPDATE paper_portfolio_balance 
-                    SET cash_balance = cash_balance + %s,
-                        allocated_balance = GREATEST(0, allocated_balance - %s),
-                        last_updated = CURRENT_TIMESTAMP
-                    WHERE source = %s
-                """, (net_revenue, qty * entry_price, source))
-                
-                # Insert transaction
-                cur.execute("""
-                    INSERT INTO paper_transactions (asset, strategy_name, action, qty, price, total_value, timestamp)
-                    VALUES (%s, %s, 'SELL', %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (asset, strategy_name, qty, live_price, net_revenue))
-                
-                # Log evaluation
-                details_json = json.dumps({
-                    "qty": float(qty),
-                    "entry_price": float(entry_price),
-                    "revenue": float(net_revenue),
-                    "pnl": float(pnl),
-                    "exit_reason": "PANIC_CLOSE"
-                })
-                cur.execute("""
-                    INSERT INTO paper_evaluations (strategy_name, asset, timeframe, price, signal_type, signal_triggered, status, fail_reason, details, timestamp)
-                    VALUES (%s, %s, '1m', %s, 'EXIT', TRUE, 'EXECUTED', 'PANIC CLOSE ALL', %s::jsonb, CURRENT_TIMESTAMP)
-                """, (strategy_name, asset, live_price, details_json))
-                
-                logger.warning(f"[PaperTrader] PANIC CLOSE: Sold {qty} units of {asset} @ {live_price} € (PnL: {pnl} €)")
-                closed_count += 1
-                
-            conn.commit()
-            return {"status": "success", "closed_positions_count": closed_count}
-
-
-def _toggle_config_sync(config_id: int, is_active: bool):
-    run_status = "active" if is_active else "inactive"
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE paper_strategy_configs 
-                SET is_active = %s, run_status = %s, last_error = NULL
-                WHERE id = %s
-            """, (is_active, run_status, config_id))
-            conn.commit()
-            if cur.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Config not found")
-            return {"status": "success", "message": f"Config active status set to {is_active}"}
-
-
-# Async routes delegating to the sync helpers
-@router.get("/portfolio")
-async def get_portfolio():
-    try:
-        return await asyncio.to_thread(_get_portfolio_sync)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/positions")
-async def get_positions():
-    try:
-        return await asyncio.to_thread(_get_positions_sync)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/transactions")
-async def get_transactions():
-    try:
-        return await asyncio.to_thread(_get_transactions_sync)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/evaluations")
-async def get_evaluations(limit: int = 100, status: str | None = None, asset: str | None = None):
-    try:
-        limit = min(max(1, limit), 10000)
-        return await asyncio.to_thread(_get_evaluations_sync, limit, status, asset)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/configs")
-async def get_configs():
-    try:
-        return await asyncio.to_thread(_get_configs_sync)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.put("/configs/{config_id}")
-async def update_config(config_id: int, payload: ConfigUpdate):
-    try:
-        return await asyncio.to_thread(_update_config_sync, config_id, payload)
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/candles")
-async def get_candles(ticker: str, limit: int = 1000):
-    try:
-        limit = min(max(1, limit), 10000)
-        return await asyncio.to_thread(_get_candles_sync, ticker, limit)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/status/heartbeat")
-async def get_heartbeat():
-    try:
-        return await asyncio.to_thread(_get_price_feed_status_sync)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
 @router.post("/control/panic")
 async def panic_close_all():
+    pool = await _get_pool()
     try:
-        return await asyncio.to_thread(_panic_close_all_sync)
+        from backtest_engine.live.connection import get_redis_client
+        redis_client = get_redis_client()
+
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                positions = await conn.fetch(
+                    "SELECT id, asset, strategy_name, qty, entry_price, current_price FROM paper_positions"
+                )
+
+                closed_count = 0
+                for pos in positions:
+                    pos_id = pos["id"]
+                    asset = pos["asset"]
+                    strategy_name = pos["strategy_name"]
+                    qty = Decimal(str(pos["qty"]))
+                    entry_price = Decimal(str(pos["entry_price"]))
+
+                    # Get live price from Redis → DB → fallback
+                    live_price = None
+                    if redis_client:
+                        try:
+                            redis_val = redis_client.get(f"price:{asset.lower()}")
+                            if redis_val is not None:
+                                live_price = Decimal(str(redis_val))
+                        except Exception:
+                            pass
+                    if live_price is None:
+                        price_row = await conn.fetchrow(
+                            "SELECT price FROM live_prices WHERE ticker = $1",
+                            asset.lower(),
+                        )
+                        if price_row:
+                            live_price = Decimal(str(price_row["price"]))
+                    if live_price is None:
+                        live_price = Decimal(str(pos["current_price"]))
+
+                    source = 'bybit' if is_crypto_asset(asset) else 'trading212'
+                    fee_rate = Decimal("0.0010") if source == 'bybit' else Decimal("0.0")
+
+                    actual_revenue = qty * live_price
+                    sell_fee = actual_revenue * fee_rate
+                    net_revenue = actual_revenue - sell_fee
+
+                    total_entry_cost = (qty * entry_price) * (Decimal("1.0") + fee_rate)
+                    pnl = net_revenue - total_entry_cost
+
+                    # Delete position
+                    await conn.execute("DELETE FROM paper_positions WHERE id = $1", pos_id)
+
+                    # Update balance
+                    await conn.execute(
+                        "UPDATE paper_portfolio_balance "
+                        "SET cash_balance = cash_balance + $1, "
+                        "    allocated_balance = GREATEST(0, allocated_balance - $2), "
+                        "    last_updated = CURRENT_TIMESTAMP "
+                        "WHERE source = $3",
+                        net_revenue, qty * entry_price, source,
+                    )
+
+                    # Insert transaction
+                    await conn.execute(
+                        "INSERT INTO paper_transactions (asset, strategy_name, action, qty, price, total_value, timestamp) "
+                        "VALUES ($1, $2, 'SELL', $3, $4, $5, CURRENT_TIMESTAMP)",
+                        asset, strategy_name, qty, live_price, net_revenue,
+                    )
+
+                    # Log evaluation
+                    details_json = json.dumps({
+                        "qty": float(qty),
+                        "entry_price": float(entry_price),
+                        "revenue": float(net_revenue),
+                        "pnl": float(pnl),
+                        "exit_reason": "PANIC_CLOSE",
+                    })
+                    await conn.execute(
+                        "INSERT INTO paper_evaluations "
+                        "(strategy_name, asset, timeframe, price, signal_type, signal_triggered, status, fail_reason, details, timestamp) "
+                        "VALUES ($1, $2, '1m', $3, 'EXIT', TRUE, 'EXECUTED', 'PANIC CLOSE ALL', $4::jsonb, CURRENT_TIMESTAMP)",
+                        strategy_name, asset, live_price, details_json,
+                    )
+
+                    logger.warning(f"[PaperTrader] PANIC CLOSE: Sold {qty} units of {asset} @ {live_price} € (PnL: {pnl} €)")
+                    closed_count += 1
+
+            return {"status": "success", "closed_positions_count": closed_count}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
 @router.put("/configs/{config_id}/toggle")
 async def toggle_config(config_id: int, payload: ConfigToggle):
+    pool = await _get_pool()
     try:
-        return await asyncio.to_thread(_toggle_config_sync, config_id, payload.is_active)
+        run_status = "active" if payload.is_active else "inactive"
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE paper_strategy_configs "
+                "SET is_active = $1, run_status = $2, last_error = NULL "
+                "WHERE id = $3",
+                payload.is_active, run_status, config_id,
+            )
+            if result == "UPDATE 0":
+                raise HTTPException(status_code=404, detail="Config not found")
+            return {"status": "success", "message": f"Config active status set to {payload.is_active}"}
+    except HTTPException:
+        raise
     except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
 @router.get("/logs/stream")

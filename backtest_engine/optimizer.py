@@ -906,8 +906,15 @@ def run_grid_optimization(
     eligible_iterations = 0
     skipped_iterations = 0
 
+    # Buffered I/O: only flush best.json every N improvements to reduce disk pressure
+    _BEST_FLUSH_INTERVAL = 50
+    _best_improvement_count = 0
+    _best_needs_flush = False
+    _io_write_count = 0
+
     def handle_row(row: dict, is_eligible: bool, is_skipped: bool, completed_count: int) -> None:
         nonlocal best_score, best_row, eligible_iterations, skipped_iterations
+        nonlocal _best_improvement_count, _best_needs_flush, _io_write_count
         row_score = row.get("score")
         results.append(row)
         if is_eligible:
@@ -917,7 +924,13 @@ def run_grid_optimization(
         if _is_better(row_score, best_score, score_direction):
             best_score = row_score
             best_row = row
-            _json_dump(output_dir / "best.json", best_row)
+            _best_improvement_count += 1
+            _best_needs_flush = True
+            # Flush every _BEST_FLUSH_INTERVAL improvements to avoid excessive disk I/O
+            if _best_improvement_count % _BEST_FLUSH_INTERVAL == 0:
+                _json_dump(output_dir / "best.json", best_row)
+                _io_write_count += 1
+                _best_needs_flush = False
         if progress_callback is not None:
             progress_callback(
                 OptimizationProgress(
@@ -1016,6 +1029,13 @@ def run_grid_optimization(
                     submit_next()
         finally:
             executor.shutdown(wait=not cancelled, cancel_futures=True)
+
+    # Final flush of buffered best.json (ensures last improvement is persisted)
+    if _best_needs_flush and best_row is not None:
+        _json_dump(output_dir / "best.json", best_row)
+        _io_write_count += 1
+    if _best_improvement_count > 0:
+        print(f"[Optimizer] best.json I/O: {_io_write_count} writes for {_best_improvement_count} improvements (buffered, interval={_BEST_FLUSH_INTERVAL})")
 
     if best_row is None:
         _json_dump(output_dir / "best.json", None)

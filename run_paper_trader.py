@@ -197,6 +197,14 @@ async def lifespan(app: FastAPI):
     print("[PaperTrader] Initializing database...")
     await asyncio.to_thread(init_db)
 
+    # Initialize asyncpg pool for async API endpoints
+    from backtest_engine.live.connection import init_async_pool, close_async_pool
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        await init_async_pool(db_url)
+    else:
+        print("[PaperTrader] WARNING: DATABASE_URL not set, asyncpg pool not initialized.")
+
     # Initialize engine if not already initialized
     if engine is None:
         engine = PaperTradingEngine()
@@ -217,6 +225,9 @@ async def lifespan(app: FastAPI):
     
     yield
     
+    # Shutdown: close asyncpg pool first (API endpoints stop using it)
+    await close_async_pool()
+
     if engine is not None:
         engine.stop()
     if keepalive_task is not None:

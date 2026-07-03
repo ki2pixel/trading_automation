@@ -118,7 +118,9 @@ class PaperTradingEngine:
     def _update_portfolio_nav(self, conn):
         """
         Update the total NAV of the portfolio based on current prices of positions
-        and the cash balance, split by ecosystem (trading212 vs binance).
+        and the cash balance, split by ecosystem (trading212 vs bybit).
+
+        Batched I/O: uses Redis mget() + SQL ANY() + executemany() to avoid N+1 queries.
         """
         from decimal import Decimal
         from datetime import datetime, timedelta, timezone
@@ -170,8 +172,8 @@ class PaperTradingEngine:
                 bybit_cash = balances.get("bybit", Decimal("10000"))
                 bybit_secured = secured_balances.get("bybit", Decimal("0"))
 
-                # Get open positions
-                cur.execute("SELECT id, asset, qty, entry_price FROM paper_positions")
+                # Get open positions (single query)
+                cur.execute("SELECT id, asset, qty, entry_price, current_price FROM paper_positions")
                 positions = cur.fetchall()
                 
                 t212_nav = t212_cash
@@ -179,74 +181,98 @@ class PaperTradingEngine:
                 # Retrieve exchange rate to integrate secured_balance (in EUR) converted to USDC/USDT in Bybit total NAV
                 eurusd_rate = get_eurusd_rate(conn)
                 bybit_nav = bybit_cash + (bybit_secured * eurusd_rate)
-                
-                for pos_id, asset, qty, entry_price in positions:
-                    qty = Decimal(str(qty))
-                    entry_price = Decimal(str(entry_price))
-                    asset_lower = asset.lower()
-                    is_crypto = is_crypto_asset(asset)
-                    
-                    if not self.is_market_open(asset):
-                        # Keep previous current_price if closed
-                        cur.execute("SELECT current_price FROM paper_positions WHERE id = %s", (pos_id,))
-                        last_price_row = cur.fetchone()
-                        if last_price_row and last_price_row[0] is not None:
-                            val = Decimal(str(last_price_row[0])) * qty
-                            if is_crypto:
-                                bybit_nav += val
-                            else:
-                                t212_nav += val
-                        continue 
-                    
-                    # 1. Try reading from Redis first
-                    current_price = None
+
+                if not positions:
+                    cur.execute("UPDATE paper_portfolio_balance SET total_nav = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'", (t212_nav,))
+                    cur.execute("UPDATE paper_portfolio_balance SET total_nav = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'", (bybit_nav,))
+                    conn.commit()
+                    return
+
+                # ── Batched price resolution ──────────────────────────────────
+                # Classify positions by market open/closed
+                open_positions = []   # (pos_id, asset, qty, entry_price, current_price)
+                closed_positions = [] # same tuple shape
+
+                for pos_id, asset, qty, entry_price, current_price in positions:
+                    if self.is_market_open(asset):
+                        open_positions.append((pos_id, asset, Decimal(str(qty)), Decimal(str(entry_price)), current_price))
+                    else:
+                        closed_positions.append((pos_id, asset, Decimal(str(qty)), Decimal(str(entry_price)), current_price))
+
+                # Handle closed-market positions: use last known current_price (no DB query needed)
+                for pos_id, asset, qty, entry_price, current_price in closed_positions:
+                    if current_price is not None:
+                        val = Decimal(str(current_price)) * qty
+                        if is_crypto_asset(asset):
+                            bybit_nav += val
+                        else:
+                            t212_nav += val
+
+                # For open-market positions: batch Redis mget + batch SQL fallback
+                if open_positions:
+                    tickers = [asset.lower() for _, asset, _, _, _ in open_positions]
+                    redis_keys = [f"price:{t}" for t in tickers]
+
+                    # 1. Batch Redis mget (single round-trip)
+                    redis_prices = {}
                     if redis_client:
                         try:
-                            redis_val = redis_client.get(f"price:{asset_lower}")
-                            if redis_val is not None:
-                                current_price = Decimal(str(redis_val))
-                        except Exception as re:
-                            logger.error(f"[PaperTrader] Redis read error for {asset_lower}: {re}")
+                            redis_values = redis_client.mget(redis_keys)
+                            for ticker, val in zip(tickers, redis_values):
+                                if val is not None:
+                                    redis_prices[ticker] = Decimal(str(val))
+                        except Exception as redis_err:
+                            logger.error(f"[PaperTrader] Redis mget error: {redis_err}")
 
-                    # 2. Fallback to SQL DB
-                    if current_price is None:
-                        cur.execute("SELECT price, updated_at FROM live_prices WHERE ticker = %s", (asset_lower,))
-                        price_row = cur.fetchone()
-                        if price_row:
-                            current_price = Decimal(str(price_row[0]))
-                            updated_at = price_row[1]
+                    # 2. Batch SQL fallback for tickers not found in Redis (single query)
+                    missing_tickers = [t for t in tickers if t not in redis_prices]
+                    sql_prices = {}
+                    if missing_tickers:
+                        cur.execute(
+                            "SELECT ticker, price, updated_at FROM live_prices WHERE ticker = ANY(%s)",
+                            (missing_tickers,)
+                        )
+                        now_utc = datetime.now(timezone.utc)
+                        for row in cur.fetchall():
+                            ticker, price, updated_at = row[0], row[1], row[2]
+                            sql_prices[ticker] = Decimal(str(price))
                             # Check freshness (3 minutes warning)
                             if updated_at:
                                 if updated_at.tzinfo is None:
                                     updated_at = updated_at.replace(tzinfo=timezone.utc)
-                                age = datetime.now(timezone.utc) - updated_at
+                                age = now_utc - updated_at
                                 if age > timedelta(minutes=3):
-                                    logger.warning(f"[PaperTrader] WARNING: price for {asset_lower} is stale (age: {age.total_seconds()}s). Using it anyway.")
-                    
-                    # 3. Fallback to last known position price
-                    if current_price is not None:
-                        pnl = (current_price - entry_price) * qty
-                        cur.execute("""
-                            UPDATE paper_positions 
-                            SET current_price = %s, pnl = %s, updated_at = CURRENT_TIMESTAMP
-                            WHERE id = %s
-                        """, (current_price, pnl, pos_id))
-                        val = current_price * qty
-                        if is_crypto:
+                                    logger.warning(f"[PaperTrader] WARNING: price for {ticker} is stale (age: {age.total_seconds():.0f}s). Using it anyway.")
+
+                    # 3. Merge prices: Redis takes priority, then SQL
+                    all_prices = {**sql_prices, **redis_prices}
+
+                    # 4. Compute PnL and collect batch updates
+                    position_updates = []  # (current_price, pnl, pos_id)
+                    for pos_id, asset, qty, entry_price, old_current_price in open_positions:
+                        asset_lower = asset.lower()
+                        current_price = all_prices.get(asset_lower)
+
+                        if current_price is not None:
+                            pnl = (current_price - entry_price) * qty
+                            position_updates.append((current_price, pnl, pos_id))
+                            val = current_price * qty
+                        else:
+                            # Fallback to last known position price (already fetched above)
+                            val = Decimal(str(old_current_price)) * qty if old_current_price is not None else Decimal("0")
+
+                        if is_crypto_asset(asset):
                             bybit_nav += val
                         else:
                             t212_nav += val
-                    else:
-                        cur.execute("SELECT current_price FROM paper_positions WHERE id = %s", (pos_id,))
-                        last_price_row = cur.fetchone()
-                        if last_price_row and last_price_row[0] is not None:
-                            last_price = Decimal(str(last_price_row[0]))
-                            val = last_price * qty
-                            if is_crypto:
-                                bybit_nav += val
-                            else:
-                                t212_nav += val
-                                
+
+                    # 5. Batch UPDATE positions (single executemany round-trip)
+                    if position_updates:
+                        cur.executemany(
+                            "UPDATE paper_positions SET current_price = %s, pnl = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                            position_updates,
+                        )
+
                 cur.execute("UPDATE paper_portfolio_balance SET total_nav = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'", (t212_nav,))
                 cur.execute("UPDATE paper_portfolio_balance SET total_nav = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'", (bybit_nav,))
                 conn.commit()
