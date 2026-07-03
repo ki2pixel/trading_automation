@@ -84,6 +84,36 @@ class TestHMACSecretSeparation:
         # Token should verify with HMAC_SECRET
         assert verify_session_token(session_token, HMAC_SECRET) is True
 
+    @patch.dict(os.environ, {"PAPER_TRADER_USER": "test_user", "PAPER_TRADER_PASSWORD": "test_password"})
+    def test_login_flow_form_urlencoded_success(self):
+        """Form urlencoded login should redirect to / and set session cookie."""
+        response = client.post(
+            "/api/login",
+            data={
+                "username": "test_user",
+                "password": "test_password"
+            },
+            follow_redirects=False
+        )
+        assert response.status_code == 303
+        assert response.headers["Location"] == "/"
+        assert "paper_trader_session" in response.cookies
+
+    @patch.dict(os.environ, {"PAPER_TRADER_USER": "test_user", "PAPER_TRADER_PASSWORD": "test_password"})
+    def test_login_flow_form_urlencoded_failure(self):
+        """Form urlencoded login with wrong credentials should redirect to /login.html?error=true."""
+        response = client.post(
+            "/api/login",
+            data={
+                "username": "test_user",
+                "password": "wrong_password"
+            },
+            follow_redirects=False
+        )
+        assert response.status_code == 303
+        assert response.headers["Location"] == "/login.html?error=true"
+        assert "paper_trader_session" not in response.cookies
+
 
 # ─────────────────────────────────────
 # Tâche 1.2 — CSRF Protection Tests

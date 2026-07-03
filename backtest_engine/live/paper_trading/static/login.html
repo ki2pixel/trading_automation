@@ -196,6 +196,14 @@
     </div>
 
     <script>
+        // Check for URL query parameter error (handles password manager fallback redirect)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('error') === 'true') {
+            const errorAlert = document.getElementById('errorAlert');
+            errorAlert.textContent = 'Identifiant ou mot de passe incorrect.';
+            errorAlert.style.display = 'block';
+        }
+
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             

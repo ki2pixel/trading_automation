@@ -268,22 +268,49 @@ class LoginRequest(BaseModel):
     password: str
 
 @app.post("/api/login")
-def login(payload: LoginRequest):
+async def login(request: Request):
+    content_type = request.headers.get("content-type", "")
+    username = None
+    password = None
+    is_form = False
+
+    if "application/x-www-form-urlencoded" in content_type:
+        is_form = True
+        form_data = await request.form()
+        username = form_data.get("username")
+        password = form_data.get("password")
+    else:
+        try:
+            payload = await request.json()
+            username = payload.get("username")
+            password = payload.get("password")
+        except Exception:
+            return JSONResponse(
+                content={"status": "error", "message": "Invalid request body"},
+                status_code=400
+            )
+
     expected_user = os.getenv("PAPER_TRADER_USER", "admin")
     expected_password = os.getenv("PAPER_TRADER_PASSWORD") or PAPER_TRADER_PASSWORD
-    
-    if payload.username != expected_user or payload.password != expected_password:
+
+    if username != expected_user or password != expected_password:
+        if is_form:
+            return RedirectResponse(url="/login.html?error=true", status_code=303)
         return JSONResponse(
             content={"status": "error", "message": "Invalid username or password"},
             status_code=401
         )
-        
+
     expires = int(time.time()) + 30 * 24 * 3600
-    token = create_session_token(payload.username, expires, HMAC_SECRET)
-    
+    token = create_session_token(username, expires, HMAC_SECRET)
+
     is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
-    
-    response = JSONResponse(content={"status": "success", "message": "Logged in successfully"})
+
+    if is_form:
+        response = RedirectResponse(url="/", status_code=303)
+    else:
+        response = JSONResponse(content={"status": "success", "message": "Logged in successfully"})
+
     response.set_cookie(
         key="paper_trader_session",
         value=token,
