@@ -6,6 +6,7 @@ import json
 import requests
 from typing import Any, Dict, List, Optional
 from backtest_engine.live.bybit.config import BybitConfig
+from backtest_engine.live.utils import NETWORK_TIMEOUT_DEFAULT
 
 class BybitClient:
     """HTTP client wrapper for the Bybit Spot V5 REST API."""
@@ -67,7 +68,7 @@ class BybitClient:
                     headers=headers,
                     params=req_params if method == "GET" else None,
                     json=json_data if method != "GET" else None,
-                    timeout=30,
+                    timeout=NETWORK_TIMEOUT_DEFAULT,
                 )
                 
                 # Rate limit (HTTP 429 / Bybit error code 10006)

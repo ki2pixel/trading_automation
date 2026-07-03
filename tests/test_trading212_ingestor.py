@@ -105,7 +105,7 @@ def test_client_get_positions(mock_request, mock_client):
         headers=mock_client.headers,
         params=None,
         json=None,
-        timeout=30
+        timeout=10.0
     )
 
 

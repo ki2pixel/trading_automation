@@ -16,6 +16,11 @@ def get_eurusd_rate(conn=None):
     Queries the live_prices table first. If unavailable, falls back to a public API
     with a strict timeout, and finally to a static fallback (1.08).
     """
+    import urllib.request
+    import urllib.error
+    import json
+    import psycopg2
+
     # 1. Query the database first
     if conn:
         try:
@@ -24,12 +29,10 @@ def get_eurusd_rate(conn=None):
                 row = cur.fetchone()
                 if row and row[0] is not None:
                     return Decimal(str(row[0]))
-        except Exception as e:
-            logger.error(f"[PaperTrader] DB query for eurusd failed: {e}")
+        except (psycopg2.Error, Exception) as e:
+            logger.exception("[PaperTrader] DB query for eurusd failed")
             
     # 2. Query public API with strict timeout
-    import urllib.request
-    import json
     urls = [
         "https://open.er-api.com/v6/latest/EUR",
         "https://api.exchangerate-api.com/v4/latest/EUR"
@@ -47,8 +50,8 @@ def get_eurusd_rate(conn=None):
                     usd_rate = rates.get("USD")
                     if usd_rate is not None:
                         return Decimal(str(usd_rate))
-        except Exception as api_err:
-            logger.error(f"[PaperTrader] Public API call to {url} failed: {api_err}")
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ConnectionError, json.JSONDecodeError, UnicodeDecodeError, ValueError, Exception) as api_err:
+            logger.exception(f"[PaperTrader] Public API call to {url} failed")
             
     # 3. Static fallback
     logger.info("[PaperTrader] Using static fallback (1.08) for EUR/USD rate.")
@@ -74,8 +77,12 @@ class PaperTradingEngine:
             self.t212_client = Trading212Client(config)
             logger.info("[PaperTrader] Trading 212 API client successfully initialized.")
             self.t212_init_error = None
-        except Exception as e:
+        except ValueError as e:
             logger.info(f"[PaperTrader] Trading 212 credentials not configured or invalid, running in local-only mode: {e}")
+            self.t212_client = None
+            self.t212_init_error = str(e)
+        except Exception as e:
+            logger.exception("[PaperTrader] Unexpected error initializing Trading 212 Client")
             self.t212_client = None
             self.t212_init_error = str(e)
 
@@ -88,8 +95,12 @@ class PaperTradingEngine:
             self.bybit_client = BybitClient(bybit_config)
             logger.info("[PaperTrader] Bybit API client successfully initialized.")
             self.bybit_init_error = None
-        except Exception as e:
+        except ValueError as e:
             logger.info(f"[PaperTrader] Bybit credentials not configured or invalid: {e}")
+            self.bybit_client = None
+            self.bybit_init_error = str(e)
+        except Exception as e:
+            logger.exception("[PaperTrader] Unexpected error initializing Bybit Client")
             self.bybit_client = None
             self.bybit_init_error = str(e)
 
@@ -107,8 +118,8 @@ class PaperTradingEngine:
         try:
             with open(self.market_hours_path, 'r') as f:
                 return json.load(f)
-        except Exception as e:
-            logger.error(f"[PaperTrader] Error loading market hours: {e}")
+        except (FileNotFoundError, PermissionError, json.JSONDecodeError) as e:
+            logger.exception("[PaperTrader] Error loading market hours")
             return {}
 
     def is_market_open(self, asset):
@@ -119,8 +130,8 @@ class PaperTradingEngine:
         current_time = None
         try:
             current_time = datetime.now(dt.timezone.utc)
-        except Exception:
-            pass
+        except (ValueError, TypeError, OSError) as e:
+            logger.exception("[PaperTrader] Error getting current time")
         return is_market_open(asset, self.market_hours, current_time=current_time)
 
     def run_cycle(self):
@@ -146,7 +157,7 @@ class PaperTradingEngine:
                     if os.getenv("BYBIT_CONVERSION_ENABLED", "false").lower() == "true":
                         self.executor.run_conversion_pipeline(conn)
             except Exception as e:
-                logger.error(f"[PaperTrader] Error in run_cycle: {e}")
+                logger.exception("[PaperTrader] Error in run_cycle database operations")
         finally:
             self._cycle_lock.release()
 

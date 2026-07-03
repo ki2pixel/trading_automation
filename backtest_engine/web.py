@@ -7,12 +7,16 @@ from pathlib import Path
 import re
 import shutil
 import time
+import os
+import logging
+import traceback
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException as FastAPIHTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 import uvicorn
@@ -421,6 +425,25 @@ def _estimate_payload(payload: dict[str, Any], repo_root: Path) -> dict[str, Any
 
 
 def _api_error(message: str, status_code: int = 400) -> JSONResponse:
+    if status_code >= 500:
+        correlation_id = str(uuid4())
+        logger.exception(f"Internal server error: {message} | Reference: {correlation_id}")
+        is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+        is_debug = os.getenv("DEBUG", "false").lower() == "true"
+        if is_prod and not is_debug:
+            return JSONResponse(
+                {"error": f"An internal error occurred. Reference: {correlation_id}"},
+                status_code=status_code
+            )
+        else:
+            return JSONResponse(
+                {
+                    "error": message,
+                    "traceback": traceback.format_exc(),
+                    "correlation_id": correlation_id
+                },
+                status_code=status_code
+            )
     return JSONResponse({"error": message}, status_code=status_code)
 
 
@@ -878,6 +901,36 @@ def create_optimizer_app(
 
     app = FastAPI(title="Backtest Optimizer API", version="0.2.0")
     app.state.optimizer_store = store
+
+    logger = logging.getLogger("backtest_optimizer")
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        if isinstance(exc, (FastAPIHTTPException, StarletteHTTPException)):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail}
+            )
+        correlation_id = str(uuid4())
+        logger.exception(f"Unhandled exception occurred. Reference: {correlation_id} | Path: {request.url.path}")
+        
+        is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+        is_debug = os.getenv("DEBUG", "false").lower() == "true"
+        
+        if is_prod and not is_debug:
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"An internal error occurred. Reference: {correlation_id}"}
+            )
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": str(exc),
+                    "traceback": traceback.format_exc(),
+                    "correlation_id": correlation_id
+                }
+            )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:  # noqa: ARG001

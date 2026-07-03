@@ -1,5 +1,12 @@
 # Journal des Décisions
 
+## [2026-07-04 00:15:00] - Phase 4 Robustesse Backend validée (Paper Trading & Optimizer)
+- **Décision** : Sécurisation du backend de trading automation via 3 piliers :
+  1. **Exceptions Ciblées** : Remplacement des captures d'exceptions génériques (`except Exception`) par des captures typées spécifiques aux couches (DB : `psycopg2.Error`/`asyncpg.PostgresError`, Réseau : `urllib.error`/`requests.exceptions.RequestException`, Validation : `ValueError`/`KeyError`). Utilisation systématique de `logger.exception` pour conserver les stack traces. Création d'exceptions custom `SignalExecutionError` et `PortfolioUpdateError` pour les échecs d'affaires.
+  2. **Shielding en Production** : Implémentation du helper `safe_error_response` et configuration de gestionnaires d'exception globaux FastAPI. En production, les erreurs non gérées retournent un message générique masquant les détails techniques et fournissant un UUID de corrélation unique. La trace complète est logguée côté serveur associée à cet UUID. Les détails détaillés restent visibles en mode développement/DEBUG.
+  3. **Timeouts Explicites** : Centralisation de `NETWORK_TIMEOUT_DEFAULT = 10.0` dans `utils.py` et application stricte sur tous les appels réseau (Bybit, Trading 212, warm-up) pour prévenir les pannes et blocages silencieux.
+- **Justification** : Éliminer la fuite d'informations système et de structure de base de données en production, structurer la gestion d'erreurs pour une meilleure maintenabilité, et interdire les timeouts infinis par défaut sur les requêtes réseau externes.
+
 ## [2026-07-03 22:50:00] - Phase 1 Sécurité Critique validée (Paper Trading Backend)
 - **Décision** : Implémentation des 4 mesures de sécurité critiques de l'audit pour le backend Paper Trading FastAPI :
   1. **Séparation HMAC** : Utilisation d'une variable d'environnement `HMAC_SECRET` dédiée pour la signature de session (séparée du mot de passe utilisateur, auto-générée en dev/test, requise en prod).

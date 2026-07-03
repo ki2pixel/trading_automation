@@ -5,7 +5,9 @@ import time
 import base64
 import logging
 import secrets
-from fastapi import FastAPI
+import uuid
+import traceback
+from fastapi import FastAPI, HTTPException as FastAPIHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -15,6 +17,7 @@ import hashlib
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -273,6 +276,37 @@ app.add_middleware(
 
 # Include API endpoints
 app.include_router(paper_trading_router)
+
+def safe_error_response(exc: Exception, request: Request) -> JSONResponse:
+    correlation_id = str(uuid.uuid4())
+    logger.exception(f"Unhandled exception occurred. Reference: {correlation_id} | Path: {request.url.path}")
+    
+    is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+    is_debug = os.getenv("DEBUG", "false").lower() == "true"
+    
+    if is_prod and not is_debug:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"An internal error occurred. Reference: {correlation_id}"}
+        )
+    else:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(exc),
+                "traceback": traceback.format_exc(),
+                "correlation_id": correlation_id
+            }
+        )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, (FastAPIHTTPException, StarletteHTTPException)):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
+    return safe_error_response(exc, request)
 
 class LoginRequest(BaseModel):
     username: str

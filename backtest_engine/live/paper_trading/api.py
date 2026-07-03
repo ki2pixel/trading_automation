@@ -6,6 +6,7 @@ import collections
 import threading
 from datetime import timezone, datetime
 from decimal import Decimal
+import asyncpg
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -117,8 +118,8 @@ def load_market_hours():
     try:
         with open(MARKET_HOURS_PATH, 'r') as f:
             return json.load(f)
-    except Exception as e:
-        print(f"[API] Error loading market hours: {e}")
+    except (FileNotFoundError, json.JSONDecodeError, PermissionError) as e:
+        logger.exception("[API] Error loading market hours")
         return {}
 
 _market_hours = load_market_hours()
@@ -156,8 +157,9 @@ async def get_portfolio():
             return portfolio
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error fetching portfolio")
+        raise
 
 
 @router.get("/positions")
@@ -179,8 +181,9 @@ async def get_positions():
             ]
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error fetching positions")
+        raise
 
 
 @router.get("/transactions")
@@ -203,8 +206,9 @@ async def get_transactions():
             ]
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error fetching transactions")
+        raise
 
 
 @router.get("/evaluations")
@@ -256,8 +260,9 @@ async def get_evaluations(limit: int = 100, status: str | None = None, asset: st
             ]
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error fetching evaluations")
+        raise
 
 
 @router.get("/configs")
@@ -297,8 +302,9 @@ async def get_configs():
             return result
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error fetching configs")
+        raise
 
 
 @router.put("/configs/{config_id}")
@@ -336,8 +342,9 @@ async def update_config(config_id: int, payload: ConfigUpdate):
             return {"status": "success", "message": "Configuration updated"}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error updating config")
+        raise
 
 
 @router.get("/candles")
@@ -365,8 +372,9 @@ async def get_candles(ticker: str, limit: int = 1000):
             ]
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error fetching candles")
+        raise
 
 
 @router.get("/status/heartbeat")
@@ -410,8 +418,9 @@ async def get_heartbeat():
             return status_map
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error fetching heartbeat")
+        raise
 
 
 @router.post("/control/panic")
@@ -505,8 +514,9 @@ async def panic_close_all():
             return {"status": "success", "closed_positions_count": closed_count}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error executing panic close all")
+        raise
 
 
 @router.put("/configs/{config_id}/toggle")
@@ -526,8 +536,9 @@ async def toggle_config(config_id: int, payload: ConfigToggle):
             return {"status": "success", "message": f"Config active status set to {payload.is_active}"}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    except asyncpg.PostgresError as e:
+        logger.exception("[API] Database error toggling config")
+        raise
 
 
 @router.get("/logs/stream")

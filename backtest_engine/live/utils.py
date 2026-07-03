@@ -3,6 +3,8 @@ import json
 from datetime import datetime
 import datetime as dt
 
+NETWORK_TIMEOUT_DEFAULT = 10.0
+
 def is_crypto_asset(asset: str) -> bool:
     """
     Centralized utility to check if an asset is a cryptocurrency.

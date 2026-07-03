@@ -3,6 +3,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 from typing import Any, Dict, List, Optional
 from backtest_engine.live.trading212.config import Trading212Config
+from backtest_engine.live.utils import NETWORK_TIMEOUT_DEFAULT
 
 class Trading212Client:
     """HTTP client wrapper for the Trading 212 official REST API (Beta)."""
@@ -58,7 +59,7 @@ class Trading212Client:
                     headers=self.headers,
                     params=params,
                     json=json_data,
-                    timeout=30,
+                    timeout=NETWORK_TIMEOUT_DEFAULT,
                 )
                 
                 # Check for rate limiting responses

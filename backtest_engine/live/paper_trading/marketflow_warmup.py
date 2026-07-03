@@ -9,7 +9,7 @@ if not API_KEY:
 API_HOST = "marketflow-all-in-one-market-finance-api.p.rapidapi.com"
 URL = f"https://{API_HOST}/v2/chart/price"
 
-from backtest_engine.live.utils import TICKER_MAPPING
+from backtest_engine.live.utils import TICKER_MAPPING, NETWORK_TIMEOUT_DEFAULT
 from backtest_engine.live.connection import get_db_connection
 
 
@@ -21,7 +21,7 @@ def fetch_candles(mf_symbol, range_limit=1440):
     }
     
     try:
-        response = requests.get(URL, headers=headers, params=querystring, timeout=30)
+        response = requests.get(URL, headers=headers, params=querystring, timeout=NETWORK_TIMEOUT_DEFAULT)
         response.raise_for_status()
         data = response.json()
         

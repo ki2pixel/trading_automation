@@ -1,0 +1,20 @@
+Phase 4 — Robustness
+
+Objective: Secure the backend of trading_automation_v2 by reinforcing error management, eliminating leak of technical information in production, and configuring explicit network timeouts.
+
+Key Requirements:
+1. Specific Exceptions:
+   - Audit and replace generic `except Exception` blocks in backtest_engine/live/paper_trading/engine.py, api.py, and signal_executor.py with specific exception classes (e.g., ValueError, KeyError, ConnectionError, asyncpg.PostgresError, psycopg2.Error).
+   - Create custom business exceptions in backtest_engine/live/paper_trading/exceptions.py if needed (e.g., SignalExecutionError, PortfolioUpdateError).
+   - Ensure exceptions are logged with full stack traces using logger.exception() on the server side.
+
+2. Production Error Responses (Information Shielding):
+   - Implement `safe_error_response(exc, request)` as a helper function or middleware in backtest_engine/web.py and backtest_engine/live/paper_trading/api.py (or run_paper_trader.py).
+   - In production (when ENVIRONMENT=production or RENDER is set, and DEBUG!=true), intercept exceptions and return a generic user-friendly message with a unique correlation UUID: "An internal error occurred. Reference: {uuid}".
+   - In development (DEBUG=true or not in production), the error response can include the verbose detail/traceback.
+
+3. Explicit Network Timeouts:
+   - Audit all HTTP/external network calls in the codebase (requests, urllib, etc.).
+   - Centralize default timeout constant (e.g., NETWORK_TIMEOUT_DEFAULT = 10) in backtest_engine/live/utils.py.
+   - Configure explicit timeouts for all external HTTP requests (e.g., 10s for APIs, 30s for downloads).
+   - Ensure network errors (timeouts, connection failures) are gracefully caught and handled.

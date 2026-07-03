@@ -6,7 +6,10 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 import numpy as np
 
+import psycopg2
+import requests
 from backtest_engine.live.utils import is_crypto_asset, is_market_open
+from backtest_engine.live.paper_trading.exceptions import SignalExecutionError, PortfolioUpdateError
 
 logger = logging.getLogger("papertrader")
 
@@ -80,8 +83,8 @@ class SignalExecutor:
         if details is not None:
             try:
                 details_json = json.dumps(serialize_details(details))
-            except Exception as e:
-                logger.error(f"[PaperTrader] JSON serialization error for details: {e}")
+            except (TypeError, ValueError) as e:
+                logger.exception("[PaperTrader] JSON serialization error for details")
                 details_json = "{}"
 
         try:
@@ -98,11 +101,11 @@ class SignalExecutor:
                     fail_reason, details_json
                 ))
             conn.commit()
-        except Exception as e:
-            logger.error(f"[PaperTrader] Error logging evaluation: {e}")
+        except psycopg2.Error as e:
+            logger.exception("[PaperTrader] Error logging evaluation")
             try:
                 conn.rollback()
-            except Exception:
+            except psycopg2.Error:
                 pass
 
     def update_portfolio_nav(self, conn):
@@ -127,8 +130,8 @@ class SignalExecutor:
                                 "UPDATE paper_portfolio_balance SET cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'",
                                 (api_cash,)
                             )
-                    except Exception as api_err:
-                        logger.error(f"[PaperTrader] Failed to fetch account summary from Trading 212 API: {api_err}")
+                    except requests.exceptions.RequestException as api_err:
+                        logger.exception("[PaperTrader] Failed to fetch account summary from Trading 212 API")
 
                 # If Bybit Client is active, fetch real-time cash balance (USDC/USDT) and update DB
                 if self.bybit_client is not None:
@@ -146,8 +149,8 @@ class SignalExecutor:
                                 "UPDATE paper_portfolio_balance SET cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'",
                                 (bybit_balance,)
                             )
-                    except Exception as api_err:
-                        logger.error(f"[PaperTrader] Failed to fetch account summary from Bybit API: {api_err}")
+                    except requests.exceptions.RequestException as api_err:
+                        logger.exception("[PaperTrader] Failed to fetch account summary from Bybit API")
 
                 # Fetch cash and secured balances for both ecosystems
                 cur.execute("SELECT source, cash_balance, secured_balance FROM paper_portfolio_balance")
@@ -208,7 +211,7 @@ class SignalExecutor:
                                 if val is not None:
                                     redis_prices[ticker] = Decimal(str(val))
                         except Exception as redis_err:
-                            logger.error(f"[PaperTrader] Redis mget error: {redis_err}")
+                            logger.exception("[PaperTrader] Redis mget error")
 
                     # 2. Batch SQL fallback for tickers not found in Redis (single query)
                     missing_tickers = [t for t in tickers if t not in redis_prices]
@@ -262,9 +265,14 @@ class SignalExecutor:
                 cur.execute("UPDATE paper_portfolio_balance SET total_nav = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'", (t212_nav,))
                 cur.execute("UPDATE paper_portfolio_balance SET total_nav = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'", (bybit_nav,))
                 conn.commit()
-        except Exception as e:
-            logger.error(f"[PaperTrader] Error updating NAV: {e}")
+        except psycopg2.Error as e:
+            logger.exception("[PaperTrader] Database error updating NAV")
             conn.rollback()
+            raise PortfolioUpdateError("Database error updating NAV") from e
+        except Exception as e:
+            logger.exception("[PaperTrader] Unexpected error updating NAV")
+            conn.rollback()
+            raise PortfolioUpdateError("Unexpected error updating NAV") from e
 
     def evaluate_and_execute_strategies(self, conn):
         """
@@ -320,8 +328,8 @@ class SignalExecutor:
                     with conn.cursor() as cur:
                         cur.execute("UPDATE paper_strategy_configs SET run_status = 'waiting_data' WHERE id = %s", (config_id,))
                     conn.commit()
-                except Exception as e:
-                    logger.error(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
+                except psycopg2.Error as e:
+                    logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
                 self.log_evaluation(
                     conn, strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
@@ -368,8 +376,8 @@ class SignalExecutor:
                     with conn.cursor() as cur:
                         cur.execute("UPDATE paper_strategy_configs SET run_status = 'waiting_data' WHERE id = %s", (config_id,))
                     conn.commit()
-                except Exception as e:
-                    logger.error(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
+                except psycopg2.Error as e:
+                    logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
                 self.log_evaluation(
                     conn, strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
@@ -418,7 +426,7 @@ class SignalExecutor:
                 conn.commit()
                 
             except Exception as strat_err:
-                logger.error(f"[PaperTrader] Error running strategy {strategy_name} for {asset}: {strat_err}")
+                logger.exception(f"[PaperTrader] Error running strategy {strategy_name} for {asset}")
                 try:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -427,8 +435,8 @@ class SignalExecutor:
                             WHERE id = %s
                         """, (str(strat_err), config_id))
                     conn.commit()
-                except Exception as e:
-                    logger.error(f"[PaperTrader] Error updating run_status for config {config_id}: {e}")
+                except psycopg2.Error as e:
+                    logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
                 self.log_evaluation(
                     conn, strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
@@ -445,7 +453,7 @@ class SignalExecutor:
                     if redis_val is not None:
                         current_price = Decimal(str(redis_val))
                 except Exception as re:
-                    logger.error(f"[PaperTrader] Redis read error: {re}")
+                    logger.exception("[PaperTrader] Redis read error")
             if current_price is None:
                 with conn.cursor() as cur:
                     cur.execute("SELECT price FROM live_prices WHERE ticker = %s", (asset.lower(),))
@@ -601,8 +609,8 @@ class SignalExecutor:
                                 "indicator_values": last_closed_result.to_dict() if 'last_closed_result' in locals() else {}
                             }
                         )
-                    except Exception as db_err:
-                        logger.error(f"[PaperTrader] Database error executing BUY: {db_err}")
+                    except psycopg2.Error as db_err:
+                        logger.exception("[PaperTrader] Database error executing BUY")
                         conn.rollback()
                         self.log_evaluation(
                             conn, strategy_name, asset, timeframe, 
@@ -768,8 +776,8 @@ class SignalExecutor:
                                 "exit_reason": exit_reason
                             }
                         )
-                    except Exception as db_err:
-                        logger.error(f"[PaperTrader] Database error executing SELL: {db_err}")
+                    except psycopg2.Error as db_err:
+                        logger.exception("[PaperTrader] Database error executing SELL")
                         conn.rollback()
                         self.log_evaluation(
                             conn, strategy_name, asset, timeframe,
@@ -821,4 +829,4 @@ class SignalExecutor:
                 logger.info(f"[PaperTrader] Conversion result: {result.status.value} "
                             f"({result.qty_usdc} USDC)")
         except Exception as e:
-            logger.error(f"[PaperTrader] Conversion pipeline error: {e}")
+            logger.exception("[PaperTrader] Conversion pipeline error")

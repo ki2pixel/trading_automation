@@ -1,18 +1,17 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Livraison de la Phase 3 (Architecture & DRY).
-- Préparation de la Phase 4 (Tests Live & Mocking).
+- Aucun focus actif (Phase 4 terminée et validée).
 
 ## Prochaines Étapes
-- Mettre en place un plan de tests live avec mocks robustes pour la Phase 4.
-- Déployer l'ensemble des refactorings sur Render et Aiven.
-- Suivre les logs de production pour s'assurer qu'aucun bug n'apparaît.
+- Déployer l'ensemble des refactorings de Phase 1-4 sur les environnements de production (Render et Aiven/Valkey).
+- Surveiller les logs de production à la recherche des nouveaux UUID de corrélation en cas de problème.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-04 00:15:00] - Phase 4 (Robustesse) implémentée : Sécurisation du backend par le refactoring des captures d'exceptions (Value/KeyError, urllib.error, psycopg2.Error, asyncpg.PostgresError) avec logger.exception, création d'exceptions d'affaires (SignalExecutionError, PortfolioUpdateError), blindage des erreurs FastAPI en production via safe_error_response (UUID de corrélation unique sans fuite de détails techniques), et centralisation des timeouts réseau à 10s (Bybit, Trading 212, et warm-up). Création de tests unitaires complets avec Given/When/Then (9 nouveaux tests robustesse, 567 tests validés).
 - [2026-07-03 23:55:00] - Phase 3 (Architecture & DRY) implémentée : Refactoring des coureurs de stratégie via BaseStrategyRunner et BaseBrokerStrategyRunner (duplication réduite de >80%), centralisation de l'accès DB synchrone via get_sync_connection(), et séparation de la logique métier (NAV, ordres, signaux) d'engine.py vers SignalExecutor (engine.py réduit à 144 lignes). 558 tests passés avec succès.
 - [2026-07-03 23:35:00] - Phase 2 Performance & DB validée : Migration asynchrone des endpoints FastAPI vers asyncpg, résolution du pattern N+1 dans engine.py via Redis mget/SQL groupé, et bufferisation des écritures JSON de l'optimiseur. Installation de la dépendance asyncpg dans l'environnement local et passage de 548 tests unitaires avec succès.
 - [2026-07-03 22:50:00] - Phase 1 Sécurité Critique validée : Séparation de HMAC_SECRET, protection CSRF (Double Submit Cookie), validation Pydantic strict de `indicator_params` (modèle model_validator résistant aux injections), et en-têtes CORS/CSP/HSTS configurés (23 tests unitaires et d'intégration validés).
