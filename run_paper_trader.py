@@ -8,9 +8,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from contextlib import asynccontextmanager
+import hmac
+import hashlib
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from fastapi.responses import RedirectResponse, JSONResponse
+from pydantic import BaseModel
 
 # Import API router and engine
 from backtest_engine.live.paper_trading.api import router as paper_trading_router
@@ -39,52 +43,50 @@ if not PAPER_TRADER_PASSWORD and not is_testing:
 if is_testing and not PAPER_TRADER_PASSWORD:
     PAPER_TRADER_PASSWORD = "test_password"
 
-class BasicAuthMiddleware(BaseHTTPMiddleware):
+def create_session_token(username: str, expires: int, secret: str) -> str:
+    message = f"{username}:{expires}".encode("utf-8")
+    sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    return f"{username}:{expires}:{sig}"
+
+def verify_session_token(token: str, secret: str) -> bool:
+    try:
+        username, expires_str, sig = token.split(":", 2)
+        expires = int(expires_str)
+        if expires < time.time():
+            return False
+        message = f"{username}:{expires_str}".encode("utf-8")
+        expected_sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig, expected_sig)
+    except Exception:
+        return False
+
+class CookieSessionAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Normalize path to strip trailing slashes (except root '/')
         path = request.url.path
         if len(path) > 1 and path.endswith("/"):
             path = path.rstrip("/")
 
-        # Exclude public monitoring endpoints
-        if path in ("/health", "/keep-alive"):
+        # Exclude public monitoring endpoints, styles, and login page/endpoint
+        if path in ("/health", "/keep-alive", "/login.html", "/style.css", "/api/login"):
             return await call_next(request)
 
-        auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return Response(
-                content="Unauthorized: Missing credentials",
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Paper Trading Access"'}
-            )
-
-        try:
-            auth_type, credentials = auth_header.split(" ", 1)
-            if auth_type.lower() != "basic":
-                return Response(
-                    content="Unauthorized: Invalid authentication scheme",
-                    status_code=401,
-                    headers={"WWW-Authenticate": 'Basic realm="Paper Trading Access"'}
-                )
-
-            decoded = base64.b64decode(credentials).decode("utf-8")
-            username, password = decoded.split(":", 1)
-        except Exception:
-            return Response(
-                content="Unauthorized: Invalid credentials format",
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Paper Trading Access"'}
-            )
-
-        expected_user = os.getenv("PAPER_TRADER_USER", "admin")
+        session_token = request.cookies.get("paper_trader_session")
         expected_password = os.getenv("PAPER_TRADER_PASSWORD") or PAPER_TRADER_PASSWORD
 
-        if username != expected_user or password != expected_password:
-            return Response(
-                content="Unauthorized: Invalid username or password",
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Paper Trading Access"'}
-            )
+        authenticated = False
+        if session_token and expected_password:
+            authenticated = verify_session_token(session_token, expected_password)
+
+        if not authenticated:
+            # For API requests, return JSON 401
+            if path.startswith("/api/"):
+                return Response(
+                    content='{"detail":"Unauthorized"}',
+                    status_code=401,
+                    media_type="application/json"
+                )
+            # For pages, redirect to login
+            return RedirectResponse(url="/login.html", status_code=307)
 
         return await call_next(request)
 
@@ -140,11 +142,52 @@ async def lifespan(app: FastAPI):
 # Initialize app
 app = FastAPI(title="Paper Trading Dashboard API", lifespan=lifespan)
 
-# Add Basic Auth Middleware to protect dashboard and API endpoints
-app.add_middleware(BasicAuthMiddleware)
+# Add Cookie Session Auth Middleware to protect dashboard and API endpoints
+app.add_middleware(CookieSessionAuthMiddleware)
 
 # Include API endpoints
 app.include_router(paper_trading_router)
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/login")
+def login(payload: LoginRequest):
+    expected_user = os.getenv("PAPER_TRADER_USER", "admin")
+    expected_password = os.getenv("PAPER_TRADER_PASSWORD") or PAPER_TRADER_PASSWORD
+    
+    if payload.username != expected_user or payload.password != expected_password:
+        return JSONResponse(
+            content={"status": "error", "message": "Invalid username or password"},
+            status_code=401
+        )
+        
+    expires = int(time.time()) + 30 * 24 * 3600
+    token = create_session_token(payload.username, expires, expected_password)
+    
+    is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+    
+    response = JSONResponse(content={"status": "success", "message": "Logged in successfully"})
+    response.set_cookie(
+        key="paper_trader_session",
+        value=token,
+        max_age=30 * 24 * 3600,
+        expires=expires,
+        path="/",
+        domain=None,
+        secure=is_prod,
+        httponly=True,
+        samesite="lax"
+    )
+    return response
+
+@app.post("/api/logout")
+@app.get("/api/logout")
+def logout():
+    response = RedirectResponse(url="/login.html", status_code=307)
+    response.delete_cookie(key="paper_trader_session", path="/")
+    return response
 
 @app.get("/health")
 @app.head("/health")

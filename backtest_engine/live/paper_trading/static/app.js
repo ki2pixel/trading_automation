@@ -1,3 +1,13 @@
+// Global fetch interceptor to handle session expiration (401 Unauthorized)
+const originalFetch = window.fetch;
+window.fetch = async function(...args) {
+    const response = await originalFetch(...args);
+    if (response.status === 401) {
+        window.location.href = '/login.html';
+    }
+    return response;
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // Navigation Logic
     const navItems = document.querySelectorAll('.nav-item');
@@ -5,14 +15,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {
-            e.preventDefault();
             const targetId = item.getAttribute('data-target');
+            if (!targetId) return; // Allow normal link behavior (e.g. Logout)
+            
+            e.preventDefault();
             
             navItems.forEach(nav => nav.classList.remove('active'));
             item.classList.add('active');
 
             sections.forEach(sec => sec.classList.remove('active'));
-            document.getElementById(targetId).classList.add('active');
+            const targetSection = document.getElementById(targetId);
+            if (targetSection) {
+                targetSection.classList.add('active');
+            }
 
             // Immediate fetch on tab change
             if (targetId === 'dashboard') {
