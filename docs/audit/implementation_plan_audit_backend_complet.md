@@ -13,7 +13,7 @@
 | **Phase 1 — Sécurité Critique** | P0 Bloquant | §1.1, §1.2, §1.3, Checklist CORS/CSP | L | 5-7 jours | 🟢 Terminé |
 | **Phase 2 — Performance & DB** | P1 Haute | §3.2 (pool async), §3.2 (N+1), §3.2 (buffer I/O) | M | 3-5 jours | 🟢 Terminé |
 | **Phase 3 — Architecture & DRY** | P2 Moyen | §2.2 (BaseStrategyRunner), §2.2 (connexions DB), §2.2 (engine.py) | XL | 7-10 jours | 🟢 Terminé |
-| **Phase 4 — Robustesse** | P2 Moyen | §4.2 (exceptions), §4.2 (fuites info), §4.2 (timeouts réseau) | S | 2-3 jours | 🔴 À faire |
+| **Phase 4 — Robustesse** | P2 Moyen | §4.2 (exceptions), §4.2 (fuites info), §4.2 (timeouts réseau) | S | 2-3 jours | 🟢 Terminé |
 | **Phase 5 — Hygiène** | P2 Amélioration | §5.2 (dépendances), dette technique résiduelle | S | 1-2 jours | 🔴 À faire |
 | **Total** | | **14 items actifs** | | **18-27 jours** | |
 
@@ -236,25 +236,25 @@
   - [engine.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/engine.py)
   - [api.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/api.py)
 - **Actions** :
-  - [ ] Auditer tous les blocs `except Exception as e` avec `grep -rn "except Exception" backtest_engine/`
-  - [ ] Remplacer par des exceptions spécifiques : `ValueError`, `KeyError`, `FileNotFoundError`, `ConnectionError`, `asyncpg.PostgresError`, etc.
-  - [ ] Conserver un `except Exception` uniquement au niveau du middleware global FastAPI comme filet de sécurité
-  - [ ] Créer des exceptions métier custom si nécessaire : `SignalExecutionError`, `PortfolioUpdateError`
+  - [x] Auditer tous les blocs `except Exception as e` avec `grep -rn "except Exception" backtest_engine/`
+  - [x] Remplacer par des exceptions spécifiques : `ValueError`, `KeyError`, `FileNotFoundError`, `ConnectionError`, `asyncpg.PostgresError`, etc.
+  - [x] Conserver un `except Exception` uniquement au niveau du middleware global FastAPI comme filet de sécurité
+  - [x] Créer des exceptions métier custom si nécessaire : `SignalExecutionError`, `PortfolioUpdateError`
 - **Effort** : S (1 jour)
 
 ### Tâche 4.2 — Messages d'erreur production (§4.2 — Fuites d'informations)
 
 - **Criticité** : ⚠ MOYEN
 - **Fichiers impactés** :
-  - [web.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/web.py) (tous les `_api_error(str(exc), ...)`)
+  - [web.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/web.py) (tous les `_api_error(str(exc), ...)`)
   - [api.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/api.py)
 - **Actions** :
-  - [ ] Créer un helper `safe_error_response(exc, request)` qui :
+  - [x] Créer un helper `safe_error_response(exc, request)` qui :
     - Logge l'erreur complète côté serveur (`logger.exception(...)`)
     - Renvoie un message générique à l'utilisateur : `"An internal error occurred. Reference: {uuid}"`
     - Inclut un UUID de corrélation pour le debugging
-  - [ ] Remplacer tous les `_api_error(str(exc))` par le helper sécurisé
-  - [ ] Conditionner le mode verbose aux environnements de développement (`DEBUG=true`)
+  - [x] Remplacer tous les `_api_error(str(exc))` par le helper sécurisé
+  - [x] Conditionner le mode verbose aux environnements de développement (`DEBUG=true`)
 - **Effort** : S (0.5-1 jour)
 
 ### Tâche 4.3 — Timeouts réseau explicites (§4.2 — Absence timeouts)
@@ -264,10 +264,10 @@
   - [engine.py](file:///home/kidpixel/trading_automation_v2/backtest_engine/live/paper_trading/engine.py) (appels `urllib.request.urlopen`)
   - Tout appel HTTP externe dans le projet
 - **Actions** :
-  - [ ] Auditer tous les appels réseau : `grep -rn "urlopen\|requests\.\|httpx\.\|aiohttp" backtest_engine/`
-  - [ ] Ajouter un timeout explicite à chaque appel (recommandation : 10s pour les APIs, 30s pour les téléchargements)
-  - [ ] Centraliser les timeouts dans une constante ou la configuration (`utils.py` : `NETWORK_TIMEOUT_DEFAULT = 10`)
-  - [ ] Gérer proprement les `TimeoutError` et `ConnectionError`
+  - [x] Auditer tous les appels réseau : `grep -rn "urlopen\|requests\.\|httpx\.\|aiohttp" backtest_engine/`
+  - [x] Ajouter un timeout explicite à chaque appel (recommandation : 10s pour les APIs, 30s pour les téléchargements)
+  - [x] Centraliser les timeouts dans une constante ou la configuration (`utils.py` : `NETWORK_TIMEOUT_DEFAULT = 10`)
+  - [x] Gérer proprement les `TimeoutError` et `ConnectionError`
 
 > [!NOTE]
 > Les timeouts Redis ont déjà été traités dans le Sprint 1 (2026-07-03). Cette tâche concerne uniquement les appels HTTP externes.
@@ -276,11 +276,11 @@
 
 ### Critères de Complétion Phase 4
 
-- [ ] Aucun `except Exception` ne subsiste en dehors du middleware global
-- [ ] Aucune trace technique interne n'est exposée dans les réponses API en production
-- [ ] Tous les appels réseau ont un timeout explicite
-- [ ] Les exceptions métier custom sont définies et utilisées
-- [ ] Tests : vérifier qu'une erreur interne produit un message générique + UUID de corrélation
+- [x] Aucun `except Exception` ne subsiste en dehors du middleware global
+- [x] Aucune trace technique interne n'est exposée dans les réponses API en production
+- [x] Tous les appels réseau ont un timeout explicite
+- [x] Les exceptions métier custom sont définies et utilisées
+- [x] Tests : vérifier qu'une erreur interne produit un message générique + UUID de corrélation
 
 ---
 
