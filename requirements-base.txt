@@ -2,3 +2,5 @@ pandas>=2.3,<3
 numpy>=2.2,<3
 pyarrow>=24.0,<25
 fastparquet>=2026.3,<2027.0
+requests>=2.31,<3
+python-dotenv>=1.0,<2
