@@ -114,11 +114,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     """
     Double Submit Cookie pattern for CSRF protection.
 
-    Sets a `csrftoken` cookie (HttpOnly=False so JS can read it).
+    Sets a `csrftoken` cookie (HttpOnly=True so JS cannot read it directly).
     Verifies that mutating requests (POST/PUT/DELETE/PATCH) carry a
-    matching X-CSRFToken header. Login and logout are exempt.
+    matching X-CSRFToken header. Login, logout and csrf-token endpoints are exempt.
     """
-    EXEMPT_PATHS = frozenset({"/api/login", "/api/logout"})
+    EXEMPT_PATHS = frozenset({"/api/login", "/api/logout", "/api/csrf-token"})
     MUTATING_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 
     async def dispatch(self, request: Request, call_next):
@@ -161,7 +161,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 value=csrf_token,
                 max_age=30 * 24 * 3600,
                 path="/",
-                httponly=False,  # JS must read this cookie
+                httponly=True,  # JS cannot read this cookie directly
                 secure=is_prod,
                 samesite="lax"
             )
@@ -305,7 +305,22 @@ async def global_exception_handler(request: Request, exc: Exception):
             status_code=exc.status_code,
             content={"detail": exc.detail}
         )
-    return safe_error_response(exc, request)
+@app.get("/api/csrf-token")
+def get_csrf_token(request: Request, response: Response):
+    token = request.cookies.get("csrftoken")
+    if not token:
+        token = secrets.token_hex(32)
+        is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+        response.set_cookie(
+            key="csrftoken",
+            value=token,
+            max_age=30 * 24 * 3600,
+            path="/",
+            httponly=True,
+            secure=is_prod,
+            samesite="lax"
+        )
+    return {"csrf_token": token}
 
 class LoginRequest(BaseModel):
     username: str

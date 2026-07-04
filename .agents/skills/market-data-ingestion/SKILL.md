@@ -19,31 +19,55 @@ L'ingestion doit être résiliente (tolérance aux pannes réseau), conforme aux
 
 ## 3. Schémas de Référence (Patterns)
 
-### A. Gestion Résiliente des API REST (Rate Limiting)
+### A. Gestion Résiliente des API REST (Rate Limiting & Timeouts)
 ```python
 import asyncio
 import logging
 from typing import Optional, Dict, Any
+from httpx import HTTPStatusError, RequestError, TimeoutException
 
-async def fetch_with_backoff(url: str, max_retries: int = 5) -> Optional[Dict[str, Any]]:
+logger = logging.getLogger(__name__)
+
+async def fetch_with_backoff(client, url: str, max_retries: int = 5) -> Optional[Dict[str, Any]]:
     """
     Pattern obligatoire de backoff exponentiel pour l'ingestion.
-    Respecte les coding standards sur l'asynchronisme et la fiabilité.
+    Utilise des exceptions réseau explicites, respecte le timeout de 10s par défaut
+    et enregistre les traces de pile via logger.exception().
     """
     for attempt in range(max_retries):
         try:
-            # Remplacer par l'appel aiohttp réel
-            # response = await session.get(url)
-            # response.raise_for_status()
-            # return await response.json()
-            pass
-        except Exception as e:
+            # Appel HTTP asynchrone avec timeout explicite de 10s
+            response = await client.get(url, timeout=10.0)
+            response.raise_for_status()
+            return response.json()
+            
+        except TimeoutException as e:
             wait_time = 2 ** attempt
-            logging.warning(f"Échec de connexion API ({e}). Tentative {attempt+1}/{max_retries}. Attente {wait_time}s.")
+            logger.warning(f"Timeout lors du fetch sur {url} (Tentative {attempt+1}/{max_retries}). Réessai dans {wait_time}s. Erreur: {e}")
             await asyncio.sleep(wait_time)
             
-    logging.error(f"Échec critique de fetch_with_backoff sur {url} après {max_retries} tentatives.")
-    raise ConnectionError(f"API inaccessible: {url}")
+        except HTTPStatusError as e:
+            # Ne réessayer que pour les codes 5xx (serveur) ou 429 (rate limit)
+            if e.response.status_code == 429 or e.response.status_code >= 500:
+                wait_time = 2 ** attempt
+                logger.warning(f"Erreur HTTP {e.response.status_code} sur {url} (Tentative {attempt+1}/{max_retries}). Réessai dans {wait_time}s. Erreur: {e}")
+                await asyncio.sleep(wait_time)
+            else:
+                logger.exception(f"Erreur HTTP fatale {e.response.status_code} sur {url}. Pas de réessai.")
+                raise
+                
+        except RequestError as e:
+            wait_time = 2 ** attempt
+            logger.warning(f"Erreur réseau de transport sur {url} (Tentative {attempt+1}/{max_retries}). Réessai dans {wait_time}s. Erreur: {e}")
+            await asyncio.sleep(wait_time)
+            
+        except Exception as e:
+            # Capture de toute autre exception inattendue avec stacktrace complète
+            logger.exception(f"Erreur inattendue non gérée lors du fetch sur {url}")
+            raise
+            
+    logger.error(f"Échec critique de fetch_with_backoff sur {url} après {max_retries} tentatives.")
+    raise ConnectionError(f"API inaccessible: {url} après {max_retries} tentatives.")
 ```
 
 ### B. Déduplication et Nettoyage des Outliers (Pandas)

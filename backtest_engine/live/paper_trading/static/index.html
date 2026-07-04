@@ -184,7 +184,7 @@
                     <div class="table-header">
                         <h3>Open Positions</h3>
                     </div>
-                    <table class="data-table">
+                    <table class="data-table" role="table" aria-label="Open Positions">
                         <thead>
                             <tr>
                                 <th>Asset</th>
@@ -224,7 +224,7 @@
                             </label>
                         </div>
                     </div>
-                    <div class="console-body" id="console-output">
+                    <div class="console-body" id="console-output" role="log" aria-live="polite" aria-relevant="additions">
                         <div class="log-line info"><span class="log-time">[System]</span> Dashboard console loaded. Connecting to real-time log stream...</div>
                     </div>
                 </div>
@@ -236,7 +236,7 @@
                     <div class="table-header">
                         <h3>Strategy Configurations</h3>
                     </div>
-                    <table class="data-table">
+                    <table class="data-table" role="table" aria-label="Strategy Configurations">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -263,7 +263,7 @@
                     <div class="table-header">
                         <h3>Transaction History</h3>
                     </div>
-                    <table class="data-table">
+                    <table class="data-table" role="table" aria-label="Transaction History">
                         <thead>
                             <tr>
                                 <th>Time</th>
@@ -279,6 +279,11 @@
                             <!-- Populated by JS -->
                         </tbody>
                     </table>
+                    <div class="pagination-controls" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                        <button id="btn-tx-prev" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">&larr; Précédent</button>
+                        <span id="txt-tx-page" style="color: var(--text-muted); align-self: center; font-size: 0.9rem;">Page 1</span>
+                        <button id="btn-tx-next" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">Suivant &rarr;</button>
+                    </div>
                 </div>
             </section>
 
@@ -288,7 +293,7 @@
                     <div class="table-header">
                         <h3>Évaluations Récentes</h3>
                     </div>
-                    <table class="data-table">
+                    <table class="data-table" role="table" aria-label="Evaluations History">
                         <thead>
                             <tr>
                                 <th>Date/Heure</th>
@@ -305,6 +310,11 @@
                             <!-- Populated by JS -->
                         </tbody>
                     </table>
+                    <div class="pagination-controls" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                        <button id="btn-eval-prev" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">&larr; Précédent</button>
+                        <span id="txt-eval-page" style="color: var(--text-muted); align-self: center; font-size: 0.9rem;">Page 1</span>
+                        <button id="btn-eval-next" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">Suivant &rarr;</button>
+                    </div>
                 </div>
             </section>
         </main>
@@ -373,6 +383,7 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
+    <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -40,6 +40,9 @@ Stratégies axées sur la détection de structures de chandeliers ou la gestion 
 
 ## Configuration et Intégration
 
+### Classes de Base (Héritage)
+Pour réduire la duplication de code et standardiser le traitement des états, toutes les stratégies s'appuient sur le patron défini dans `BaseStrategyRunner` ou `BaseBrokerStrategyRunner`. Pour en savoir plus sur l'intégration et l'architecture de ces classes de base, consultez le guide technique dédié : **[Le Patron BaseStrategyRunner](strategy_base_runner.md)**.
+
 ### Fichiers de Configuration
 Chaque stratégie possède un fichier de configuration par défaut au format JSON dans le dossier `configs/strategies/` (ex : `hma_crossover.default.json`). Ce fichier définit :
 1.  **Les paramètres spécifiques** de l'indicateur (périodes, multiplicateurs, sources).

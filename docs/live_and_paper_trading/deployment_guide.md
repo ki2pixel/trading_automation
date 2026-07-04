@@ -41,6 +41,8 @@ Configurez les variables suivantes dans l'onglet **Environment** de vos services
 ### Moteur de Paper Trading (`run_paper_trader.py`)
 - `PAPER_TRADER_POLLING_INTERVAL`: `60` (fréquence de boucle du moteur en secondes).
 - `PORT`: `8081` (port d'écoute par défaut).
+- `PAPER_TRADER_PASSWORD`: Le mot de passe utilisateur requis pour se connecter à l'interface d'administration.
+- `HMAC_SECRET`: Le secret de signature des jetons HMAC (déclarez une clé hexadécimale forte d'au moins 32 octets).
 
 ### Identifiants API Trading 212
 - `T212_API_KEY_ID`: Votre identifiant de clé d'API Trading 212.
@@ -94,3 +96,19 @@ Le fichier [connection.py](file:///home/kidpixel/trading_automation_v2/backtest_
 ```
 
 Ce basculement transparent évite l'interruption de la boucle de Paper Trading et prévient le crash des exécutions lors des pics de volatilité.
+
+---
+
+## 5. Gestion des Dépendances et Images Docker
+
+Pour optimiser les ressources lors du déploiement en production et réduire la taille de l'image Docker finale, le fichier global unique des dépendances a été partitionné en trois profils distincts :
+*   **[requirements-base.txt](file:///home/kidpixel/trading_automation_v2/requirements-base.txt)** : Contient les paquets d'infrastructure et d'accès aux données partagés (Pandas, Numpy, Ruff, Pydantic v2).
+*   **[requirements-backtest.txt](file:///home/kidpixel/trading_automation_v2/requirements-backtest.txt)** : Regroupe les bibliothèques lourdes requises pour la simulation locale et l'optimisation (Optuna, Scikit-learn, Scipy, Matplotlib, VectorBT).
+*   **[requirements-live.txt](file:///home/kidpixel/trading_automation_v2/requirements-live.txt)** : Cible exclusivement l'exécution en temps réel (FastAPI, Uvicorn, asyncpg, Redis).
+
+### Choix de déploiement Render
+Lors du déploiement sur Render, configurez le script d'installation (`Build Command`) pour installer uniquement les dépendances nécessaires au moteur d'exécution en direct, ce qui réduit de plus de 60% la taille de l'environnement virtuel installé :
+```bash
+pip install -r requirements-base.txt -r requirements-live.txt
+```
+Cette isolation évite de charger les paquets de calcul scientifique (VectorBT, Optuna) inutilisés en production, accélérant le temps de démarrage et de déploiement de l'instance.

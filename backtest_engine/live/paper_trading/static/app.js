@@ -1,28 +1,41 @@
-// Helper to read CSRF token from cookie
-function getCsrfToken() {
-    const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
-    return match ? decodeURIComponent(match[1]) : '';
-}
+import { 
+    getPortfolio, 
+    getPositions, 
+    getConfigs, 
+    updateConfig, 
+    toggleConfig, 
+    getTransactions, 
+    getEvaluations, 
+    getHeartbeat, 
+    executePanic 
+} from './js/api.js';
 
-// Global fetch interceptor to handle session expiration (401) and CSRF tokens
-const originalFetch = window.fetch;
-window.fetch = async function(url, options = {}) {
-    // Automatically add CSRF token for mutating requests
-    const method = (options.method || 'GET').toUpperCase();
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-        options.headers = options.headers || {};
-        if (options.headers instanceof Headers) {
-            options.headers.set('X-CSRFToken', getCsrfToken());
-        } else {
-            options.headers['X-CSRFToken'] = getCsrfToken();
-        }
-    }
-    const response = await originalFetch(url, options);
-    if (response.status === 401) {
-        window.location.href = '/login.html';
-    }
-    return response;
-};
+import { 
+    formatCurrency, 
+    formatPercent, 
+    formatUSDT, 
+    showToast, 
+    showError, 
+    setButtonLoading 
+} from './js/ui.js';
+
+import { 
+    loadChart, 
+    invalidateChartCache 
+} from './js/chart.js';
+
+// Local state for pagination and polling checks
+let txPage = 1;
+const txLimit = 50;
+let evalPage = 1;
+const evalLimit = 100;
+
+let lastTransactionTime = null;
+let lastEvaluationTime = null;
+let lastPriceTime = null;
+
+let cachedConfigs = null;
+let cachedTransactions = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     // Navigation Logic
@@ -59,16 +72,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Formatting utilities
-    const formatCurrency = (val) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(val);
-    const formatPercent = (val) => new Intl.NumberFormat('fr-FR', { style: 'percent', minimumFractionDigits: 2 }).format(val);
-    const formatUSDT = (val) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) + ' USDT';
-
-    // Data Fetching
+    // Data Fetching and DOM Rendering Functions
     const fetchPortfolio = async () => {
         try {
-            const res = await fetch('/api/portfolio');
-            const data = await res.json();
+            const data = await getPortfolio();
             
             // Stocks (Trading 212)
             const t212 = data.trading212 || { total_nav: 0, cash_balance: 0, allocated_balance: 0 };
@@ -82,13 +89,12 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('kpi-bybit-cash').textContent = formatUSDT(bybit.cash_balance);
             document.getElementById('kpi-bybit-allocated').textContent = formatUSDT(bybit.allocated_balance);
             document.getElementById('kpi-bybit-secured').textContent = formatCurrency(bybit.secured_balance || 0);
-        } catch (e) { console.error('Error fetching portfolio', e); }
+        } catch (e) { console.error('Error rendering portfolio', e); }
     };
 
     const fetchPositions = async () => {
         try {
-            const res = await fetch('/api/positions');
-            const data = await res.json();
+            const data = await getPositions();
             const tbody = document.getElementById('positions-body');
             tbody.innerHTML = '';
             let totalT212Pnl = 0;
@@ -129,13 +135,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const bybitPnlEl = document.getElementById('kpi-bybit-pnl');
             bybitPnlEl.textContent = formatUSDT(totalBybitPnl);
             bybitPnlEl.className = 'kpi-value ' + (totalBybitPnl >= 0 ? 'positive' : 'negative');
-        } catch (e) { console.error('Error fetching positions', e); }
+        } catch (e) { console.error('Error rendering positions', e); }
     };
 
     const fetchConfigs = async () => {
         try {
-            const res = await fetch('/api/configs');
-            const data = await res.json();
+            let data;
+            if (cachedConfigs) {
+                data = cachedConfigs;
+            } else {
+                data = await getConfigs();
+                cachedConfigs = data;
+            }
+            
             const tbody = document.getElementById('configs-body');
             tbody.innerHTML = '';
 
@@ -178,17 +190,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${formatCurrency(conf.initial_capital)}</td>
                     <td>${formatCurrency(conf.initial_capital_bucket)}</td>
                     <td>${formatCurrency(conf.max_capital_bucket)}</td>
-                    <td><div style="display: flex; align-items: center; gap: 8px;">${toggleSwitch} ${statusBadge}</div></td>
+                    <td>${conf.asset.toLowerCase().endsWith('usdt') ? formatUSDT(conf.max_entry_price) : formatCurrency(conf.max_entry_price)}</td>
+                    <td>${statusBadge}</td>
+                    <td>${toggleSwitch}</td>
                     <td><button class="btn-edit" data-conf='${JSON.stringify(conf)}'>Edit</button></td>
                 `;
                 tbody.appendChild(tr);
             });
 
-            // Populate asset selector dynamically if not loaded yet
+            // Bind Asset Select Dropdown if empty
             const selector = document.getElementById('asset-selector');
-            if (selector && selector.options.length <= 1 && data.length > 0) {
-                const uniqueAssets = [...new Set(data.map(conf => conf.asset))].sort();
-                uniqueAssets.forEach(asset => {
+            if (selector && selector.options.length <= 1) {
+                const assets = [...new Set(data.map(c => c.asset))];
+                assets.forEach(asset => {
                     const opt = document.createElement('option');
                     opt.value = asset;
                     opt.textContent = asset;
@@ -203,21 +217,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     const isActive = e.target.checked;
                     
                     try {
-                        const res = await fetch(`/api/configs/${id}/toggle`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ is_active: isActive })
-                        });
-                        
+                        const res = await toggleConfig(id, isActive);
                         if (res.ok) {
+                            cachedConfigs = null; // Invalidate cache
                             fetchConfigs(); // reload statuses
                         } else {
-                            alert('Failed to toggle strategy active status.');
+                            showError('Impossible de modifier le statut de la stratégie.', `Status code: ${res.status}`);
                             e.target.checked = !isActive;
                         }
                     } catch(err) {
-                        console.error("Toggle strategy error", err);
-                        alert('Error toggling strategy status.');
+                        showError('Une erreur est survenue lors de la modification du statut de la stratégie.', err);
                         e.target.checked = !isActive;
                     }
                 });
@@ -230,13 +239,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     openEditModal(conf);
                 });
             });
-        } catch (e) { console.error('Error fetching configs', e); }
+        } catch (e) { console.error('Error rendering configs', e); }
     };
 
     const fetchTransactions = async () => {
         try {
-            const res = await fetch('/api/transactions');
-            const data = await res.json();
+            const data = await getTransactions(txLimit, (txPage - 1) * txLimit);
             const tbody = document.getElementById('transactions-body');
             tbody.innerHTML = '';
 
@@ -259,13 +267,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     tbody.appendChild(tr);
                 });
             }
-        } catch (e) { console.error('Error fetching transactions', e); }
+            
+            // Update UI pagination controls
+            const prevBtn = document.getElementById('btn-tx-prev');
+            const nextBtn = document.getElementById('btn-tx-next');
+            const pageTxt = document.getElementById('txt-tx-page');
+            
+            if (prevBtn) prevBtn.disabled = txPage === 1;
+            if (nextBtn) nextBtn.disabled = data.length < txLimit;
+            if (pageTxt) pageTxt.textContent = `Page ${txPage}`;
+        } catch (e) { console.error('Error rendering transactions', e); }
     };
 
     const fetchEvaluations = async () => {
         try {
-            const res = await fetch('/api/evaluations?limit=100');
-            const data = await res.json();
+            const data = await getEvaluations(evalLimit, (evalPage - 1) * evalLimit);
             const tbody = document.getElementById('evaluations-body');
             tbody.innerHTML = '';
 
@@ -322,7 +338,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     tbody.appendChild(tr);
                 });
             }
-        } catch (e) { console.error('Error fetching evaluations', e); }
+
+            // Update UI pagination controls
+            const prevBtn = document.getElementById('btn-eval-prev');
+            const nextBtn = document.getElementById('btn-eval-next');
+            const pageTxt = document.getElementById('txt-eval-page');
+            
+            if (prevBtn) prevBtn.disabled = evalPage === 1;
+            if (nextBtn) nextBtn.disabled = data.length < evalLimit;
+            if (pageTxt) pageTxt.textContent = `Page ${evalPage}`;
+        } catch (e) { console.error('Error rendering evaluations', e); }
     };
 
     // Modal Logic for Config Editing
@@ -347,48 +372,75 @@ document.addEventListener('DOMContentLoaded', () => {
     form.onsubmit = async (e) => {
         e.preventDefault();
         const id = document.getElementById('edit-id').value;
+        const submitBtn = form.querySelector('button[type="submit"]');
         
         let indicatorParams = {};
         try {
             const rawVal = document.getElementById('edit-indicator-params').value.trim();
             indicatorParams = rawVal ? JSON.parse(rawVal) : {};
         } catch (err) {
-            alert('Invalid JSON in Indicator Parameters.');
+            showToast('Format JSON invalide dans les paramètres d\'indicateur.', 'error');
+            return;
+        }
+
+        const initialCap = parseFloat(document.getElementById('edit-initial-cap').value);
+        const initialBucket = parseFloat(document.getElementById('edit-initial-bucket').value);
+        const maxBucket = parseFloat(document.getElementById('edit-max-bucket').value);
+        const maxEntry = parseFloat(document.getElementById('edit-max-entry').value);
+
+        if (isNaN(initialCap) || initialCap <= 0) {
+            showToast('Le capital initial doit être un nombre supérieur à 0.', 'error');
+            return;
+        }
+        if (isNaN(initialBucket) || initialBucket <= 0) {
+            showToast('Le bucket de capital initial doit être un nombre supérieur à 0.', 'error');
+            return;
+        }
+        if (isNaN(maxBucket) || maxBucket <= 0) {
+            showToast('Le bucket de capital maximum doit être un nombre supérieur à 0.', 'error');
+            return;
+        }
+        if (isNaN(maxEntry) || maxEntry <= 0) {
+            showToast('Le prix d\'entrée maximum doit être un nombre supérieur à 0.', 'error');
+            return;
+        }
+        if (initialBucket > maxBucket) {
+            showToast('Le bucket de capital initial ne peut pas dépasser le bucket maximum.', 'error');
             return;
         }
 
         const payload = {
-            initial_capital: parseFloat(document.getElementById('edit-initial-cap').value),
-            initial_capital_bucket: parseFloat(document.getElementById('edit-initial-bucket').value),
-            max_capital_bucket: parseFloat(document.getElementById('edit-max-bucket').value),
-            max_entry_price: parseFloat(document.getElementById('edit-max-entry').value),
+            initial_capital: initialCap,
+            initial_capital_bucket: initialBucket,
+            max_capital_bucket: maxBucket,
+            max_entry_price: maxEntry,
             is_active: document.getElementById('edit-is-active').checked,
             indicator_params: indicatorParams
         };
 
+        setButtonLoading(submitBtn, true, 'Saving...');
+
         try {
-            const res = await fetch(`/api/configs/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            const res = await updateConfig(id, payload);
             if (res.ok) {
                 modal.style.display = 'none';
+                showToast('Configuration mise à jour avec succès.', 'success');
+                cachedConfigs = null;
                 fetchConfigs();
             } else {
-                alert('Failed to update configuration.');
+                showError('Impossible de mettre à jour la configuration.', `Status code: ${res.status}`);
             }
-        } catch (e) {
-            console.error(e);
-            alert('Error updating configuration.');
+        } catch (err) {
+            showError('Une erreur est survenue lors de la mise à jour de la configuration.', err);
+        } finally {
+            setButtonLoading(submitBtn, false);
         }
     };
 
     // Heartbeat Status polling
     const fetchHeartbeat = async () => {
         try {
-            const res = await fetch('/api/status/heartbeat');
-            const data = await res.json();
+            const data = await getHeartbeat();
             
             ['trading212', 'bybit'].forEach(source => {
                 const hbDot = document.getElementById(`hb-${source}`);
@@ -409,8 +461,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             });
+
+            // Return dirty flags comparing timestamps
+            const changed = {
+                transactions: data.last_transaction_time !== lastTransactionTime,
+                evaluations: data.last_evaluation_time !== lastEvaluationTime,
+                price: data.last_price_time !== lastPriceTime
+            };
+
+            // Update cache timestamps
+            lastTransactionTime = data.last_transaction_time;
+            lastEvaluationTime = data.last_evaluation_time;
+            lastPriceTime = data.last_price_time;
+
+            return changed;
         } catch(e) {
             console.error("Error fetching heartbeat status", e);
+            return { transactions: true, evaluations: true, price: true };
         }
     };
 
@@ -449,15 +516,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         executeBtn.addEventListener('click', async () => {
-            executeBtn.disabled = true;
-            executeBtn.textContent = 'LIQUIDATING...';
+            setButtonLoading(executeBtn, true, 'LIQUIDATING...');
             
             try {
-                const res = await fetch('/api/control/panic', { method: 'POST' });
+                const res = await executePanic();
                 if (res.ok) {
                     const data = await res.json();
-                    alert(`Panic Close Success! Closed ${data.closed_positions_count} open positions.`);
+                    showToast(`Liquidation d'urgence réussie ! ${data.closed_positions_count} positions fermées.`, 'success');
                     closeModal();
+                    
+                    // Invalidate caches
+                    cachedTransactions = null;
+                    cachedConfigs = null;
+                    lastTransactionTime = null; // Force dirty next check
+                    invalidateChartCache();
                     
                     // Reload all metrics
                     fetchPortfolio();
@@ -469,13 +541,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         loadChart(selector.value);
                     }
                 } else {
-                    alert('Panic close failed. Check server logs.');
+                    showError('Échec de la liquidation d\'urgence.', `Status code: ${res.status}`);
                 }
             } catch(err) {
-                console.error("Panic close request error", err);
-                alert('An error occurred during panic liquidation.');
+                showError('Une erreur est survenue lors de la liquidation d\'urgence.', err);
             } finally {
-                executeBtn.textContent = 'EXECUTE LIQUIDATION';
+                setButtonLoading(executeBtn, false);
                 checkConfirmation();
             }
         });
@@ -488,24 +559,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const filterWarn = document.getElementById('filter-warn');
         const filterError = document.getElementById('filter-error');
         const autoscrollCheckbox = document.getElementById('autoscroll-logs');
-        const clearBtn = document.getElementById('clear-console-btn');
-        
-        clearBtn.addEventListener('click', () => {
-            consoleOutput.innerHTML = '<div class="log-line info"><span class="log-time">[System]</span> Console cleared.</div>';
-        });
         
         const applyFilters = () => {
-            const showInfo = filterInfo.checked;
-            const showWarn = filterWarn.checked;
-            const showError = filterError.checked;
-            
-            document.querySelectorAll('.log-line').forEach(line => {
+            const lines = consoleOutput.querySelectorAll('.log-line');
+            lines.forEach(line => {
                 if (line.classList.contains('info')) {
-                    line.style.display = showInfo ? 'block' : 'none';
+                    line.style.display = filterInfo.checked ? 'block' : 'none';
                 } else if (line.classList.contains('warning')) {
-                    line.style.display = showWarn ? 'block' : 'none';
+                    line.style.display = filterWarn.checked ? 'block' : 'none';
                 } else if (line.classList.contains('error')) {
-                    line.style.display = showError ? 'block' : 'none';
+                    line.style.display = filterError.checked ? 'block' : 'none';
                 }
             });
         };
@@ -526,7 +589,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const line = document.createElement('div');
                 line.className = `log-line ${levelClass}`;
-                line.innerHTML = `<span class="log-time">[${timeStr}]</span> ${data.message}`;
+                
+                const timeSpan = document.createElement('span');
+                timeSpan.className = 'log-time';
+                timeSpan.textContent = `[${timeStr}] `;
+                line.appendChild(timeSpan);
+                
+                const msgText = document.createTextNode(data.message);
+                line.appendChild(msgText);
                 
                 // Hide if unchecked
                 if (levelClass === 'info' && !filterInfo.checked) line.style.display = 'none';
@@ -554,280 +624,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     };
 
-    // Interactive Lightweight Charts and Metrics Engine
-    let currentChart = null;
-    let candleSeries = null;
-    let equitySeries = null;
-    let bhSeries = null;
-
-    const loadChart = async (ticker) => {
-        if (!ticker) {
-            document.getElementById('analytics-grid').style.display = 'none';
-            document.getElementById('chart-placeholder').style.display = 'flex';
-            document.getElementById('price-chart').style.display = 'none';
-            return;
-        }
-        
-        document.getElementById('chart-placeholder').style.display = 'none';
-        document.getElementById('price-chart').style.display = 'block';
-        document.getElementById('analytics-grid').style.display = 'grid';
-        
-        const chartContainer = document.getElementById('price-chart');
-        if (currentChart) {
-            try {
-                currentChart.remove();
-            } catch(e) { console.error("Error destroying chart", e); }
-            currentChart = null;
-        }
-        
-        // Init Lightweight Chart
-        currentChart = LightweightCharts.createChart(chartContainer, {
-            layout: {
-                backgroundColor: '#070a13',
-                textColor: '#64748b',
-                fontSize: 11,
-                fontFamily: 'Inter, sans-serif',
-            },
-            grid: {
-                vertLines: { color: 'rgba(255, 255, 255, 0.02)' },
-                horzLines: { color: 'rgba(255, 255, 255, 0.02)' },
-            },
-            crosshair: {
-                mode: LightweightCharts.CrosshairMode.Normal,
-            },
-            rightPriceScale: {
-                borderColor: 'rgba(255, 255, 255, 0.08)',
-                autoScale: true,
-            },
-            timeScale: {
-                borderColor: 'rgba(255, 255, 255, 0.08)',
-                timeVisible: true,
-                secondsVisible: false,
-            },
-        });
-        
-        // Candle series on the right price scale
-        candleSeries = currentChart.addCandlestickSeries({
-            upColor: '#10b981',
-            downColor: '#ef4444',
-            borderUpColor: '#10b981',
-            borderDownColor: '#ef4444',
-            wickUpColor: '#10b981',
-            wickDownColor: '#ef4444',
-        });
-        
-        // Account Equity curves on the left price scale
-        equitySeries = currentChart.addLineSeries({
-            color: '#3b82f6',
-            lineWidth: 2,
-            priceScaleId: 'equity',
-            title: 'Strategy NAV',
-        });
-        
-        bhSeries = currentChart.addLineSeries({
-            color: '#8b5cf6',
-            lineWidth: 1.5,
-            priceScaleId: 'equity',
-            title: 'Buy & Hold NAV',
-        });
-        
-        currentChart.priceScale('equity').applyOptions({
-            side: 'left',
-            autoScale: true,
-            borderColor: 'rgba(255, 255, 255, 0.08)',
-        });
-        
-        try {
-            // Fetch candles
-            const candlesRes = await fetch(`/api/candles?ticker=${ticker}`);
-            const candlesData = await candlesRes.json();
-            
-            if (candlesData.length === 0) {
-                console.warn("No candle data fetched for active asset", ticker);
-                return;
-            }
-            
-            candleSeries.setData(candlesData);
-            
-            // Fetch Transactions for marker and metrics overlays
-            const txRes = await fetch('/api/transactions');
-            const txData = await txRes.json();
-            
-            // Fetch Configs to read Initial Capital
-            const configsRes = await fetch('/api/configs');
-            const configsData = await configsRes.json();
-            
-            const activeConfig = configsData.find(c => c.asset.toLowerCase() === ticker.toLowerCase());
-            const initialCapital = activeConfig ? activeConfig.initial_capital : 1000.0;
-            
-            // Filter transactions matching this asset
-            const assetTxs = txData.filter(tx => tx.asset.toLowerCase() === ticker.toLowerCase());
-            
-            // Sort ascending chronologically
-            const sortedTxs = [...assetTxs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            
-            // FIFO closed trade analysis
-            const buyQueue = [];
-            const closedTrades = [];
-            
-            sortedTxs.forEach(tx => {
-                if (tx.action === 'BUY') {
-                    buyQueue.push({ qty: tx.qty, price: tx.price });
-                } else if (tx.action === 'SELL') {
-                    let sellQty = tx.qty;
-                    let totalBuyCost = 0;
-                    
-                    while (sellQty > 0 && buyQueue.length > 0) {
-                        const oldestBuy = buyQueue[0];
-                        if (oldestBuy.qty <= sellQty) {
-                            totalBuyCost += oldestBuy.qty * oldestBuy.price;
-                            sellQty -= oldestBuy.qty;
-                            buyQueue.shift();
-                        } else {
-                            totalBuyCost += sellQty * oldestBuy.price;
-                            oldestBuy.qty -= sellQty;
-                            sellQty = 0;
-                        }
-                    }
-                    
-                    const sellRevenue = tx.total_value; // Net revenue
-                    const pnl = sellRevenue - totalBuyCost;
-                    closedTrades.push({ pnl: pnl, costBasis: totalBuyCost });
-                }
-            });
-            
-            // Compute KPI metrics
-            let wins = 0;
-            let totalProfit = 0;
-            let totalLosses = 0;
-            let netProfit = 0;
-            
-            closedTrades.forEach(t => {
-                netProfit += t.pnl;
-                if (t.pnl > 0) {
-                    wins++;
-                    totalProfit += t.pnl;
-                } else {
-                    totalLosses += Math.abs(t.pnl);
-                }
-            });
-            
-            const totalTrades = closedTrades.length;
-            const winRate = totalTrades > 0 ? (wins / totalTrades) : 0;
-            const profitFactor = totalLosses > 0 ? (totalProfit / totalLosses) : (totalProfit > 0 ? Infinity : 1.0);
-            
-            // Reconstruct Account Value Curves over candle intervals
-            let cash = initialCapital;
-            let qty = 0;
-            let txIdx = 0;
-            
-            const strategyCurve = [];
-            const buyHoldCurve = [];
-            
-            let firstBuyPrice = null;
-            if (sortedTxs.length > 0 && sortedTxs[0].action === 'BUY') {
-                firstBuyPrice = sortedTxs[0].price;
-            }
-            
-            candlesData.forEach(c => {
-                const candleTimeMs = c.time * 1000;
-                
-                // Process any transactions that occurred up to this candle's timestamp
-                while (txIdx < sortedTxs.length && new Date(sortedTxs[txIdx].timestamp).getTime() <= candleTimeMs) {
-                    const tx = sortedTxs[txIdx];
-                    if (tx.action === 'BUY') {
-                        cash -= tx.total_value;
-                        qty += tx.qty;
-                        if (firstBuyPrice === null) firstBuyPrice = tx.price;
-                    } else if (tx.action === 'SELL') {
-                        cash += tx.total_value;
-                        qty -= tx.qty;
-                    }
-                    txIdx++;
-                }
-                
-                const currentNav = cash + qty * c.close;
-                strategyCurve.push({ time: c.time, value: currentNav });
-                
-                let bhNav = initialCapital;
-                if (firstBuyPrice !== null && firstBuyPrice > 0) {
-                    bhNav = initialCapital * (c.close / firstBuyPrice);
-                }
-                buyHoldCurve.push({ time: c.time, value: bhNav });
-            });
-            
-            equitySeries.setData(strategyCurve);
-            bhSeries.setData(buyHoldCurve);
-            
-            // Calculate Drawdowns
-            let peak = -Infinity;
-            let maxDrawdown = 0;
-            let currentDrawdown = 0;
-            
-            strategyCurve.forEach(pt => {
-                if (pt.value > peak) peak = pt.value;
-                const dd = peak > 0 ? ((peak - pt.value) / peak) * 100 : 0;
-                if (dd > maxDrawdown) maxDrawdown = dd;
-                currentDrawdown = dd;
-            });
-            
-            // Render KPI metrics cards
-            document.getElementById('analytic-winrate').textContent = formatPercent(winRate);
-            document.getElementById('analytic-profitfactor').textContent = profitFactor === Infinity ? '∞' : profitFactor.toFixed(2);
-            document.getElementById('analytic-maxdd').textContent = maxDrawdown.toFixed(2) + '%';
-            document.getElementById('analytic-currentdd').textContent = currentDrawdown.toFixed(2) + '%';
-            
-            const isCrypto = ticker.toLowerCase().endsWith('usdt');
-            const totalProfitEl = document.getElementById('analytic-totalprofit');
-            totalProfitEl.textContent = isCrypto ? formatUSDT(netProfit) : formatCurrency(netProfit);
-            totalProfitEl.className = 'kpi-value ' + (netProfit >= 0 ? 'positive' : 'negative');
-            
-            document.getElementById('analytic-tradescount').textContent = totalTrades;
-            
-            // Add BUY / SELL Markers to chart
-            const markers = [];
-            sortedTxs.forEach(tx => {
-                const txTimeSecs = Math.floor(new Date(tx.timestamp).getTime() / 1000);
-                const candleMinSecs = Math.floor(txTimeSecs / 60) * 60; // align to minute candle
-                
-                if (tx.action === 'BUY') {
-                    markers.push({
-                        time: candleMinSecs,
-                        position: 'belowBar',
-                        color: '#10b981',
-                        shape: 'arrowUp',
-                        text: 'BUY'
-                    });
-                } else if (tx.action === 'SELL') {
-                    markers.push({
-                        time: candleMinSecs,
-                        position: 'aboveBar',
-                        color: '#ef4444',
-                        shape: 'arrowDown',
-                        text: 'SELL'
-                    });
-                }
-            });
-            
-            markers.sort((a, b) => a.time - b.time);
-            
-            // Deduplicate markers on matching timestamps
-            const uniqueMarkers = [];
-            const seenTimes = new Set();
-            markers.forEach(m => {
-                if (!seenTimes.has(m.time)) {
-                    seenTimes.add(m.time);
-                    uniqueMarkers.push(m);
-                }
-            });
-            
-            candleSeries.setMarkers(uniqueMarkers);
-            
-        } catch(err) {
-            console.error("Error generating chart overlays", err);
-        }
-    };
-
     // Initialize Dashboard
     const init = () => {
         fetchPortfolio();
@@ -844,25 +640,69 @@ document.addEventListener('DOMContentLoaded', () => {
         // Dropdown Asset Selection event
         const selector = document.getElementById('asset-selector');
         selector.addEventListener('change', (e) => {
-            loadChart(e.target.value);
+            loadChart(e.target.value, true);
         });
+
+        // Bind Pagination Button Clicks
+        const txPrev = document.getElementById('btn-tx-prev');
+        const txNext = document.getElementById('btn-tx-next');
+        const evalPrev = document.getElementById('btn-eval-prev');
+        const evalNext = document.getElementById('btn-eval-next');
+        
+        if (txPrev) {
+            txPrev.addEventListener('click', () => {
+                if (txPage > 1) {
+                    txPage--;
+                    fetchTransactions();
+                }
+            });
+        }
+        if (txNext) {
+            txNext.addEventListener('click', () => {
+                txPage++;
+                fetchTransactions();
+            });
+        }
+        if (evalPrev) {
+            evalPrev.addEventListener('click', () => {
+                if (evalPage > 1) {
+                    evalPage--;
+                    fetchEvaluations();
+                }
+            });
+        }
+        if (evalNext) {
+            evalNext.addEventListener('click', () => {
+                evalPage++;
+                fetchEvaluations();
+            });
+        }
     };
 
     init();
 
     // Poll status and metrics every 10 seconds
-    setInterval(() => {
-        fetchPortfolio();
-        fetchPositions();
-        fetchEvaluations();
-        fetchHeartbeat();
+    setInterval(async () => {
+        const changed = await fetchHeartbeat();
+        
+        // Refresh positions/portfolio if prices updated
+        if (changed.price) {
+            fetchPortfolio();
+            fetchPositions();
+        }
+        
+        // Refresh evaluations if new evaluations are available
+        if (changed.evaluations) {
+            fetchEvaluations();
+        }
         
         // If an asset is currently selected, refresh its chart and metrics
         const selector = document.getElementById('asset-selector');
         if (selector && selector.value) {
-            // Keep the chart scroll state by reloading data on existing series if possible, 
-            // but simple reload is safe and handles updates.
-            loadChart(selector.value);
+            // Reload chart only if prices or transactions changed
+            if (changed.price || changed.transactions) {
+                loadChart(selector.value, false);
+            }
         }
     }, 10000);
 });

@@ -1,7 +1,7 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Aucun focus actif (Audit Backend entièrement terminé et validé de la Phase 1 à la Phase 5).
+- Surveiller le bon fonctionnement de la production (Ingesteur Bybit/Trading212, FastAPI, PostgreSQL, Redis).
 
 ## Prochaines Étapes
 - Surveiller le bon fonctionnement de la production (Ingesteur Bybit/Trading212, FastAPI, PostgreSQL, Redis).
@@ -11,6 +11,10 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-04 09:30:00] - Audit, synchronisation et mise à jour des fiches de compétences (.agents/skills/) : mise à jour d'execution-order-routing et market-data-ingestion, création de la fiche paper-trading pour verrouiller l'architecture double pile SQL et la robustesse réseau, et passage réussi des tests (567/567).
+- [2026-07-04 09:21:00] - Optimisation de la taille de codingstandards.md (condensé à ~7 000 caractères, en dessous de la limite de 12 000 caractères de l'IDE, avec note de garde).
+- [2026-07-04 09:18:00] - Alignement et mise à jour complète de codingstandards.md avec les implémentations de l'audit de sécurité, performance et robustesse du backend (timeouts centralisés, logger.exception, exceptions d'affaires, safe_error_response, psycopg2/asyncpg separation, N+1 query avoidance, buffered I/O, BaseStrategyRunner).
+- [2026-07-04 09:15:00] - Harmonisation de la documentation technique (Phases 1 à 5) : création de la fiche technique sur le patron `BaseStrategyRunner` et mise à jour des READMEs et du guide de déploiement Render (requirements segmentés, secrets HMAC). Exécution de la suite de tests avec 100% de succès (567/567 passés).
 - [2026-07-04 00:38:00] - Phase 5 (Hygiène & Dette Technique) résolue : Partitionnement des dépendances (base, backtest, live), allègement de l'image Docker de production, suppression de 332 imports inutilisés via Ruff, structuration de l'API publique de connection.py (__all__) et couverture de typage statique enrichie sur connection.py et signal_executor.py. Passage des 567 tests unitaires avec 100% de succès.
 - [2026-07-04 00:15:00] - Phase 4 (Robustesse) implémentée : Sécurisation du backend par le refactoring des captures d'exceptions (Value/KeyError, urllib.error, psycopg2.Error, asyncpg.PostgresError) avec logger.exception, création d'exceptions d'affaires (SignalExecutionError, PortfolioUpdateError), blindage des erreurs FastAPI en production via safe_error_response (UUID de corrélation unique sans fuite de détails techniques), et centralisation des timeouts réseau à 10s (Bybit, Trading 212, et warm-up). Création de tests unitaires complets avec Given/When/Then (9 nouveaux tests robustesse, 567 tests validés).
 - [2026-07-03 23:55:00] - Phase 3 (Architecture & DRY) implémentée : Refactoring des coureurs de stratégie via BaseStrategyRunner et BaseBrokerStrategyRunner (duplication réduite de >80%), centralisation de l'accès DB synchrone via get_sync_connection(), et séparation de la logique métier (NAV, ordres, signaux) d'engine.py vers SignalExecutor (engine.py réduit à 144 lignes). 558 tests passés avec succès.

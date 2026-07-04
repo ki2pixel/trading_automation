@@ -187,13 +187,16 @@ async def get_positions():
 
 
 @router.get("/transactions")
-async def get_transactions():
+async def get_transactions(limit: int = 50, offset: int = 0):
     pool = await _get_pool()
     try:
+        limit = min(max(1, limit), 10000)
+        offset = max(0, offset)
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
-                "FROM paper_transactions ORDER BY timestamp DESC LIMIT 100"
+                "FROM paper_transactions ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
+                limit, offset
             )
             return [
                 {
@@ -212,10 +215,11 @@ async def get_transactions():
 
 
 @router.get("/evaluations")
-async def get_evaluations(limit: int = 100, status: str | None = None, asset: str | None = None):
+async def get_evaluations(limit: int = 100, offset: int = 0, status: str | None = None, asset: str | None = None):
     pool = await _get_pool()
     try:
         limit = min(max(1, limit), 10000)
+        offset = max(0, offset)
 
         query = (
             "SELECT id, timestamp, strategy_name, asset, timeframe, price, "
@@ -238,8 +242,9 @@ async def get_evaluations(limit: int = 100, status: str | None = None, asset: st
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        query += f" ORDER BY timestamp DESC LIMIT ${param_idx}"
+        query += f" ORDER BY timestamp DESC LIMIT ${param_idx} OFFSET ${param_idx + 1}"
         params.append(limit)
+        params.append(offset)
 
         async with pool.acquire() as conn:
             rows = await conn.fetch(query, *params)
@@ -388,12 +393,18 @@ async def get_heartbeat():
             )
             now = datetime.now(timezone.utc)
             status_map = {}
+            last_price = None
+
             for r in rows:
                 source = r["source"]
                 max_updated = r["max_updated"]
                 if not max_updated:
                     status_map[source] = {"status": "offline", "last_update": None, "seconds_ago": None}
                     continue
+                
+                if not last_price or max_updated > last_price:
+                    last_price = max_updated
+
                 if max_updated.tzinfo is None:
                     max_updated = max_updated.replace(tzinfo=timezone.utc)
                 else:
@@ -415,6 +426,31 @@ async def get_heartbeat():
             for s in ('trading212', 'bybit'):
                 if s not in status_map:
                     status_map[s] = {"status": "offline", "last_update": None, "seconds_ago": None}
+
+            # Fetch max timestamp from paper_transactions and paper_evaluations
+            tx_row = await conn.fetchrow("SELECT MAX(timestamp) FROM paper_transactions")
+            eval_row = await conn.fetchrow("SELECT MAX(timestamp) FROM paper_evaluations")
+            
+            last_tx = tx_row[0] if tx_row else None
+            last_eval = eval_row[0] if eval_row else None
+            
+            # Format outputs
+            last_tx_str = last_tx.replace(tzinfo=timezone.utc).isoformat() if last_tx else None
+            last_eval_str = last_eval.replace(tzinfo=timezone.utc).isoformat() if last_eval else None
+            
+            if last_price:
+                if last_price.tzinfo is None:
+                    last_price = last_price.replace(tzinfo=timezone.utc)
+                else:
+                    last_price = last_price.astimezone(timezone.utc)
+                last_price_str = last_price.isoformat()
+            else:
+                last_price_str = None
+                
+            status_map["last_transaction_time"] = last_tx_str
+            status_map["last_evaluation_time"] = last_eval_str
+            status_map["last_price_time"] = last_price_str
+
             return status_map
     except HTTPException:
         raise
@@ -569,3 +605,183 @@ async def stream_logs():
                 yield f"data: {json.dumps(log)}\n\n"
                 
     return StreamingResponse(log_generator(), media_type="text/event-stream")
+
+
+@router.get("/performance/metrics")
+async def get_performance_metrics(ticker: str):
+    pool = await _get_pool()
+    try:
+        async with pool.acquire() as conn:
+            # 1. Fetch configs to read initial capital
+            config_row = await conn.fetchrow(
+                "SELECT initial_capital FROM paper_strategy_configs WHERE LOWER(asset) = LOWER($1)",
+                ticker
+            )
+            initial_capital = float(config_row["initial_capital"]) if config_row else 1000.0
+            
+            # 2. Fetch candles (limit 5000 to have a complete picture)
+            candle_rows = await conn.fetch(
+                "SELECT timestamp_minute, open, high, low, close "
+                "FROM live_candles_1m "
+                "WHERE LOWER(ticker) = LOWER($1) "
+                "ORDER BY timestamp_minute DESC "
+                "LIMIT 5000",
+                ticker
+            )
+            candles = [
+                {
+                    "time": int(r["timestamp_minute"].replace(tzinfo=timezone.utc).timestamp()),
+                    "open": float(r["open"]),
+                    "high": float(r["high"]),
+                    "low": float(r["low"]),
+                    "close": float(r["close"]),
+                } for r in reversed(candle_rows)
+            ]
+            
+            if not candles:
+                return {
+                    "win_rate": 0.0,
+                    "profit_factor": 1.0,
+                    "max_drawdown": 0.0,
+                    "current_drawdown": 0.0,
+                    "net_profit": 0.0,
+                    "total_trades": 0,
+                    "strategy_curve": [],
+                    "buy_hold_curve": []
+                }
+                
+            # 3. Fetch Transactions matching this asset
+            tx_rows = await conn.fetch(
+                "SELECT timestamp, action, qty, price, total_value "
+                "FROM paper_transactions "
+                "WHERE LOWER(asset) = LOWER($1) "
+                "ORDER BY timestamp ASC",
+                ticker
+            )
+            
+            txs = [
+                {
+                    "timestamp": r["timestamp"].replace(tzinfo=timezone.utc),
+                    "action": r["action"],
+                    "qty": float(r["qty"]),
+                    "price": float(r["price"]),
+                    "total_value": float(r["total_value"])
+                } for r in tx_rows
+            ]
+            
+            # 4. FIFO closed trade analysis
+            buy_queue = []
+            closed_trades = []
+            
+            for tx in txs:
+                if tx["action"] == 'BUY':
+                    buy_queue.append({"qty": tx["qty"], "price": tx["price"]})
+                elif tx["action"] == 'SELL':
+                    sell_qty = tx["qty"]
+                    total_buy_cost = 0.0
+                    
+                    while sell_qty > 0 and buy_queue:
+                        oldest_buy = buy_queue[0]
+                        if oldest_buy["qty"] <= sell_qty:
+                            total_buy_cost += oldest_buy["qty"] * oldest_buy["price"]
+                            sell_qty -= oldest_buy["qty"]
+                            buy_queue.pop(0)
+                        else:
+                            total_buy_cost += sell_qty * oldest_buy["price"]
+                            oldest_buy["qty"] -= sell_qty
+                            sell_qty = 0.0
+                            
+                    sell_revenue = tx["total_value"]
+                    pnl = sell_revenue - total_buy_cost
+                    closed_trades.append({"pnl": pnl, "cost_basis": total_buy_cost})
+                    
+            # Compute KPI metrics
+            wins = 0
+            total_profit = 0.0
+            total_losses = 0.0
+            net_profit = 0.0
+            
+            for t in closed_trades:
+                pnl = t["pnl"]
+                net_profit += pnl
+                if pnl > 0:
+                    wins += 1
+                    total_profit += pnl
+                else:
+                    total_losses += abs(pnl)
+                    
+            total_trades = len(closed_trades)
+            win_rate = float(wins) / total_trades if total_trades > 0 else 0.0
+            
+            if total_losses > 0:
+                profit_factor = total_profit / total_losses
+            else:
+                profit_factor = float('inf') if total_profit > 0 else 1.0
+                
+            # 5. Reconstruct Account Value Curves over candle intervals
+            cash = initial_capital
+            qty = 0.0
+            tx_idx = 0
+            
+            strategy_curve = []
+            buy_hold_curve = []
+            
+            first_buy_price = None
+            if txs and txs[0]["action"] == 'BUY':
+                first_buy_price = txs[0]["price"]
+                
+            for c in candles:
+                candle_time_ms = c["time"] * 1000
+                
+                # Process any transactions that occurred up to this candle's timestamp
+                while tx_idx < len(txs) and txs[tx_idx]["timestamp"].timestamp() * 1000 <= candle_time_ms:
+                    tx = txs[tx_idx]
+                    if tx["action"] == 'BUY':
+                        cash -= tx["total_value"]
+                        qty += tx["qty"]
+                        if first_buy_price is None:
+                            first_buy_price = tx["price"]
+                    elif tx["action"] == 'SELL':
+                        cash += tx["total_value"]
+                        qty -= tx["qty"]
+                    tx_idx += 1
+                    
+                current_nav = cash + qty * c["close"]
+                strategy_curve.append({"time": c["time"], "value": current_nav})
+                
+                bh_nav = initial_capital
+                if first_buy_price is not None and first_buy_price > 0:
+                    bh_nav = initial_capital * (c["close"] / first_buy_price)
+                buy_hold_curve.append({"time": c["time"], "value": bh_nav})
+                
+            # Calculate Drawdowns
+            peak = -float('inf')
+            max_drawdown = 0.0
+            current_drawdown = 0.0
+            
+            for pt in strategy_curve:
+                val = pt["value"]
+                if val > peak:
+                    peak = val
+                dd = ((peak - val) / peak) * 100.0 if peak > 0 else 0.0
+                if dd > max_drawdown:
+                    max_drawdown = dd
+                current_drawdown = dd
+                
+            # Replace infinity with a string/numeric representation for JSON
+            pf_val = "Infinity" if profit_factor == float('inf') else profit_factor
+            
+            return {
+                "win_rate": win_rate,
+                "profit_factor": pf_val,
+                "max_drawdown": max_drawdown,
+                "current_drawdown": current_drawdown,
+                "net_profit": net_profit,
+                "total_trades": total_trades,
+                "strategy_curve": strategy_curve,
+                "buy_hold_curve": buy_hold_curve
+            }
+            
+    except asyncpg.PostgresError as e:
+        logger.exception(f"[API] Database error fetching performance metrics for {ticker}")
+        raise HTTPException(status_code=500, detail="Database error calculating performance metrics")

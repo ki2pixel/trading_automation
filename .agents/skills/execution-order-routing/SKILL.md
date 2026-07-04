@@ -49,29 +49,47 @@ class TradeOrder:
 ```python
 import logging
 import asyncio
+from httpx import HTTPError, RequestError, TimeoutException
+
+logger = logging.getLogger(__name__)
+
+class SignalExecutionError(Exception):
+    """Exception levée en cas d'échec de l'évaluation ou de l'exécution d'un signal."""
+    pass
 
 async def submit_order_safely(broker_client, order: TradeOrder) -> TradeOrder:
     """
     Soumet un ordre avec vérification du statut immédiat pour éviter les ordres perdus.
+    Utilise un timeout explicite de 10s et gère les exceptions réseau spécifiques.
     """
     try:
-        # Envoi à l'API du broker
+        # Envoi à l'API du broker avec un timeout strict
         response = await broker_client.place_order(
             symbol=order.symbol,
             qty=order.qty,
             side="BUY" if order.is_buy else "SELL",
             type="LIMIT" if order.limit_price else "MARKET",
             limitPrice=order.limit_price,
-            timeInForce="GTC"
+            timeInForce="GTC",
+            timeout=10.0  # Timeout explicite et centralisé (10s par défaut)
         )
         
         order.broker_id = response.get("order_id")
         order.status = OrderStatus.SUBMITTED
-        logging.info(f"Ordre {order.internal_id} soumis avec succès: {order.broker_id}")
+        logger.info(f"Ordre {order.internal_id} soumis avec succès: {order.broker_id}")
         
+    except (TimeoutException, RequestError) as e:
+        order.status = OrderStatus.REJECTED
+        logger.exception(f"Timeout ou erreur réseau lors de la soumission de l'ordre {order.internal_id}")
+        raise SignalExecutionError(f"Échec réseau lors de la soumission: {e}") from e
+    except HTTPError as e:
+        order.status = OrderStatus.REJECTED
+        logger.exception(f"Erreur API HTTP broker lors de la soumission de l'ordre {order.internal_id}")
+        raise SignalExecutionError(f"Erreur API broker: {e}") from e
     except Exception as e:
         order.status = OrderStatus.REJECTED
-        logging.error(f"Échec soumission ordre {order.internal_id}: {e}")
+        logger.exception(f"Erreur inattendue et non gérée lors de la soumission de l'ordre {order.internal_id}")
+        raise SignalExecutionError(f"Erreur inattendue de soumission d'ordre: {e}") from e
         
     return order
 ```
