@@ -150,8 +150,8 @@ class SignalExecutor:
                     except requests.exceptions.RequestException as api_err:
                         logger.exception("[PaperTrader] Failed to fetch account summary from Trading 212 API")
 
-                # If Bybit Client is active, fetch real-time cash balance (USDC/USDT) and update DB
-                if self.bybit_client is not None:
+                # If Bybit Client is active and authenticated, fetch real-time cash balance (USDC/USDT) and update DB
+                if self.bybit_client is not None and self.bybit_client.config.api_key:
                     try:
                         base_coin = self.bybit_client.config.base_currency
                         summary = self.bybit_client.get_account_summary(coin=base_coin)
@@ -841,7 +841,7 @@ class SignalExecutor:
             from decimal import Decimal
             import os
 
-            if not self.bybit_client:
+            if not self.bybit_client or not self.bybit_client.config.api_key:
                 return
 
             threshold_str = os.getenv("BYBIT_CONVERSION_THRESHOLD", "15.00")
