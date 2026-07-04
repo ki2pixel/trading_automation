@@ -1,4 +1,3 @@
-import pytest
 import optuna
 
 from backtest_engine.bayesian_optimizer import (

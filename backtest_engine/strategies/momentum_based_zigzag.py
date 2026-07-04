@@ -14,7 +14,7 @@ import numpy as np
 from ..metrics import MetricsInput, compute_metrics
 from ..reports import BacktestRunResult
 from ..configuration import coerce_strategy_parameters, load_strategy_config
-from ..broker import BrokerSimulator, BrokerConfig, Order
+from ..broker import Order
 from .strategy_base import BaseBrokerStrategyRunner
 
 STRATEGY_FILE = (
@@ -348,7 +348,6 @@ def _init_prescan_worker(high, low, close):
 def _process_prescan_batch(args):
     global _worker_high, _worker_low, _worker_close
     import pandas as pd
-    import numpy as np
     import vectorbt as vbt
     from ..indicators.momentum_based_zigzag import MomentumBasedZigZagIndicator
     import gc
@@ -413,7 +412,6 @@ def vectorbt_prescan(
     """
     import logging
     import itertools
-    import numpy as np
     from ..optimizer import ParameterGridSpec
 
     logger = logging.getLogger(__name__)

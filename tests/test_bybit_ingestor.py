@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
 from decimal import Decimal
-import json
 
 from backtest_engine.live.bybit.config import BybitConfig
 from backtest_engine.live.bybit.client import BybitClient

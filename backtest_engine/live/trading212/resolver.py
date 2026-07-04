@@ -1,7 +1,7 @@
 import os
 import json
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.utils import T212_STATIC_MAPPING
 

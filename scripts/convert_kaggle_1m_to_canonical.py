@@ -3,7 +3,6 @@
 
 import pandas as pd
 from pathlib import Path
-import sys
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FINANCIAL_DATASETS = REPO_ROOT / "financial_datasets"

@@ -46,7 +46,6 @@ import csv
 import os
 import sys
 import time
-import json
 import requests
 from datetime import datetime
 from requests.auth import HTTPBasicAuth

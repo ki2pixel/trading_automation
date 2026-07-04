@@ -1,11 +1,10 @@
-import pytest
 import pandas as pd
 import numpy as np
 import datetime as dt
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from backtest_engine.screening import extract_statistical_signature, calculate_realized_volatility
+from backtest_engine.screening import extract_statistical_signature
 from backtest_engine.live.paper_trading.engine import PaperTradingEngine
 from backtest_engine.data import filter_market_hours
 

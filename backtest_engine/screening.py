@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.stattools import adfuller
 import scipy.spatial.distance as dist
-from typing import Dict, Any, Tuple
+from typing import Dict, Any
 
 def calculate_hurst_exponent(series: pd.Series, max_lag: int = 100) -> float:
     """

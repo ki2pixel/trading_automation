@@ -4,7 +4,7 @@ Interroge l'état du compte UTA et modélise l'impact d'une
 soustraction de collatéral AVANT émission de l'ordre de conversion.
 """
 from decimal import Decimal
-from typing import NamedTuple, Optional, Dict, Any
+from typing import NamedTuple, Optional
 import logging
 
 logger = logging.getLogger("bybit.conversion")

@@ -15,10 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependencies first to leverage caching
-COPY requirements-backtest-engine.txt .
+COPY requirements-base.txt .
+COPY requirements-live.txt .
 
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements-backtest-engine.txt
+RUN pip install --no-cache-dir -r requirements-live.txt
 
 # Copy source directories and the runner
 COPY backtest_engine/ /app/backtest_engine/

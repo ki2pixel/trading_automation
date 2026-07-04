@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd

@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from backtest_engine.walk_forward import (
     generate_rolling_windows,
@@ -63,7 +62,6 @@ class TestWFAStrategyAgnostic:
     def test_run_single_backtest_hma_crossover(self):
         """Run _run_single_backtest with hma_crossover to prove strategy dispatch works."""
         from backtest_engine.walk_forward import _run_single_backtest
-        from backtest_engine.strategy_registry import StrategyRegistry
 
         # Build minimal OHLCV data
         idx = pd.date_range("2023-01-01", periods=500, freq="5min")

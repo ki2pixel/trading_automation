@@ -1,13 +1,11 @@
 import pytest
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
 
 from backtest_engine.live.bybit.conversion.accumulator import AccumulatorBuffer
-from backtest_engine.live.bybit.conversion.margin_simulator import UTAMarginSimulator, MarginState, MarginCheckResult
+from backtest_engine.live.bybit.conversion.margin_simulator import UTAMarginSimulator, MarginCheckResult
 from backtest_engine.live.bybit.conversion.order_types import ConversionOrder, ConversionOrderStatus
 from backtest_engine.live.bybit.conversion.spot_router import SpotConversionRouter
-from backtest_engine.live.bybit.config import BybitConfig
 from backtest_engine.live.bybit.ingestor import BybitPriceIngestor
 
 

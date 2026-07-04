@@ -522,7 +522,6 @@ def _init_prescan_worker(high, low, close):
 def _process_prescan_batch(args):
     global _worker_high, _worker_low, _worker_close
     import pandas as pd
-    import numpy as np
     import vectorbt as vbt
     from ..indicators.trend_type import TrendType
 
@@ -584,8 +583,6 @@ def vectorbt_prescan(
     avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
-    import itertools
-    import numpy as np
     from ..optimizer import ParameterGridSpec
     import gc
 

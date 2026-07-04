@@ -515,7 +515,6 @@ def vectorbt_prescan(
     de Pivot Retest (pivot_timeframe, retest_bars) avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
-    import numpy as np
     from ..optimizer import ParameterGridSpec
 
     logger = logging.getLogger(__name__)

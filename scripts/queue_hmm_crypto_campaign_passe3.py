@@ -6,7 +6,6 @@ HMM Regime Filter (Passe 3 - Sorties & Brackets TP/SL Nettes) sur l'actif crypto
 """
 
 import sys
-import os
 import time
 from uuid import uuid4
 from pathlib import Path

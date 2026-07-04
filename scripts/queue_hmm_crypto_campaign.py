@@ -6,7 +6,6 @@ HMM Regime Filter (Passe 1) sur les nouveaux actifs cryptos qualifiés.
 """
 
 import sys
-import os
 import re
 import time
 from uuid import uuid4

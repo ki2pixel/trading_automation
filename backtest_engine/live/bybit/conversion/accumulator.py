@@ -5,7 +5,7 @@ vers EUR que lorsque le seuil minimum est atteint.
 """
 from decimal import Decimal
 from datetime import datetime, timezone
-from typing import Optional, Tuple
+from typing import Tuple
 import logging
 
 logger = logging.getLogger("bybit.conversion")

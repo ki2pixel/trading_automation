@@ -22,7 +22,7 @@ if str(_repo) not in sys.path:
     sys.path.insert(0, str(_repo))
 
 from backtest_engine.data import get_canonical_market_data_date_bounds
-from backtest_engine.walk_forward import run_wfa_full, WFAFoldResult
+from backtest_engine.walk_forward import WFAFoldResult
 
 logging.basicConfig(
     level=logging.INFO,

@@ -2,7 +2,6 @@ import os
 import sys
 import asyncio
 import time
-import base64
 import logging
 import secrets
 import uuid

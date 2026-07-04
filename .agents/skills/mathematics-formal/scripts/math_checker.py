@@ -11,7 +11,6 @@ Usage as script (demo):
 """
 
 import numpy as np
-import sys
 
 
 def gradient_check(func, x: np.ndarray, eps: float = 1e-5, rtol: float = 1e-3) -> dict:

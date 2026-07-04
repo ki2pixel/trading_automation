@@ -1,6 +1,5 @@
 import unittest
 import pandas as pd
-import numpy as np
 from backtest_engine.metrics import _max_drawdown_duration_bars, compute_metrics, MetricsInput
 
 class TestMetricsExtended(unittest.TestCase):

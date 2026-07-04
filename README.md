@@ -173,6 +173,17 @@ Toutes les informations sur le fonctionnement et le déploiement du moteur de pa
 
 ---
 
+## Dépendances du projet
+
+Les dépendances Python du projet sont partitionnées pour optimiser les environnements et builds Docker :
+- `requirements-base.txt` : Dépendances partagées (Pandas, NumPy, PyArrow, fastparquet).
+- `requirements-backtest.txt` : Outils d'analyse, d'optimisation hors-ligne (Optuna, VectorBT, pytest, etc.).
+- `requirements-live.txt` : Serveur FastAPI, connecteurs Redis/PostgreSQL (asyncpg, psycopg2-binary, redis).
+
+L'image Docker de production utilise exclusivement `requirements-live.txt` pour un build de production minimal.
+
+---
+
 ## Tests unitaires et d'intégration
 
 Le projet intègre une suite de tests complète pour valider la non-régression du moteur de calcul et du broker simulator.

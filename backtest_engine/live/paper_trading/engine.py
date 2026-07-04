@@ -5,7 +5,7 @@ from datetime import datetime
 import logging
 import threading
 from decimal import Decimal
-from backtest_engine.live.utils import is_crypto_asset, is_market_open
+from backtest_engine.live.utils import is_market_open
 
 logger = logging.getLogger("papertrader")
 

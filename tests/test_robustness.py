@@ -2,10 +2,8 @@ import os
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from fastapi import FastAPI, Request
+from fastapi import Request
 from fastapi.testclient import TestClient
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import HTTPException as FastAPIHTTPException
 
 from backtest_engine.live.paper_trading.exceptions import (
     PaperTradingException,

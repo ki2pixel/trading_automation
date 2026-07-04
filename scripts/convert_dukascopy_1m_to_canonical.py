@@ -9,7 +9,6 @@ storage/processed/market_data_1m/.
 import sys
 from pathlib import Path
 import pandas as pd
-import numpy as np
 
 # Set up repository root
 REPO_ROOT = Path(__file__).resolve().parent.parent

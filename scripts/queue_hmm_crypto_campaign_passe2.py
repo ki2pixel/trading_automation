@@ -6,7 +6,6 @@ HMM Regime Filter (Passe 2 - Filtrage de Régime & Confirmation) sur l'actif cry
 """
 
 import sys
-import os
 import time
 from uuid import uuid4
 from pathlib import Path

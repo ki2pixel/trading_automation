@@ -4,7 +4,7 @@ import hashlib
 import urllib.parse
 import json
 import requests
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from backtest_engine.live.bybit.config import BybitConfig
 from backtest_engine.live.utils import NETWORK_TIMEOUT_DEFAULT
 

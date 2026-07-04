@@ -1,4 +1,3 @@
-import pytest
 import numpy as np
 import pandas as pd
 from pine_scripts_convert_to_python.strategy.smart_trader_geometric import (

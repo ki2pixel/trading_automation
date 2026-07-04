@@ -528,7 +528,6 @@ def _init_prescan_worker(close):
 def _process_prescan_batch(args):
     global _worker_close
     import pandas as pd
-    import numpy as np
     import vectorbt as vbt
     from ..indicators.adaptive_trend_classification import AdaptiveTrend
 
@@ -578,7 +577,6 @@ def vectorbt_prescan(
     """
     import logging
     import itertools
-    import numpy as np
     from ..optimizer import ParameterGridSpec
     import gc
 

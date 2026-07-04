@@ -1,11 +1,8 @@
 import os
-import glob
 import json
 import re
 import pandas as pd
-import pyarrow.parquet as pq
 import numpy as np
-from datetime import datetime
 
 REPORTS_DIR = "reports/local_optimizer"
 DOCS_DIR = "docs/arbitrage_optimisations.md"

@@ -9,11 +9,10 @@ import sys
 import argparse
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Any
 from concurrent.futures import ProcessPoolExecutor
 
 import pandas as pd
-import numpy as np
 
 # Set up repository root
 REPO_ROOT = Path(__file__).resolve().parent.parent

@@ -1,10 +1,8 @@
 import unittest
 import tempfile
 import json
-import csv
 import pandas as pd
 from pathlib import Path
-from html import escape
 
 from backtest_engine.global_analysis import generate_global_analysis
 

@@ -14,7 +14,7 @@
 | **Phase 2 — Performance & DB** | P1 Haute | §3.2 (pool async), §3.2 (N+1), §3.2 (buffer I/O) | M | 3-5 jours | 🟢 Terminé |
 | **Phase 3 — Architecture & DRY** | P2 Moyen | §2.2 (BaseStrategyRunner), §2.2 (connexions DB), §2.2 (engine.py) | XL | 7-10 jours | 🟢 Terminé |
 | **Phase 4 — Robustesse** | P2 Moyen | §4.2 (exceptions), §4.2 (fuites info), §4.2 (timeouts réseau) | S | 2-3 jours | 🟢 Terminé |
-| **Phase 5 — Hygiène** | P2 Amélioration | §5.2 (dépendances), dette technique résiduelle | S | 1-2 jours | 🔴 À faire |
+| **Phase 5 — Hygiène** | P2 Amélioration | §5.2 (dépendances), dette technique résiduelle | S | 1-2 jours | 🟢 Terminé |
 | **Total** | | **14 items actifs** | | **18-27 jours** | |
 
 ---
@@ -298,29 +298,29 @@
   - [requirements-backtest-engine.txt](file:///home/kidpixel/trading_automation_v2/requirements-backtest-engine.txt)
   - **Nouveaux** : `requirements-base.txt`, `requirements-backtest.txt`, `requirements-live.txt`
 - **Actions** :
-  - [ ] Créer `requirements-base.txt` : dépendances communes (pandas, numpy, python-dotenv, loguru)
-  - [ ] Créer `requirements-backtest.txt` : dépendances backtest uniquement (optuna, vectorbt, numba)
-  - [ ] Créer `requirements-live.txt` : dépendances Paper Trading / Live (fastapi, uvicorn, asyncpg, psycopg2, redis)
-  - [ ] Chaque fichier spécialisé inclut `-r requirements-base.txt`
-  - [ ] Mettre à jour le Dockerfile/scripts de déploiement Render pour utiliser le bon fichier requirements selon le service
-  - [ ] Documenter la structure dans le README
+  - [x] Créer `requirements-base.txt` : dépendances communes (pandas, numpy, python-dotenv, loguru)
+  - [x] Créer `requirements-backtest.txt` : dépendances backtest uniquement (optuna, vectorbt, numba)
+  - [x] Créer `requirements-live.txt` : dépendances Paper Trading / Live (fastapi, uvicorn, asyncpg, psycopg2, redis)
+  - [x] Chaque fichier spécialisé inclut `-r requirements-base.txt`
+  - [x] Mettre à jour le Dockerfile/scripts de déploiement Render pour utiliser le bon fichier requirements selon le service
+  - [x] Documenter la structure dans le README
 - **Effort** : S (0.5-1 jour)
 
 ### Tâche 5.2 — Nettoyage dette technique résiduelle
 
 - **Actions** :
-  - [ ] Vérifier et supprimer les imports inutilisés (utiliser `ruff` ou `flake8 --select F401`)
-  - [ ] Vérifier la cohérence des conventions de nommage (snake_case partout)
-  - [ ] S'assurer que tous les fichiers Python ont un `__all__` pour les modules publics
-  - [ ] Vérifier la couverture du typage statique (objectif : ≥ 90% sur les modules critiques)
+  - [x] Vérifier et supprimer les imports inutilisés (utiliser `ruff` ou `flake8 --select F401`)
+  - [x] Vérifier la cohérence des conventions de nommage (snake_case partout)
+  - [x] S'assurer que tous les fichiers Python ont un `__all__` pour les modules publics
+  - [x] Vérifier la couverture du typage statique (objectif : ≥ 90% sur les modules critiques)
 - **Effort** : XS (0.5 jour)
 
 ### Critères de Complétion Phase 5
 
-- [ ] 3 fichiers requirements distincts existent et sont fonctionnels
-- [ ] Le déploiement Render utilise `requirements-live.txt` pour l'ingesteur
-- [ ] Aucun import inutilisé, conventions de nommage cohérentes
-- [ ] README mis à jour avec la structure des requirements
+- [x] 3 fichiers requirements distincts existent et sont fonctionnels
+- [x] Le déploiement Render utilise `requirements-live.txt` pour l'ingesteur
+- [x] Aucun import inutilisé, conventions de nommage cohérentes
+- [x] README mis à jour avec la structure des requirements
 
 ---
 

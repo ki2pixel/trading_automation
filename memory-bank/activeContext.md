@@ -1,16 +1,17 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Aucun focus actif (Phase 4 terminée et validée).
+- Aucun focus actif (Audit Backend entièrement terminé et validé de la Phase 1 à la Phase 5).
 
 ## Prochaines Étapes
-- Déployer l'ensemble des refactorings de Phase 1-4 sur les environnements de production (Render et Aiven/Valkey).
-- Surveiller les logs de production à la recherche des nouveaux UUID de corrélation en cas de problème.
+- Surveiller le bon fonctionnement de la production (Ingesteur Bybit/Trading212, FastAPI, PostgreSQL, Redis).
+- Lancer de futures campagnes d'optimisation et de backtesting sur les configurations d'actifs qualifiées.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-04 00:38:00] - Phase 5 (Hygiène & Dette Technique) résolue : Partitionnement des dépendances (base, backtest, live), allègement de l'image Docker de production, suppression de 332 imports inutilisés via Ruff, structuration de l'API publique de connection.py (__all__) et couverture de typage statique enrichie sur connection.py et signal_executor.py. Passage des 567 tests unitaires avec 100% de succès.
 - [2026-07-04 00:15:00] - Phase 4 (Robustesse) implémentée : Sécurisation du backend par le refactoring des captures d'exceptions (Value/KeyError, urllib.error, psycopg2.Error, asyncpg.PostgresError) avec logger.exception, création d'exceptions d'affaires (SignalExecutionError, PortfolioUpdateError), blindage des erreurs FastAPI en production via safe_error_response (UUID de corrélation unique sans fuite de détails techniques), et centralisation des timeouts réseau à 10s (Bybit, Trading 212, et warm-up). Création de tests unitaires complets avec Given/When/Then (9 nouveaux tests robustesse, 567 tests validés).
 - [2026-07-03 23:55:00] - Phase 3 (Architecture & DRY) implémentée : Refactoring des coureurs de stratégie via BaseStrategyRunner et BaseBrokerStrategyRunner (duplication réduite de >80%), centralisation de l'accès DB synchrone via get_sync_connection(), et séparation de la logique métier (NAV, ordres, signaux) d'engine.py vers SignalExecutor (engine.py réduit à 144 lignes). 558 tests passés avec succès.
 - [2026-07-03 23:35:00] - Phase 2 Performance & DB validée : Migration asynchrone des endpoints FastAPI vers asyncpg, résolution du pattern N+1 dans engine.py via Redis mget/SQL groupé, et bufferisation des écritures JSON de l'optimiseur. Installation de la dépendance asyncpg dans l'environnement local et passage de 548 tests unitaires avec succès.

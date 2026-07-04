@@ -1,11 +1,9 @@
-import os
-import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from decimal import Decimal
 
 from backtest_engine.live.paper_trading.engine import PaperTradingEngine
-from backtest_engine.live.paper_trading.api import router, ConfigUpdate
+from backtest_engine.live.paper_trading.api import router
 
 # Setup dummy FastAPI app for testing API
 from fastapi import FastAPI
@@ -338,7 +336,6 @@ class TestPaperTradingEngine:
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         
         from datetime import datetime, timezone
-        import pandas as pd
         
         # Return mock configs, positions, candles
         mock_candles = [
@@ -384,7 +381,6 @@ class TestPaperTradingEngine:
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         
         from datetime import datetime, timezone
-        from decimal import Decimal
         import pandas as pd
         
         # Return mock configs, positions, candles

@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from decimal import Decimal
 from backtest_engine.live.paper_trading.engine import PaperTradingEngine

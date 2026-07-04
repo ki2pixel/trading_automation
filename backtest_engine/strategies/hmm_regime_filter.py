@@ -512,9 +512,6 @@ def vectorbt_prescan(
     de HMM Regime Filter avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
-    import itertools
-    import numpy as np
-    from ..optimizer import ParameterGridSpec
 
     logger = logging.getLogger(__name__)
 

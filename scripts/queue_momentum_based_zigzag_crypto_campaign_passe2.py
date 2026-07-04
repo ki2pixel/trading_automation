@@ -6,7 +6,6 @@ Momentum-based ZigZag (Passe 2 - Gestion du Risque) sur les actifs cryptos quali
 """
 
 import sys
-import os
 import time
 from uuid import uuid4
 from pathlib import Path

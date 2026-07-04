@@ -1,7 +1,6 @@
 import unittest
 import pandas as pd
-import numpy as np
-from backtest_engine.optimizer import _evaluate_hma_parameters, ParameterGridSpec
+from backtest_engine.optimizer import _evaluate_hma_parameters
 
 class TestOptimizerSharpeConstraint(unittest.TestCase):
     def test_noise_boundary_sharpe_constraint_low_sharpe(self) -> None:

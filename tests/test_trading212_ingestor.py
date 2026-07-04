@@ -1,7 +1,6 @@
 import os
 import json
 import pytest
-import requests
 from unittest.mock import MagicMock, patch
 from requests.exceptions import RequestException
 

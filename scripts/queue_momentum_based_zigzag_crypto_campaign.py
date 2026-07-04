@@ -6,7 +6,6 @@ Momentum-based ZigZag (avec QQE - Passe 1) sur les nouveaux actifs cryptos quali
 """
 
 import sys
-import os
 import re
 import time
 from uuid import uuid4

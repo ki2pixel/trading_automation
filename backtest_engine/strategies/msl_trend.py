@@ -515,7 +515,6 @@ def vectorbt_prescan(
     de MSL Trend (length, mult) avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
-    import numpy as np
     from ..optimizer import ParameterGridSpec
 
     logger = logging.getLogger(__name__)

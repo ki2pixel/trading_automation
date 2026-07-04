@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 
 from backtest_engine.strategies.noise_boundary_intraday import (
-    compute_noise_boundary,
     run_noise_boundary_intraday,
     NoiseBoundaryConfigOverrides,
     compute_vwap_intraday

@@ -1,8 +1,6 @@
 import pandas as pd
-import numpy as np
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Tuple
-import vectorbt as vbt
 from backtest_engine.indicators.hmm_regime_filter import HMMRegimeFilter
 
 class HMMRegimeFilterStrategyConfig(BaseModel):

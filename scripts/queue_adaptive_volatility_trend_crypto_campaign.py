@@ -6,7 +6,6 @@ Adaptive Volatility Trend (Passe 1 : L'indicateur Core) sur les nouveaux actifs 
 """
 
 import sys
-import os
 import re
 import time
 from uuid import uuid4

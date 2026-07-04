@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-import pandas as pd
 
 # Ensure repo root is on path for absolute imports
 _repo = Path(__file__).resolve().parent.parent

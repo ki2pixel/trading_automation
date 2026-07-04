@@ -26,7 +26,7 @@ Le format **Parquet** change la donne :
 Pour préparer ton environnement et installer les dépendances nécessaires au traitement :
 
 ```bash
-python3 -m pip install --user -r requirements-backtest-engine.txt
+python3 -m pip install --user -r requirements-backtest.txt
 ```
 
 ### 1. Lancer un traitement complet de tes fichiers

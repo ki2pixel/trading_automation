@@ -1,9 +1,7 @@
-import pytest
 import pandas as pd
 import numpy as np
 import time
 
-from backtest_engine.indicators.pivot_retest import PivotRetest
 from pine_scripts_convert_to_python.strategy.pivot_retest_strategy import PivotRetestStrategyConfig, run_pivot_retest_strategy
 from backtest_engine.strategy_registry import StrategyRegistry
 

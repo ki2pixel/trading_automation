@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.connection import get_db_connection, get_redis_client
 from backtest_engine.live.ingestion.base import BasePriceIngestor

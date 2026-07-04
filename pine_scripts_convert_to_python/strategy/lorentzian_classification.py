@@ -5,7 +5,6 @@ LorentzianClassification VectorBT indicator and produces entry/exit signals.
 """
 
 import pandas as pd
-import numpy as np
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Tuple
 

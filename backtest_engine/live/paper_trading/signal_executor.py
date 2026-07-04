@@ -1,48 +1,53 @@
-import os
 import json
 import logging
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
+from typing import Any, Optional, Union, Callable, Dict
 import pandas as pd
-import numpy as np
 
 import psycopg2
 import requests
 from backtest_engine.live.utils import is_crypto_asset, is_market_open
-from backtest_engine.live.paper_trading.exceptions import SignalExecutionError, PortfolioUpdateError
+from backtest_engine.live.paper_trading.exceptions import PortfolioUpdateError
 
 logger = logging.getLogger("papertrader")
-
 
 
 class SignalExecutor:
     """Encapsulates paper trading strategy evaluation, trade execution, and NAV calculations."""
 
-    def __init__(self, engine=None, t212_client=None, bybit_client=None, market_hours=None, is_market_open_func=None):
-        self.engine = engine
-        self._t212_client = t212_client
-        self._bybit_client = bybit_client
-        self.market_hours = market_hours or {}
-        self._is_market_open_func = is_market_open_func
+    def __init__(
+        self,
+        engine: Any = None,
+        t212_client: Any = None,
+        bybit_client: Any = None,
+        market_hours: Optional[Dict[str, Any]] = None,
+        is_market_open_func: Optional[Callable[[str], bool]] = None,
+    ) -> None:
+        self.engine: Any = engine
+        self._t212_client: Any = t212_client
+        self._bybit_client: Any = bybit_client
+        self.market_hours: Dict[str, Any] = market_hours or {}
+        self._is_market_open_func: Optional[Callable[[str], bool]] = is_market_open_func
 
     @property
-    def t212_client(self):
+    def t212_client(self) -> Any:
         if self.engine:
             return getattr(self.engine, "t212_client", None)
         return self._t212_client
 
     @t212_client.setter
-    def t212_client(self, value):
+    def t212_client(self, value: Any) -> None:
         self._t212_client = value
 
     @property
-    def bybit_client(self):
+    def bybit_client(self) -> Any:
         if self.engine:
             return getattr(self.engine, "bybit_client", None)
         return self._bybit_client
 
     @bybit_client.setter
-    def bybit_client(self, value):
+    def bybit_client(self, value: Any) -> None:
         self._bybit_client = value
 
     def is_market_open(self, asset: str) -> bool:
@@ -56,8 +61,20 @@ class SignalExecutor:
             pass
         return is_market_open(asset, self.market_hours, current_time=current_time)
 
-    def log_evaluation(self, conn, strategy_name, asset, timeframe, price, signal_type, signal_triggered, status, fail_reason=None, details=None):
-        def serialize_details(obj):
+    def log_evaluation(
+        self,
+        conn: Any,
+        strategy_name: str,
+        asset: str,
+        timeframe: str,
+        price: Optional[Union[float, Decimal]],
+        signal_type: str,
+        signal_triggered: bool,
+        status: str,
+        fail_reason: Optional[str] = None,
+        details: Optional[Any] = None,
+    ) -> None:
+        def serialize_details(obj: Any) -> Any:
             if isinstance(obj, dict):
                 return {k: serialize_details(v) for k, v in obj.items()}
             elif isinstance(obj, list):
@@ -108,7 +125,7 @@ class SignalExecutor:
             except psycopg2.Error:
                 pass
 
-    def update_portfolio_nav(self, conn):
+    def update_portfolio_nav(self, conn: Any) -> None:
         """
         Update the total NAV of the portfolio based on current prices of positions
         and the cash balance, split by ecosystem (trading212 vs bybit).
@@ -274,7 +291,7 @@ class SignalExecutor:
             conn.rollback()
             raise PortfolioUpdateError("Unexpected error updating NAV") from e
 
-    def evaluate_and_execute_strategies(self, conn):
+    def evaluate_and_execute_strategies(self, conn: Any) -> None:
         """
         Evaluate active strategy configurations on recent price history and execute trade signals.
         """
@@ -799,7 +816,7 @@ class SignalExecutor:
                         }
                     )
 
-    def run_conversion_pipeline(self, conn):
+    def run_conversion_pipeline(self, conn: Any) -> None:
         """
         Pipeline de conversion USDC → EUR via Bybit Spot.
         Exécuté uniquement si BYBIT_CONVERSION_ENABLED=true.

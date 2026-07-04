@@ -3,7 +3,6 @@ import pandas as pd
 from numba import njit
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from pydantic import BaseModel, Field
-import math
 
 class SmartTraderGeometricConfig(BaseModel):
     signal_mode: Literal["Close", "Live"] = "Close"

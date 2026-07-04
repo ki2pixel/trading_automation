@@ -4,8 +4,21 @@ import psycopg2
 from psycopg2 import pool
 from contextlib import contextmanager
 import redis
-from typing import Generator, Optional
+from typing import Generator, Optional, Any, Union
 from urllib.parse import urlparse, parse_qs
+
+__all__ = [
+    "init_async_pool",
+    "get_async_pool",
+    "close_async_pool",
+    "get_db_pool",
+    "get_db_connection",
+    "get_sync_connection",
+    "get_redis_client",
+    "run_postgres_keep_alive_task",
+    "FailoverRedisClient",
+    "FailoverPipeline",
+]
 
 # Load env variables if python-dotenv is available
 try:
@@ -18,10 +31,10 @@ except ImportError:
 _db_pool: Optional[pool.ThreadedConnectionPool] = None
 
 # PostgreSQL Pool (Asynchronous — asyncpg, FastAPI only)
-_async_pool = None  # Optional[asyncpg.Pool], lazy-imported
+_async_pool: Optional[Any] = None  # Optional[asyncpg.Pool], lazy-imported
 
 
-def _build_asyncpg_ssl(dsn: str):
+def _build_asyncpg_ssl(dsn: str) -> Union[ssl.SSLContext, bool]:
     """Parse sslmode from DSN and return an ssl.SSLContext if required."""
     parsed = urlparse(dsn)
     qs = parse_qs(parsed.query)
@@ -38,7 +51,7 @@ def _build_asyncpg_ssl(dsn: str):
     return False  # asyncpg interprets False as "no SSL"
 
 
-async def init_async_pool(dsn: str, min_size: int = 2, max_size: int = 10):
+async def init_async_pool(dsn: str, min_size: int = 2, max_size: int = 10) -> Any:
     """
     Initialize the asyncpg connection pool for FastAPI async endpoints.
 
@@ -67,7 +80,7 @@ async def init_async_pool(dsn: str, min_size: int = 2, max_size: int = 10):
     return _async_pool
 
 
-async def get_async_pool():
+async def get_async_pool() -> Any:
     """Return the asyncpg pool. Raises RuntimeError if not initialized."""
     if _async_pool is None:
         raise RuntimeError(
@@ -76,7 +89,7 @@ async def get_async_pool():
     return _async_pool
 
 
-async def close_async_pool():
+async def close_async_pool() -> None:
     """Gracefully close the asyncpg pool during application shutdown."""
     global _async_pool
     if _async_pool is not None:
@@ -239,24 +252,24 @@ def _is_upstash_quota_exhausted(redis_url: str, api_key: str, email: str) -> boo
 
 class FailoverPipeline:
     """Proxy pipeline that records commands and replays them on failover if execution fails."""
-    def __init__(self, failover_client, *args, **kwargs):
+    def __init__(self, failover_client: "FailoverRedisClient", *args: Any, **kwargs: Any) -> None:
         self._failover_client = failover_client
         self._args = args
         self._kwargs = kwargs
         self._active_pipeline = self._failover_client._active_client.pipeline(*args, **kwargs)
-        self._commands = []
+        self._commands: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
 
-    def __enter__(self):
+    def __enter__(self) -> "FailoverPipeline":
         self._active_pipeline.__enter__()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
         return self._active_pipeline.__exit__(exc_type, exc_val, exc_tb)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         attr = getattr(self._active_pipeline, name)
         if name == "execute":
-            def wrapper(*args, **kwargs):
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
                     return attr(*args, **kwargs)
                 except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
@@ -280,7 +293,7 @@ class FailoverPipeline:
             return wrapper
 
         if callable(attr):
-            def command_recorder(*args, **kwargs):
+            def command_recorder(*args: Any, **kwargs: Any) -> Any:
                 self._commands.append((name, args, kwargs))
                 return attr(*args, **kwargs)
             return command_recorder
@@ -290,7 +303,7 @@ class FailoverPipeline:
 
 class FailoverRedisClient:
     """Wrapper that proxies calls to active Redis database and transparently fails over to secondary client."""
-    def __init__(self, primary_url: str, secondary_url: Optional[str] = None):
+    def __init__(self, primary_url: str, secondary_url: Optional[str] = None) -> None:
         self._primary_url = primary_url
         self._secondary_url = secondary_url
         
@@ -317,7 +330,7 @@ class FailoverRedisClient:
         self._active_client = self._primary_client
         self._is_failed_over = False
 
-    def _failover(self, error: Exception):
+    def _failover(self, error: Exception) -> None:
         if self._secondary_client is None:
             raise error
             
@@ -335,13 +348,13 @@ class FailoverRedisClient:
             print(f"[FailoverRedisClient] Secondary Redis client ping failed: {ping_err}")
             raise ping_err
 
-    def pipeline(self, *args, **kwargs):
+    def pipeline(self, *args: Any, **kwargs: Any) -> FailoverPipeline:
         return FailoverPipeline(self, *args, **kwargs)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         attr = getattr(self._active_client, name)
         if callable(attr):
-            def wrapper(*args, **kwargs):
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
                     return attr(*args, **kwargs)
                 except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
@@ -362,7 +375,7 @@ class FailoverRedisClient:
         return attr
 
 
-def get_redis_client() -> Optional[redis.Redis]:
+def get_redis_client() -> Optional[Union[redis.Redis, FailoverRedisClient]]:
     global _redis_client
     if _redis_client is None:
         redis_url = os.getenv("REDIS_URL")

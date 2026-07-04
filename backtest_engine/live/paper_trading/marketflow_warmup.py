@@ -1,6 +1,6 @@
 import os
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 
 API_KEY = os.getenv("RAPIDAPI_KEY")

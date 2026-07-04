@@ -7,7 +7,6 @@ from backtest_engine.broker import (
     BrokerSimulator,
     Position,
     Order,
-    ExitAction,
     TimeExitRule,
     VWAPExitRule,
     BoundaryExitRule,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from dataclasses import dataclass
 from typing import Any
 
 from backtest_engine.strategy_registry import StrategyInfo, StrategyRegistry

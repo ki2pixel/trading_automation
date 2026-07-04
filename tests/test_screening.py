@@ -5,7 +5,6 @@ from backtest_engine.screening import (
     calculate_hurst_exponent,
     calculate_adf_statistic,
     calculate_half_life,
-    calculate_autocorrelation,
     get_mahalanobis_distance,
     calculate_adv_currency,
     calculate_realized_volatility

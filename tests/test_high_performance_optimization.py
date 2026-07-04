@@ -11,12 +11,10 @@ import unittest
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import optuna
 
 from backtest_engine.shared_memory import SharedIndicatorVolume
 from backtest_engine.simulation_kernel import (
     run_broker_simulation_kernel,
-    position_dtype,
 )
 from backtest_engine.bayesian_optimizer import run_bayesian_optimization
 from backtest_engine.optimizer import ParameterGridSpec
@@ -474,7 +472,6 @@ class TestHighPerformanceOptimization(unittest.TestCase):
         """Verify that the optimized 3Commas Bot path using shared memory matches the original path to 1e-9 precision."""
         from backtest_engine.strategies.commas_bot import _load_strategy_module
         import numpy as np
-        import pandas as pd
 
         strategy_mod = _load_strategy_module()
         cfg = strategy_mod.CommasBotConfig()

@@ -1,14 +1,11 @@
 import unittest
 import tempfile
 import json
-import optuna
 from pathlib import Path
 import pandas as pd
-from unittest.mock import MagicMock
 
 from backtest_engine.bayesian_optimizer import (
     run_bayesian_optimization,
-    _suggest_parameters,
 )
 from backtest_engine.optimizer import parse_cli_parameter
 from backtest_engine.strategies.hma_crossover import HMAConfigOverrides

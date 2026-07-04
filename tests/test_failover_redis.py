@@ -5,8 +5,7 @@ import urllib.error
 
 from backtest_engine.live.connection import (
     _is_upstash_quota_exhausted,
-    FailoverRedisClient,
-    FailoverPipeline
+    FailoverRedisClient
 )
 
 class MockContextManager:

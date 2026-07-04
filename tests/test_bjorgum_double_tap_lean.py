@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import numpy as np
 import pandas as pd
-import pytest
 
 from backtest_engine.strategies.bjorgum_double_tap import (
     BjorgumDoubleTapConfigOverrides,

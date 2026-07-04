@@ -640,9 +640,6 @@ def vectorbt_prescan(
     de Lorentzian Classification avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
-    import itertools
-    import numpy as np
-    from ..optimizer import ParameterGridSpec
 
     logger = logging.getLogger(__name__)
 

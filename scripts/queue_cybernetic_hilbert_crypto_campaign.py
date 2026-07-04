@@ -6,7 +6,6 @@ Cybernetic Hilbert (Mode Tendance - Passe 1) sur les nouveaux actifs cryptos qua
 """
 
 import sys
-import os
 import re
 import time
 from uuid import uuid4

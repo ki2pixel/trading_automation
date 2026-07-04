@@ -1,6 +1,4 @@
-import pytest
 import numpy as np
-import pandas as pd
 import time
 from backtest_engine.indicators.adaptive_trend_classification import AdaptiveTrend
 

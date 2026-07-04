@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import vectorbt as vbt
 from numba import njit
 from typing import Tuple

@@ -1,7 +1,6 @@
 import unittest
 import pandas as pd
 import numpy as np
-import math
 
 from backtest_engine.strategies.noise_boundary_intraday import (
     compute_noise_boundary,

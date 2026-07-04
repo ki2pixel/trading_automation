@@ -1,4 +1,3 @@
-import pytest
 from fastapi.testclient import TestClient
 import time
 from unittest.mock import patch, MagicMock

@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
-import pytest
 import time
-import vectorbt as vbt
 from backtest_engine.indicators.momentum_based_zigzag import MomentumBasedZigZagIndicator
 
 def test_no_lookahead_bias():

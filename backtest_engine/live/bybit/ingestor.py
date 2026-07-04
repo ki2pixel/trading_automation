@@ -4,7 +4,7 @@ import json
 import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, Any, List, Optional
+from typing import Dict, List, Optional
 from backtest_engine.live.ingestion.base import BasePriceIngestor
 from backtest_engine.live.bybit.client import BybitClient
 from backtest_engine.live.connection import get_db_connection, get_redis_client

@@ -1,5 +1,9 @@
 # Journal des Décisions
 
+## [2026-07-04 00:38:00] - Phase 5 Hygiène & Dette Technique Backend validée (Dépendances, Docker, Nettoyage)
+- **Décision** : Partitionnement des dépendances Python du projet en 3 fichiers (`requirements-base.txt`, `requirements-backtest.txt`, `requirements-live.txt`), suppression de `requirements-backtest-engine.txt`, et build Docker de production allégé en copiant et installant uniquement le live. Nettoyage de la dette technique via la suppression automatisée de 332 imports inutilisés, l'audit du nommage (snake_case), et l'enrichissement des annotations de types statiques sur `connection.py` et `signal_executor.py` (API publique déclarée via `__all__`).
+- **Justification** : Réduire le poids de l'image Docker de production sur Render, clarifier la structure des dépendances par environnement pour les développeurs, accélérer les phases de build/CI, améliorer la maintenabilité du code par le typage statique strict et éliminer le code mort (imports inutilisés).
+
 ## [2026-07-04 00:15:00] - Phase 4 Robustesse Backend validée (Paper Trading & Optimizer)
 - **Décision** : Sécurisation du backend de trading automation via 3 piliers :
   1. **Exceptions Ciblées** : Remplacement des captures d'exceptions génériques (`except Exception`) par des captures typées spécifiques aux couches (DB : `psycopg2.Error`/`asyncpg.PostgresError`, Réseau : `urllib.error`/`requests.exceptions.RequestException`, Validation : `ValueError`/`KeyError`). Utilisation systématique de `logger.exception` pour conserver les stack traces. Création d'exceptions custom `SignalExecutionError` et `PortfolioUpdateError` pour les échecs d'affaires.

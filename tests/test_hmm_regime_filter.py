@@ -1,7 +1,6 @@
-import pytest
 import numpy as np
 import pandas as pd
-from backtest_engine.indicators.hmm_regime_filter import HMMRegimeFilter, gpdf, _hmm_regime_filter_1d_nb, _hmm_regime_filter_2d_nb
+from backtest_engine.indicators.hmm_regime_filter import HMMRegimeFilter, gpdf, _hmm_regime_filter_1d_nb
 from pine_scripts_convert_to_python.strategy.hmm_regime_filter_strategy import run_hmm_regime_filter_strategy, HMMRegimeFilterStrategyConfig
 
 def test_gpdf():
