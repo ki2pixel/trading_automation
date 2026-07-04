@@ -101,10 +101,17 @@ def load_infisical_secrets() -> None:
         
         # 2. Get Raw Secrets
         secrets_url = f"{url.rstrip('/')}/api/v3/secrets/raw"
+        params = {"environment": env_slug, "secretPath": "/"}
+        # If project_id is a 36-char UUID (containing hyphens), use workspaceId. Otherwise, use workspaceSlug.
+        if project_id and "-" in project_id and len(project_id) == 36:
+            params["workspaceId"] = project_id
+        else:
+            params["workspaceSlug"] = project_id
+
         secrets_resp = requests.get(
             secrets_url,
             headers={"Authorization": f"Bearer {token}"},
-            params={"workspaceId": project_id, "environment": env_slug, "secretPath": "/"},
+            params=params,
             timeout=10
         )
         secrets_resp.raise_for_status()
