@@ -27,6 +27,105 @@ from backtest_engine.live.paper_trading.db_setup import init_db
 
 logger = logging.getLogger("papertrader")
 
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name,
+            "filename": record.filename,
+            "lineno": record.lineno,
+        }
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry)
+
+
+def setup_siem_logging():
+    audit_logger = logging.getLogger("trading_audit")
+    audit_logger.setLevel(logging.INFO)
+    
+    if audit_logger.handlers:
+        return audit_logger
+        
+    log_path = os.getenv("TRADING_AUDIT_LOG_PATH", "/var/log/trading_audit.log")
+    
+    try:
+        # Test write access to directory
+        dir_name = os.path.dirname(log_path) or "."
+        os.makedirs(dir_name, exist_ok=True)
+        handler = logging.FileHandler(log_path, encoding="utf-8")
+    except (PermissionError, FileNotFoundError):
+        fallback_path = "./trading_audit.log"
+        print(f"[SECURITY] Permission denied or directory missing for {log_path}. Falling back to: {fallback_path}")
+        handler = logging.FileHandler(fallback_path, encoding="utf-8")
+        
+    handler.setFormatter(JSONFormatter())
+    audit_logger.addHandler(handler)
+    return audit_logger
+
+
+# Initialize SIEM audit logger
+setup_siem_logging()
+import json
+
+
+def load_infisical_secrets() -> None:
+    """
+    Connect to Infisical Secrets Manager using Machine Identity.
+    If configured, injects secrets into os.environ dynamically.
+    """
+    client_id = os.getenv("INFISICAL_CLIENT_ID")
+    client_secret = os.getenv("INFISICAL_CLIENT_SECRET")
+    
+    if not client_id or not client_secret:
+        return
+
+    try:
+        from infisical_client import InfisicalClient, ClientSettings, AuthenticationOptions
+        
+        url = os.getenv("INFISICAL_URL", "https://app.infisical.com")
+        project_id = os.getenv("INFISICAL_PROJECT_ID")
+        env_slug = os.getenv("INFISICAL_ENV", "dev")
+        
+        client = InfisicalClient(
+            ClientSettings(
+                auth=AuthenticationOptions(
+                    client_id=client_id,
+                    client_secret=client_secret
+                ),
+                site_url=url
+            )
+        )
+        
+        # Load all secrets
+        secrets_list = client.list_secrets(
+            project_id=project_id,
+            environment=env_slug
+        )
+        
+        for secret in secrets_list:
+            key = getattr(secret, "secret_key", None) or getattr(secret, "secretKey", None)
+            val = getattr(secret, "secret_value", None) or getattr(secret, "secretValue", None)
+            # Try dictionary access if attributes not found
+            if not key and isinstance(secret, dict):
+                key = secret.get("secretKey") or secret.get("secret_key")
+                val = secret.get("secretValue") or secret.get("secret_value")
+            
+            if key and val:
+                os.environ[key] = val
+                
+        print(f"[Infisical] Successfully loaded and injected {len(secrets_list)} secrets in process memory.")
+    except Exception as e:
+        print(f"[Infisical] Fallback warning: Failed to load secrets from Infisical: {e}")
+
+
+# Load secrets from Infisical before verifying configuration
+load_infisical_secrets()
+
+
 # Check Basic Auth Configuration
 PAPER_TRADER_USER = os.getenv("PAPER_TRADER_USER", "admin")
 PAPER_TRADER_PASSWORD = os.getenv("PAPER_TRADER_PASSWORD")
@@ -138,11 +237,27 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             self._ensure_csrf_cookie(request, response)
             return response
 
+        # Security hardening: reject mutating request if Content-Type is not application/json
+        # (prevents CORS bypass via Blob, FormData, or text/plain POSTs)
+        content_type = request.headers.get("Content-Type", "")
+        client_ip = request.client.host if request.client else "unknown"
+        if path.startswith("/api/") and not content_type.startswith("application/json"):
+            logging.getLogger("trading_audit").error(
+                f"Content-Type violation: IP={client_ip}, path={path}, content_type={content_type}"
+            )
+            return JSONResponse(
+                content={"detail": "Content-Type must be application/json for mutating requests"},
+                status_code=415
+            )
+
         # Validate CSRF token: cookie must match header
         cookie_token = request.cookies.get("csrftoken")
         header_token = request.headers.get("X-CSRFToken")
 
         if not cookie_token or not header_token or not hmac.compare_digest(cookie_token, header_token):
+            logging.getLogger("trading_audit").error(
+                f"CSRF token failure: IP={client_ip}, path={path}"
+            )
             return JSONResponse(
                 content={"detail": "CSRF token missing or invalid"},
                 status_code=403
@@ -187,13 +302,60 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
+    """
+    Token Bucket / Counter rate limiter middleware using Redis.
+    Limits request rates to prevent DoS attacks.
+    """
+    def __init__(self, app, rate_limit: int = 60, window_seconds: int = 60):
+        super().__init__(app)
+        self.rate_limit = rate_limit
+        self.window_seconds = window_seconds
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if not path.startswith("/api/"):
+            return await call_next(request)
+
+        # Exclude rate limiting for auth/csrf initialization
+        if path in ("/api/csrf-token", "/api/login"):
+            return await call_next(request)
+
+        client_ip = request.client.host if request.client else "unknown"
+        key = f"rate_limit:{client_ip}:{path}"
+
+        from backtest_engine.live.connection import get_redis_client
+        redis_client = get_redis_client()
+        
+        if redis_client:
+            try:
+                current_requests = redis_client.incr(key)
+                if current_requests == 1:
+                    redis_client.expire(key, self.window_seconds)
+                
+                if current_requests > self.rate_limit:
+                    logging.getLogger("trading_audit").warning(
+                        f"Rate limit exceeded: IP={client_ip}, path={path}, requests={current_requests}, limit={self.rate_limit}"
+                    )
+                    return JSONResponse(
+                        content={"detail": "Too many requests. Please try again later."},
+                        status_code=429
+                    )
+            except Exception as e:
+                # Fail open to prevent complete outage if Redis is down
+                logger.warning(f"[RateLimiter] Redis error: {e}")
+                
+        return await call_next(request)
+
+
 engine = None
 background_task = None
 keepalive_task = None
+kill_switch_listener = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global background_task, keepalive_task, engine
+    global background_task, keepalive_task, engine, kill_switch_listener
     
     # Run DB schema check/seed
     print("[PaperTrader] Initializing database...")
@@ -210,6 +372,11 @@ async def lifespan(app: FastAPI):
     # Initialize engine if not already initialized
     if engine is None:
         engine = PaperTradingEngine()
+
+    # Start Kill Switch listener (ESMA RTS 6 compliance)
+    from backtest_engine.live.kill_switch import KillSwitchListener
+    kill_switch_listener = KillSwitchListener(engine)
+    await kill_switch_listener.start()
 
     polling_interval = int(os.getenv("PAPER_TRADER_POLLING_INTERVAL", "60"))
     if engine is not None:
@@ -229,6 +396,9 @@ async def lifespan(app: FastAPI):
     
     # Shutdown: close asyncpg pool first (API endpoints stop using it)
     await close_async_pool()
+
+    if kill_switch_listener is not None:
+        await kill_switch_listener.stop()
 
     if engine is not None:
         engine.stop()
@@ -255,6 +425,8 @@ app = FastAPI(title="Paper Trading Dashboard API", lifespan=lifespan)
 app.add_middleware(CSRFMiddleware)               # 1st added → last executed
 app.add_middleware(CookieSessionAuthMiddleware)  # 2nd added → 3rd executed
 app.add_middleware(SecurityHeadersMiddleware)     # 3rd added → 2nd executed
+app.add_middleware(RedisRateLimiterMiddleware)    # 4th added
+
 
 # CORS must execute first — added last (LIFO)
 _allowed_origins: list[str] = []
@@ -305,6 +477,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             status_code=exc.status_code,
             content={"detail": exc.detail}
         )
+    return safe_error_response(exc, request)
 @app.get("/api/csrf-token")
 def get_csrf_token(request: Request, response: Response):
     token = request.cookies.get("csrftoken")

@@ -103,6 +103,44 @@ class SpotConversionRouter:
         Submits the order to Bybit V5 POST /v5/order/create.
         Implements retry with idempotent client_order_id.
         """
+        # Pre-Trade Controls check (ESMA RTS 6 compliance)
+        from backtest_engine.live.controls import PreTradeController, PreTradeControlError
+        from backtest_engine.live.connection import get_db_connection
+        
+        nav = Decimal("100000.0")
+        price = Decimal("1.08") # Default fallback for EURUSDC
+        
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT total_nav FROM paper_portfolio_balance WHERE source = 'bybit'")
+                    row = cur.fetchone()
+                    if row and row[0] is not None:
+                        nav = Decimal(str(row[0]))
+                        
+                    cur.execute("SELECT price FROM live_prices WHERE ticker = 'eurusd'")
+                    row = cur.fetchone()
+                    if row and row[0] is not None:
+                        price = Decimal(str(row[0]))
+        except Exception as dbe:
+            logger.warning(f"[SpotRouter] PTC warning: Failed to query database: {dbe}")
+            
+        try:
+            ptc = PreTradeController()
+            ptc.check_limits(
+                ticker=order.symbol,
+                quantity=order.qty_usdc / price if price > 0 else order.qty_usdc,
+                price=price,
+                current_nav=nav,
+                current_position_qty=Decimal("0"),
+                reference_price=price
+            )
+        except PreTradeControlError as ptce:
+            order.status = ConversionOrderStatus.REJECTED
+            order.error_message = str(ptce)
+            logger.error(f"[SpotRouter] Order REJECTED by Pre-Trade Controls: {ptce}")
+            return order
+
         payload = order.to_bybit_payload()
         
         for attempt in range(order.max_retries):

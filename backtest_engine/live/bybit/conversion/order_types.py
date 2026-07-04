@@ -32,7 +32,7 @@ class ConversionOrder:
     il doit vérifier le statut de cet ordre via l'API pour éviter le Double Spend.'
     """
     # Identification
-    client_order_id: str = field(default_factory=lambda: f"conv_{uuid.uuid4().hex[:16]}")
+    client_order_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     broker_order_id: Optional[str] = None
     
     # Order parameters (Decimal only)

@@ -60,45 +60,63 @@ class BybitClient:
                 "X-BAPI-RECV-WINDOW": self.recv_window
             })
 
-        for attempt in range(max_retries):
-            try:
-                response = requests.request(
-                    method,
-                    url,
-                    headers=headers,
-                    params=req_params if method == "GET" else None,
-                    json=json_data if method != "GET" else None,
-                    timeout=NETWORK_TIMEOUT_DEFAULT,
-                )
-                
-                # Rate limit (HTTP 429 / Bybit error code 10006)
-                if response.status_code == 429:
-                    retry_after = response.headers.get("Retry-After")
-                    wait_time = float(retry_after) if retry_after else (backoff_factor ** attempt)
-                    print(f"[BybitClient] Rate limit hit. Waiting {wait_time}s before retry...")
-                    time.sleep(wait_time)
-                    continue
+        from tenacity import Retrying, stop_after_attempt, wait_random_exponential, retry_if_exception
+        
+        def is_temporary_error(exception: Exception) -> bool:
+            if isinstance(exception, requests.exceptions.RequestException):
+                if isinstance(exception, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
+                    return True
+                if hasattr(exception, "response") and exception.response is not None:
+                    status_code = exception.response.status_code
+                    return status_code == 429 or status_code >= 500
+            return False
+
+        try:
+            for attempt in Retrying(
+                stop=stop_after_attempt(max_retries),
+                wait=wait_random_exponential(multiplier=backoff_factor, max=10),
+                retry=retry_if_exception(is_temporary_error),
+                reraise=True
+            ):
+                with attempt:
+                    if signed:
+                        if not self.config.api_key or not self.config.api_secret:
+                            raise ValueError("Missing Bybit credentials. Cannot perform signed requests.")
+                        timestamp = str(int(time.time() * 1000))
+                        if method == "GET":
+                            query_str = urllib.parse.urlencode(req_params)
+                            signature = self._sign(timestamp, query_str)
+                        else:
+                            body_str = json.dumps(json_data) if json_data else ""
+                            signature = self._sign(timestamp, body_str)
+                        
+                        headers.update({
+                            "X-BAPI-API-KEY": self.config.api_key,
+                            "X-BAPI-SIGN": signature,
+                            "X-BAPI-TIMESTAMP": timestamp,
+                            "X-BAPI-RECV-WINDOW": self.recv_window
+                        })
+                        
+                    response = requests.request(
+                        method,
+                        url,
+                        headers=headers,
+                        params=req_params if method == "GET" else None,
+                        json=json_data if method != "GET" else None,
+                        timeout=NETWORK_TIMEOUT_DEFAULT,
+                    )
                     
-                # Temporary server error
-                if response.status_code >= 500:
-                    wait_time = backoff_factor ** attempt
-                    print(f"[BybitClient] Server error ({response.status_code}). Retrying in {wait_time}s...")
-                    time.sleep(wait_time)
-                    continue
-                    
-                if response.status_code >= 400:
-                    print(f"[BybitClient] API Error Response ({response.status_code}): {response.text}")
-                response.raise_for_status()
-                return response
-                
-            except requests.exceptions.RequestException as e:
-                if attempt == max_retries - 1:
-                    print(f"[BybitClient] Request failed after {max_retries} attempts: {e}")
-                    raise e
-                wait_time = backoff_factor ** attempt
-                time.sleep(wait_time)
-                
-        raise requests.exceptions.RequestException("Request failed due to excessive retries.")
+                    if response.status_code == 429 or response.status_code >= 500:
+                        raise requests.exceptions.HTTPError(
+                            f"Temporary error {response.status_code}",
+                            response=response
+                        )
+                        
+                    response.raise_for_status()
+                    return response
+        except Exception as e:
+            print(f"[BybitClient] Request failed after tenacity retries: {e}")
+            raise e
 
     def get_ticker_price(self, symbol: str) -> Dict[str, Any]:
         """Retrieves the current ticker price for a specific spot symbol."""

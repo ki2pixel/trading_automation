@@ -54,3 +54,20 @@ class Trading212Config:
                 "Missing Trading 212 credentials. Ensure T212_API_KEY_ID and "
                 "T212_API_SECRET are set in environment or .env file."
             )
+
+        # Failsafe check to prevent environment mismatch
+        import hashlib
+        # Hash api_secret if configured, else api_key_id
+        key_to_hash = self.api_secret or self.api_key_id
+        key_hash = hashlib.sha256(key_to_hash.encode("utf-8")).hexdigest()
+        expected_live_hash = os.getenv("EXPECTED_T212_LIVE_KEY_HASH")
+        expected_demo_hash = os.getenv("EXPECTED_T212_DEMO_KEY_HASH")
+        
+        if self.env == "live":
+            if expected_demo_hash and key_hash == expected_demo_hash:
+                raise ValueError("[Failsafe] CRITICAL: Trading 212 Demo API key/secret detected in Live environment! Shutting down immediately.")
+            if expected_live_hash and key_hash != expected_live_hash:
+                raise ValueError("[Failsafe] CRITICAL: Trading 212 API key/secret does not match EXPECTED_T212_LIVE_KEY_HASH in Live environment! Shutting down immediately.")
+        else:
+            if expected_live_hash and key_hash == expected_live_hash:
+                raise ValueError("[Failsafe] CRITICAL: Trading 212 Live API key/secret detected in Demo environment! Shutting down immediately.")

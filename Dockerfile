@@ -9,9 +9,12 @@ ENV PYTHONPATH=/app
 
 WORKDIR /app
 
-# Install system dependencies (e.g. curl for health check)
+# Install system dependencies (e.g. curl for health check, sqlcipher and compilation tools)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    build-essential \
+    sqlcipher \
+    libsqlcipher-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependencies first to leverage caching

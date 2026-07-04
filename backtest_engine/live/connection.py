@@ -40,13 +40,33 @@ def _build_asyncpg_ssl(dsn: str) -> Union[ssl.SSLContext, bool]:
     qs = parse_qs(parsed.query)
     sslmode = qs.get("sslmode", ["prefer"])[0]
 
+    # mTLS environment support
+    ssl_cert = os.getenv("DB_SSL_CERT")
+    ssl_key = os.getenv("DB_SSL_KEY")
+    ssl_ca = os.getenv("DB_SSL_CA")
+
+    if ssl_cert and ssl_key:
+        ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        ctx.load_cert_chain(certfile=ssl_cert, keyfile=ssl_key)
+        if ssl_ca:
+            ctx.load_verify_locations(cafile=ssl_ca)
+            ctx.verify_mode = ssl.CERT_REQUIRED
+        else:
+            ctx.verify_mode = ssl.CERT_NONE
+        ctx.check_hostname = False
+        return ctx
+
     if sslmode in ("require", "verify-ca", "verify-full"):
         ctx = ssl.create_default_context()
-        # Aiven uses valid CA certs, but if sslmode is just 'require'
-        # we don't verify the server certificate (matches psycopg2 behaviour)
         if sslmode == "require":
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
+        elif sslmode in ("verify-ca", "verify-full"):
+            if ssl_ca:
+                ctx.load_verify_locations(cafile=ssl_ca)
+            ctx.verify_mode = ssl.CERT_REQUIRED
+            if sslmode == "verify-ca":
+                ctx.check_hostname = False
         return ctx
     return False  # asyncpg interprets False as "no SSL"
 
@@ -308,23 +328,75 @@ class FailoverRedisClient:
         self._secondary_url = secondary_url
         
         pool_max = int(os.getenv("REDIS_POOL_MAX", "40"))
+        redis_user = os.getenv("REDIS_USER")
+        redis_password = os.getenv("REDIS_PASSWORD")
+        redis_user_2 = os.getenv("REDIS_USER_2")
+        redis_password_2 = os.getenv("REDIS_PASSWORD_2")
+        
+        # mTLS support
+        redis_ssl_cert = os.getenv("REDIS_SSL_CERT")
+        redis_ssl_key = os.getenv("REDIS_SSL_KEY")
+        redis_ssl_ca = os.getenv("REDIS_SSL_CA")
+        
+        primary_kwargs = {
+            "decode_responses": True,
+            "max_connections": pool_max,
+            "socket_timeout": 5,
+            "socket_connect_timeout": 5,
+            "retry_on_timeout": True
+        }
+        if redis_user:
+            primary_kwargs["username"] = redis_user
+        if redis_password:
+            primary_kwargs["password"] = redis_password
+            
+        if primary_url.startswith("rediss://"):
+            if redis_ssl_cert and redis_ssl_key:
+                primary_kwargs["ssl_certfile"] = redis_ssl_cert
+                primary_kwargs["ssl_keyfile"] = redis_ssl_key
+            if redis_ssl_ca:
+                primary_kwargs["ssl_ca_certs"] = redis_ssl_ca
+                primary_kwargs["ssl_cert_reqs"] = "required"
+            
         self._primary_client = redis.Redis.from_url(
             primary_url,
-            decode_responses=True,
-            max_connections=pool_max,
-            socket_timeout=5,
-            socket_connect_timeout=5,
-            retry_on_timeout=True
+            **primary_kwargs
         )
         self._secondary_client = None
         if secondary_url:
+            secondary_kwargs = {
+                "decode_responses": True,
+                "max_connections": pool_max,
+                "socket_timeout": 5,
+                "socket_connect_timeout": 5,
+                "retry_on_timeout": True
+            }
+            if redis_user_2:
+                secondary_kwargs["username"] = redis_user_2
+            elif redis_user:
+                secondary_kwargs["username"] = redis_user
+                
+            if redis_password_2:
+                secondary_kwargs["password"] = redis_password_2
+            elif redis_password:
+                secondary_kwargs["password"] = redis_password
+                
+            if secondary_url.startswith("rediss://"):
+                # Use secondary certs if provided, else fallback to primary
+                redis_ssl_cert_2 = os.getenv("REDIS_SSL_CERT_2") or redis_ssl_cert
+                redis_ssl_key_2 = os.getenv("REDIS_SSL_KEY_2") or redis_ssl_key
+                redis_ssl_ca_2 = os.getenv("REDIS_SSL_CA_2") or redis_ssl_ca
+                
+                if redis_ssl_cert_2 and redis_ssl_key_2:
+                    secondary_kwargs["ssl_certfile"] = redis_ssl_cert_2
+                    secondary_kwargs["ssl_keyfile"] = redis_ssl_key_2
+                if redis_ssl_ca_2:
+                    secondary_kwargs["ssl_ca_certs"] = redis_ssl_ca_2
+                    secondary_kwargs["ssl_cert_reqs"] = "required"
+                
             self._secondary_client = redis.Redis.from_url(
                 secondary_url,
-                decode_responses=True,
-                max_connections=pool_max,
-                socket_timeout=5,
-                socket_connect_timeout=5,
-                retry_on_timeout=True
+                **secondary_kwargs
             )
             
         self._active_client = self._primary_client
@@ -427,13 +499,37 @@ def get_redis_client() -> Optional[Union[redis.Redis, FailoverRedisClient]]:
         else:
             try:
                 pool_max = int(os.getenv("REDIS_POOL_MAX", "40"))
+                redis_user = os.getenv("REDIS_USER")
+                redis_password = os.getenv("REDIS_PASSWORD")
+                
+                # mTLS support
+                redis_ssl_cert = os.getenv("REDIS_SSL_CERT")
+                redis_ssl_key = os.getenv("REDIS_SSL_KEY")
+                redis_ssl_ca = os.getenv("REDIS_SSL_CA")
+                
+                redis_kwargs = {
+                    "decode_responses": True,
+                    "max_connections": pool_max,
+                    "socket_timeout": 5,
+                    "socket_connect_timeout": 5,
+                    "retry_on_timeout": True
+                }
+                if redis_user:
+                    redis_kwargs["username"] = redis_user
+                if redis_password:
+                    redis_kwargs["password"] = redis_password
+                    
+                if redis_url.startswith("rediss://"):
+                    if redis_ssl_cert and redis_ssl_key:
+                        redis_kwargs["ssl_certfile"] = redis_ssl_cert
+                        redis_kwargs["ssl_keyfile"] = redis_ssl_key
+                    if redis_ssl_ca:
+                        redis_kwargs["ssl_ca_certs"] = redis_ssl_ca
+                        redis_kwargs["ssl_cert_reqs"] = "required"
+                    
                 _redis_client = redis.Redis.from_url(
                     redis_url,
-                    decode_responses=True,
-                    max_connections=pool_max,
-                    socket_timeout=5,
-                    socket_connect_timeout=5,
-                    retry_on_timeout=True
+                    **redis_kwargs
                 )
                 _redis_client.ping()
                 print("[ConnectionManager] Redis client connected successfully.")

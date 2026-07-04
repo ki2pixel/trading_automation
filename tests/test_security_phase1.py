@@ -174,7 +174,7 @@ class TestCSRFProtection:
         assert login_resp.status_code == 200
 
         # POST to panic endpoint without X-CSRFToken header
-        response = client.post("/api/control/panic")
+        response = client.post("/api/control/panic", json={})
         assert response.status_code == 403
         assert "CSRF" in response.json()["detail"]
 
@@ -191,7 +191,8 @@ class TestCSRFProtection:
         # Send wrong token in header
         response = client.post(
             "/api/control/panic",
-            headers={"X-CSRFToken": "wrong_token"}
+            headers={"X-CSRFToken": "wrong_token"},
+            json={}
         )
         assert response.status_code == 403
 
@@ -233,7 +234,8 @@ class TestCSRFProtection:
         # POST with matching CSRF header — will hit the actual endpoint
         response = client.post(
             "/api/control/panic",
-            headers={"X-CSRFToken": csrf_token}
+            headers={"X-CSRFToken": csrf_token},
+            json={}
         )
         # Should pass CSRF check (not 403). Should be 200 since DB is mocked.
         assert response.status_code == 200

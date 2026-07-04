@@ -50,3 +50,19 @@ class BybitConfig:
         """Validates configuration."""
         if not self.api_key or not self.api_secret:
             print("[BybitConfig] WARNING: Bybit API Key or Secret is missing. Private signed endpoints will fail, but public endpoints (price ingestion) will work.")
+            return
+
+        # Failsafe check to prevent environment mismatch
+        import hashlib
+        key_hash = hashlib.sha256(self.api_key.encode("utf-8")).hexdigest()
+        expected_live_hash = os.getenv("EXPECTED_BYBIT_LIVE_KEY_HASH")
+        expected_demo_hash = os.getenv("EXPECTED_BYBIT_DEMO_KEY_HASH")
+        
+        if self.env == "live":
+            if expected_demo_hash and key_hash == expected_demo_hash:
+                raise ValueError("[Failsafe] CRITICAL: Bybit Demo API key detected in Live environment! Shutting down immediately.")
+            if expected_live_hash and key_hash != expected_live_hash:
+                raise ValueError("[Failsafe] CRITICAL: Bybit API key does not match EXPECTED_BYBIT_LIVE_KEY_HASH in Live environment! Shutting down immediately.")
+        else:
+            if expected_live_hash and key_hash == expected_live_hash:
+                raise ValueError("[Failsafe] CRITICAL: Bybit Live API key detected in Demo/Testnet environment! Shutting down immediately.")

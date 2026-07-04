@@ -2,12 +2,29 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
+import hashlib
+import hmac
 import json
+import os
 from pathlib import Path
+import secrets
 import sqlite3
 from threading import RLock
 import time
 from typing import Any
+
+
+class JobIntegrityError(ValueError):
+    """Exception raised when a job signature validation fails."""
+    pass
+
+
+def calculate_job_signature(job_id: str, created_at: float, request_json: str, status: str, output_dir: str | None, secret: str) -> str:
+    """Computes a HMAC-SHA256 signature for a job payload to verify its integrity."""
+    output_dir_str = output_dir or ""
+    message = f"{job_id}|{created_at}|{request_json}|{status}|{output_dir_str}".encode("utf-8")
+    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
 
 
 @dataclass
@@ -80,6 +97,16 @@ class SQLiteOptimizerJobStore:
         self._max_jobs = max(1, int(max_jobs))
         self._ttl_seconds = ttl_seconds if ttl_seconds is None else max(1, int(ttl_seconds))
         self._lock = RLock()
+        
+        # Load HMAC secret for job signing
+        self._hmac_secret = os.getenv("JOB_STORE_HMAC_SECRET")
+        if not self._hmac_secret:
+            is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+            if is_prod:
+                raise ValueError("JOB_STORE_HMAC_SECRET environment variable is required in production.")
+            else:
+                self._hmac_secret = "dev_default_hmac_secret_key_change_me_in_prod"
+
         self._storage_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
         self._maintenance()
@@ -93,17 +120,26 @@ class SQLiteOptimizerJobStore:
         with self._lock, self._connect() as conn:
             now = time.time()
             self._cleanup_locked(conn)
+            request_json = _json_dump(job.request)
+            signature = calculate_job_signature(
+                job_id=job.id,
+                created_at=job.created_at,
+                request_json=request_json,
+                status=job.status,
+                output_dir=job.output_dir,
+                secret=self._hmac_secret
+            )
             conn.execute(
                 """
                 INSERT INTO optimizer_jobs (
                     id, created_at, request_json, status, progress_json, best_json,
-                    output_dir, error, cancel_requested, summary_json, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    output_dir, error, cancel_requested, summary_json, updated_at, signature
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job.id,
                     float(job.created_at),
-                    _json_dump(job.request),
+                    request_json,
                     str(job.status),
                     _json_dump(job.progress),
                     _json_dump(job.best),
@@ -112,6 +148,7 @@ class SQLiteOptimizerJobStore:
                     1 if job.cancel_requested else 0,
                     _json_dump(job.summary),
                     now,
+                    signature
                 ),
             )
             self._enforce_limit_locked(conn)
@@ -135,24 +172,55 @@ class SQLiteOptimizerJobStore:
             "cancel_requested": "cancel_requested",
             "summary": "summary_json",
         }
-        assignments: list[str] = []
-        values: list[Any] = []
-        for key, value in updates.items():
-            if key not in allowed:
-                raise ValueError(f"Unsupported OptimizerJob update field: {key}")
-            assignments.append(f"{allowed[key]} = ?")
-            if key in self.JSON_FIELDS:
-                values.append(_json_dump(value))
-            elif key == "cancel_requested":
-                values.append(1 if value else 0)
-            else:
-                values.append(deepcopy(value))
-        assignments.append("updated_at = ?")
-        values.append(time.time())
-        values.append(job_id)
 
         with self._lock, self._connect() as conn:
             self._cleanup_locked(conn)
+            row = conn.execute("SELECT * FROM optimizer_jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None:
+                raise KeyError(job_id)
+                
+            self._verify_job_signature(row)
+            
+            request_json = row["request_json"]
+            status = row["status"]
+            output_dir = row["output_dir"]
+            created_at = row["created_at"]
+            
+            if "request" in updates:
+                request_json = _json_dump(updates["request"])
+            if "status" in updates:
+                status = str(updates["status"])
+            if "output_dir" in updates:
+                output_dir = str(updates["output_dir"]) if updates["output_dir"] else None
+                
+            new_signature = calculate_job_signature(
+                job_id=job_id,
+                created_at=created_at,
+                request_json=request_json,
+                status=status,
+                output_dir=output_dir,
+                secret=self._hmac_secret
+            )
+
+            assignments: list[str] = []
+            values: list[Any] = []
+            for key, value in updates.items():
+                if key not in allowed:
+                    raise ValueError(f"Unsupported OptimizerJob update field: {key}")
+                assignments.append(f"{allowed[key]} = ?")
+                if key in self.JSON_FIELDS:
+                    values.append(_json_dump(value))
+                elif key == "cancel_requested":
+                    values.append(1 if value else 0)
+                else:
+                    values.append(deepcopy(value))
+            
+            assignments.append("signature = ?")
+            values.append(new_signature)
+            assignments.append("updated_at = ?")
+            values.append(time.time())
+            values.append(job_id)
+
             cursor = conn.execute(f"UPDATE optimizer_jobs SET {', '.join(assignments)} WHERE id = ?", values)
             if cursor.rowcount == 0:
                 raise KeyError(job_id)
@@ -188,13 +256,25 @@ class SQLiteOptimizerJobStore:
             if row is None:
                 conn.commit()
                 return None
+                
+            self._verify_job_signature(row)
+            
+            new_sig = calculate_job_signature(
+                job_id=row["id"],
+                created_at=row["created_at"],
+                request_json=row["request_json"],
+                status="IN_PROGRESS",
+                output_dir=row["output_dir"],
+                secret=self._hmac_secret
+            )
+            
             conn.execute(
                 """
                 UPDATE optimizer_jobs
-                SET status = 'IN_PROGRESS', worker_id = ?, locked_at = ?, updated_at = ?
+                SET status = 'IN_PROGRESS', worker_id = ?, locked_at = ?, updated_at = ?, signature = ?
                 WHERE id = ?
                 """,
-                (worker_id, claimed_at, claimed_at, row["id"]),
+                (worker_id, claimed_at, claimed_at, new_sig, row["id"]),
             )
             conn.commit()
             updated = conn.execute("SELECT * FROM optimizer_jobs WHERE id = ?", (row["id"],)).fetchone()
@@ -203,31 +283,63 @@ class SQLiteOptimizerJobStore:
     def mark_interrupted_jobs_failed(self) -> None:
         with self._lock, self._connect() as conn:
             now = time.time()
-            conn.execute(
-                """
-                UPDATE optimizer_jobs
-                SET status = 'FAILED',
-                    error = COALESCE(error, 'Job interrupted by optimizer worker restart'),
-                    updated_at = ?
-                WHERE status = 'IN_PROGRESS'
-                """,
-                (now,),
-            )
+            rows = conn.execute("SELECT * FROM optimizer_jobs WHERE status = 'IN_PROGRESS'").fetchall()
+            for row in rows:
+                try:
+                    self._verify_job_signature(row)
+                except JobIntegrityError:
+                    pass
+                new_sig = calculate_job_signature(
+                    job_id=row["id"],
+                    created_at=row["created_at"],
+                    request_json=row["request_json"],
+                    status="FAILED",
+                    output_dir=row["output_dir"],
+                    secret=self._hmac_secret
+                )
+                conn.execute(
+                    """
+                    UPDATE optimizer_jobs
+                    SET status = 'FAILED',
+                        error = COALESCE(error, 'Job interrupted by optimizer worker restart'),
+                        updated_at = ?,
+                        signature = ?
+                    WHERE id = ?
+                    """,
+                    (now, new_sig, row["id"]),
+                )
 
     def mark_worker_crashed(self, worker_id: str, error_message: str) -> int:
         with self._lock, self._connect() as conn:
             now = time.time()
-            cursor = conn.execute(
-                """
-                UPDATE optimizer_jobs
-                SET status = 'FAILED',
-                    error = ?,
-                    updated_at = ?
-                WHERE status = 'IN_PROGRESS' AND worker_id = ?
-                """,
-                (error_message, now, worker_id),
-            )
-            return cursor.rowcount
+            rows = conn.execute("SELECT * FROM optimizer_jobs WHERE status = 'IN_PROGRESS' AND worker_id = ?", (worker_id,)).fetchall()
+            count = 0
+            for row in rows:
+                try:
+                    self._verify_job_signature(row)
+                except JobIntegrityError:
+                    pass
+                new_sig = calculate_job_signature(
+                    job_id=row["id"],
+                    created_at=row["created_at"],
+                    request_json=row["request_json"],
+                    status="FAILED",
+                    output_dir=row["output_dir"],
+                    secret=self._hmac_secret
+                )
+                conn.execute(
+                    """
+                    UPDATE optimizer_jobs
+                    SET status = 'FAILED',
+                        error = ?,
+                        updated_at = ?,
+                        signature = ?
+                    WHERE id = ?
+                    """,
+                    (error_message, now, new_sig, row["id"]),
+                )
+                count += 1
+            return count
 
 
     def _maintenance(self) -> None:
@@ -256,13 +368,43 @@ class SQLiteOptimizerJobStore:
                 )
                 """
             )
+            try:
+                conn.execute("ALTER TABLE optimizer_jobs ADD COLUMN signature TEXT")
+            except sqlite3.OperationalError:
+                pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_optimizer_jobs_status_created ON optimizer_jobs(status, created_at)")
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._storage_path, timeout=30.0, isolation_level=None)
+        encryption_key = os.getenv("SQLITE_ENCRYPTION_KEY")
+        use_sqlcipher = False
+        
+        if encryption_key:
+            try:
+                from sqlcipher3 import dbapi2 as sqlcipher
+                use_sqlcipher = True
+            except ImportError:
+                is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+                if is_prod:
+                    raise ImportError("SQLCipher is required in production when SQLITE_ENCRYPTION_KEY is configured, but 'sqlcipher3' package is not installed.")
+                else:
+                    import logging
+                    logging.getLogger("job_store").warning("[SECURITY WARNING] SQLITE_ENCRYPTION_KEY is set but sqlcipher3 is not installed. Falling back to unencrypted sqlite3.")
+
+        if use_sqlcipher:
+            from sqlcipher3 import dbapi2 as sqlcipher_db
+            conn = sqlcipher_db.connect(self._storage_path, timeout=30.0, isolation_level=None)
+        else:
+            conn = sqlite3.connect(self._storage_path, timeout=30.0, isolation_level=None)
+            
         conn.row_factory = sqlite3.Row
+        
+        if use_sqlcipher and encryption_key:
+            conn.execute(f"PRAGMA key = '{encryption_key}'")
+
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA secure_delete=ON")
+        conn.execute("PRAGMA temp_store=MEMORY")
         return conn
 
     def _cleanup_locked(self, conn: sqlite3.Connection) -> None:
@@ -295,8 +437,28 @@ class SQLiteOptimizerJobStore:
             conn.execute("DELETE FROM optimizer_jobs WHERE id = ?", (row["id"],))
             total -= 1
 
-    @staticmethod
-    def _row_to_job(row: sqlite3.Row) -> OptimizerJob:
+    def _verify_job_signature(self, row: sqlite3.Row) -> None:
+        sig_stored = row["signature"]
+        if sig_stored is None:
+            is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+            if is_prod:
+                raise JobIntegrityError(f"Job {row['id']} has no cryptographic signature.")
+            return
+
+        expected_sig = calculate_job_signature(
+            job_id=row["id"],
+            created_at=row["created_at"],
+            request_json=row["request_json"],
+            status=row["status"],
+            output_dir=row["output_dir"],
+            secret=self._hmac_secret
+        )
+
+        if not hmac.compare_digest(sig_stored, expected_sig):
+            raise JobIntegrityError(f"Job {row['id']} signature mismatch! Data may have been tampered with.")
+
+    def _row_to_job(self, row: sqlite3.Row) -> OptimizerJob:
+        self._verify_job_signature(row)
         return OptimizerJob(
             id=str(row["id"]),
             created_at=float(row["created_at"]),
