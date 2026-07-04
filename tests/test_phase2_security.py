@@ -150,25 +150,31 @@ def test_infisical_secrets_loading():
     When Infisical credentials are present
     Then it must retrieve secrets and inject them in os.environ.
     """
-    mock_secret_1 = MagicMock()
-    mock_secret_1.secret_key = "DB_SECRET_KEY"
-    mock_secret_1.secret_value = "my-secret-val"
+    mock_login_resp = MagicMock()
+    mock_login_resp.json.return_value = {"token": "mock-jwt-token"}
+    mock_login_resp.status_code = 200
     
-    mock_secret_2 = {"secretKey": "BYBIT_API_KEY", "secretValue": "bybit-val"}
-    
-    mock_client = MagicMock()
-    mock_client.list_secrets.return_value = [mock_secret_1, mock_secret_2]
+    mock_secrets_resp = MagicMock()
+    mock_secrets_resp.json.return_value = {
+        "secrets": [
+            {"secretKey": "DB_SECRET_KEY", "secretValue": "my-secret-val"},
+            {"secretKey": "BYBIT_API_KEY", "secretValue": "bybit-val"}
+        ]
+    }
+    mock_secrets_resp.status_code = 200
     
     with patch.dict(os.environ, {
         "INFISICAL_CLIENT_ID": "client-id",
         "INFISICAL_CLIENT_SECRET": "client-sec",
         "INFISICAL_PROJECT_ID": "proj-id"
     }):
-        mock_infisical_module = MagicMock()
-        mock_infisical_module.InfisicalClient = MagicMock(return_value=mock_client)
-        
-        with patch.dict("sys.modules", {"infisical_client": mock_infisical_module}):
+        with patch("requests.post", return_value=mock_login_resp) as mock_post, \
+             patch("requests.get", return_value=mock_secrets_resp) as mock_get:
+             
             load_infisical_secrets()
+            
+            mock_post.assert_called_once()
+            mock_get.assert_called_once()
             
             assert os.environ.get("DB_SECRET_KEY") == "my-secret-val"
             assert os.environ.get("BYBIT_API_KEY") == "bybit-val"
