@@ -3,6 +3,7 @@ import asyncio
 import logging
 from typing import Any, Optional
 import redis.asyncio as aioredis
+from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 
 logger = logging.getLogger("papertrader")
 
@@ -60,6 +61,8 @@ class KillSwitchListener:
                 redis_kwargs = {
                     "decode_responses": True,
                     "socket_timeout": 10,
+                    "health_check_interval": 30,  # Send periodic PING to keep connection alive
+                    "socket_keepalive": True,     # Enable TCP keepalive at OS socket level
                 }
                 if redis_user:
                     redis_kwargs["username"] = redis_user
@@ -83,8 +86,11 @@ class KillSwitchListener:
                     await asyncio.sleep(0.1)
             except asyncio.CancelledError:
                 break
+            except (RedisConnectionError, RedisTimeoutError) as ce:
+                logger.info(f"[KillSwitch] Redis connection lost ({ce}). Reconnecting in 5 seconds...")
+                await asyncio.sleep(5)
             except Exception as e:
-                logger.exception(f"[KillSwitch] Connection error or error in listen loop: {e}. Retrying in 5 seconds...")
+                logger.exception(f"[KillSwitch] Unexpected error in listen loop: {e}. Retrying in 5 seconds...")
                 await asyncio.sleep(5)
 
     async def trigger_kill(self) -> None:
