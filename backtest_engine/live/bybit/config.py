@@ -21,17 +21,17 @@ class BybitConfig:
 
         self._load_dotenv()
         
-        self.api_key = os.getenv("BYBIT_API_KEY")
-        self.api_secret = os.getenv("BYBIT_API_SECRET")
         self.env = os.getenv("BYBIT_ENV", "testnet").lower()
-        self.base_currency = os.getenv("BYBIT_BASE_CURRENCY", "USDC").upper()
         
-        self.base_url = os.getenv("BYBIT_BASE_URL")
-        if not self.base_url:
-            if self.env == "live":
-                self.base_url = "https://api.bybit.com"
-            else:
-                self.base_url = "https://api-demo.bybit.com"
+        if self.env == "live":
+            self.api_key = os.getenv("BYBIT_LIVE_API_KEY") or os.getenv("BYBIT_API_KEY")
+            self.api_secret = os.getenv("BYBIT_LIVE_API_SECRET") or os.getenv("BYBIT_API_SECRET")
+            self.base_url = os.getenv("BYBIT_BASE_URL") or "https://api.bybit.com"
+        else:
+            self.api_key = os.getenv("BYBIT_DEMO_API_KEY") or os.getenv("BYBIT_API_KEY")
+            self.api_secret = os.getenv("BYBIT_DEMO_API_SECRET") or os.getenv("BYBIT_API_SECRET")
+            self.base_url = os.getenv("BYBIT_BASE_URL") or "https://api-demo.bybit.com"
+        self.base_currency = os.getenv("BYBIT_BASE_CURRENCY", "USDC").upper()
 
     def _load_dotenv(self) -> None:
         """Helper to read .env file and set environment variables if not already set."""
