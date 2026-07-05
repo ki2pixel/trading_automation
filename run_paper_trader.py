@@ -72,68 +72,6 @@ setup_siem_logging()
 import json
 
 
-def load_infisical_secrets() -> None:
-    """
-    Connect to Infisical Secrets Manager using Machine Identity via REST API.
-    If configured, injects secrets into os.environ dynamically.
-    """
-    client_id = os.getenv("INFISICAL_CLIENT_ID")
-    client_secret = os.getenv("INFISICAL_CLIENT_SECRET")
-    
-    if not client_id or not client_secret:
-        return
-
-    try:
-        import requests
-        url = os.getenv("INFISICAL_URL", "https://app.infisical.com")
-        project_id = os.getenv("INFISICAL_PROJECT_ID")
-        env_slug = os.getenv("INFISICAL_ENV", "dev")
-        
-        # 1. Login via Universal Auth
-        login_url = f"{url.rstrip('/')}/api/v1/auth/universal-auth/login"
-        login_resp = requests.post(
-            login_url,
-            json={"clientId": client_id, "clientSecret": client_secret},
-            timeout=10
-        )
-        login_resp.raise_for_status()
-        token = login_resp.json().get("token")
-        
-        # 2. Get Raw Secrets
-        secrets_url = f"{url.rstrip('/')}/api/v3/secrets/raw"
-        params = {"environment": env_slug, "secretPath": "/"}
-        # If project_id is a 36-char UUID (containing hyphens), use workspaceId. Otherwise, use workspaceSlug.
-        if project_id and "-" in project_id and len(project_id) == 36:
-            params["workspaceId"] = project_id
-        else:
-            params["workspaceSlug"] = project_id
-
-        secrets_resp = requests.get(
-            secrets_url,
-            headers={"Authorization": f"Bearer {token}"},
-            params=params,
-            timeout=10
-        )
-        secrets_resp.raise_for_status()
-        secrets_data = secrets_resp.json().get("secrets", [])
-        
-        count = 0
-        for s in secrets_data:
-            key = s.get("secretKey")
-            val = s.get("secretValue")
-            if key and val:
-                os.environ[key] = val
-                count += 1
-                
-        print(f"[Infisical] Successfully loaded and injected {count} secrets in process memory.")
-    except Exception as e:
-        print(f"[Infisical] Fallback warning: Failed to load secrets from Infisical: {e}")
-
-
-# Load secrets from Infisical before verifying configuration
-load_infisical_secrets()
-
-
 # Check Basic Auth Configuration
 PAPER_TRADER_USER = os.getenv("PAPER_TRADER_USER", "admin")
 PAPER_TRADER_PASSWORD = os.getenv("PAPER_TRADER_PASSWORD")

@@ -1,5 +1,6 @@
 pandas>=2.3,<3
 numpy>=2.2,<3
+numba>=0.61.2,<0.62
 pyarrow>=24.0,<25
 fastparquet>=2026.3,<2027.0
 requests>=2.31,<3

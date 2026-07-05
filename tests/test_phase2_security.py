@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 # Import components
 from backtest_engine.live.controls import PreTradeController, PreTradeControlError
 from backtest_engine.live.kill_switch import KillSwitchListener, is_trading_suspended, set_trading_suspended
-from run_paper_trader import app, load_infisical_secrets
+from run_paper_trader import app
 
 
 def test_pre_trade_controls():
@@ -142,42 +142,3 @@ def test_fastapi_rate_limiting():
         response = client.get("/api/strategy-configs")
         assert response.status_code == 429
         assert "Too many requests" in response.json()["detail"]
-
-
-def test_infisical_secrets_loading():
-    """
-    Given load_infisical_secrets utility
-    When Infisical credentials are present
-    Then it must retrieve secrets and inject them in os.environ.
-    """
-    mock_login_resp = MagicMock()
-    mock_login_resp.json.return_value = {"token": "mock-jwt-token"}
-    mock_login_resp.status_code = 200
-    
-    mock_secrets_resp = MagicMock()
-    mock_secrets_resp.json.return_value = {
-        "secrets": [
-            {"secretKey": "DB_SECRET_KEY", "secretValue": "my-secret-val"},
-            {"secretKey": "BYBIT_API_KEY", "secretValue": "bybit-val"}
-        ]
-    }
-    mock_secrets_resp.status_code = 200
-    
-    with patch.dict(os.environ, {
-        "INFISICAL_CLIENT_ID": "client-id",
-        "INFISICAL_CLIENT_SECRET": "client-sec",
-        "INFISICAL_PROJECT_ID": "proj-id"
-    }):
-        with patch("requests.post", return_value=mock_login_resp) as mock_post, \
-             patch("requests.get", return_value=mock_secrets_resp) as mock_get:
-             
-            load_infisical_secrets()
-            
-            mock_post.assert_called_once()
-            mock_get.assert_called_once()
-            
-            assert os.environ.get("DB_SECRET_KEY") == "my-secret-val"
-            assert os.environ.get("BYBIT_API_KEY") == "bybit-val"
-            
-            os.environ.pop("DB_SECRET_KEY", None)
-            os.environ.pop("BYBIT_API_KEY", None)
