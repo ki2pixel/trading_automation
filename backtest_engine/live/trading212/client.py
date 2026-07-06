@@ -238,6 +238,25 @@ class Trading212Client:
                     
                     if hasattr(e, "response") and e.response is not None:
                         status_code = e.response.status_code
+                        if status_code == 400:
+                            try:
+                                err_data = e.response.json()
+                                err_type = err_data.get("type", "")
+                                err_detail = err_data.get("detail", "")
+                                
+                                if "quantity-precision" in err_type or "invalid quantity precision" in err_detail:
+                                    import re
+                                    match = re.search(r"invalid quantity precision (\d+)", err_detail)
+                                    if match:
+                                        allowed_precision = int(match.group(1))
+                                        new_qty = round(quantity, allowed_precision)
+                                        print(f"[Trading212Client] Precision mismatch detected. Re-rounding quantity from {quantity} to {new_qty} (precision: {allowed_precision}).")
+                                        quantity = new_qty
+                                        payload["quantity"] = float(quantity)
+                                        continue
+                            except Exception as inner_e:
+                                print(f"[Trading212Client] Failed to parse 400 error details: {inner_e}")
+
                         if status_code < 500 and status_code != 429:
                             raise e
                     

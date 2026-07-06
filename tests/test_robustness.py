@@ -265,3 +265,64 @@ def test_trading212_client_order_capping(mock_request):
         assert res["comment"] == "Skipped real order (0 held)"
         client._request.assert_not_called()
 
+
+@patch("requests.request")
+def test_trading212_client_precision_mismatch(mock_request):
+    """
+    Given a Trading212Client
+    When trying to place an order that returns a 400 precision mismatch error
+    Then it should parse the allowed precision, round the quantity, and retry successfully
+    """
+    from backtest_engine.live.trading212.client import Trading212Client
+    from backtest_engine.live.trading212.config import Trading212Config
+    from decimal import Decimal
+    import requests
+    
+    # Mock T212 config
+    with patch.dict(os.environ, {"T212_API_KEY_ID": "mock_key", "T212_API_SECRET": "mock_secret", "T212_ENV": "demo"}):
+        config = Trading212Config(dotenv_path="/nonexistent")
+    client = Trading212Client(config)
+    
+    # Mock database connections to avoid real SQL queries
+    mock_conn = MagicMock()
+    mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+    mock_cursor.fetchone.return_value = (Decimal("10.0"),) # Price, NAV, current_qty
+    
+    client.get_positions = MagicMock(return_value=[])
+    
+    # Mock requests.exceptions.HTTPError for 400 Bad Request
+    response_400 = requests.Response()
+    response_400.status_code = 400
+    response_400._content = b'{"type": "/api-errors/quantity-precision-mismatch", "detail": "invalid quantity precision 3"}'
+    
+    # Second response is success 200
+    response_200 = requests.Response()
+    response_200.status_code = 200
+    response_200._content = b'{"status": "NEW", "id": 12345}'
+    
+    # We patch the client's internal _request method
+    calls = []
+    def mock_request_side_effect(*args, **kwargs):
+        import copy
+        calls.append((args, copy.deepcopy(copy.deepcopy(kwargs))))
+        if len(calls) == 1:
+            raise requests.exceptions.HTTPError("Bad Request", response=response_400)
+        return response_200
+
+    client._request = MagicMock(side_effect=mock_request_side_effect)
+    
+    with patch("backtest_engine.live.connection.get_redis_client", return_value=None), \
+         patch("backtest_engine.live.connection.get_db_connection", return_value=mock_conn):
+         
+        # Place order with 6 decimal places (13.256739)
+        res = client.place_market_order("VNAd_EQ", 13.256739)
+        
+        assert res["status"] == "NEW"
+        assert res["id"] == 12345
+        
+        # Verify it was called twice: once with 13.256739, second with rounded 13.257
+        assert len(calls) == 2
+        assert calls[0][1]["json_data"]["quantity"] == 13.256739
+        assert calls[1][1]["json_data"]["quantity"] == 13.257
+
+
