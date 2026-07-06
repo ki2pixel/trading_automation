@@ -75,8 +75,8 @@
     "local_id": "NVS",
     "real_name": "Novartis",
     "isin": "CH0012005267",
-    "t212_ticker": "NOVNs_EQ",
-    "currency": "CHF",
+    "t212_ticker": "NOTd1_EQ",
+    "currency": "EUR",
     "score": 23
   },
   {

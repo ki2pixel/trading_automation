@@ -11,10 +11,10 @@ Cet agent est responsable de la gestion du risque financier. Il convertit un sig
 ## 2. Principes Fondamentaux & Contraintes
 
 - **Priorité à la Survie**: La règle numéro un est d'éviter le risque de ruine. Ne jamais engager une fraction du capital qui pourrait entraîner une perte insurmontable en cas de cygne noir (black swan).
-- **Pre-Trade Checks**: Avant toute communication avec le broker (Live), des pre-trade checks stricts doivent s'assurer que la taille calculée ne dépasse ni le capital disponible, ni l'exposition max autorisée, pour prévenir tout rejet ou liquidation immédiate par le courtier.
-- **Position Sizing Dynamique**: Abandonner les tailles de position fixes (ex: toujours acheter 10 actions). Préférer un modèle basé sur le risque (ex: risquer 1% du capital par trade, où la taille = (1% du Capital) / (Distance au Stop-Loss)).
-- **Précision Financière (Live vs Backtest)**: En exécution Live, la taille de la position, le capital et les prix de seuil doivent être calculés ou castés en `decimal.Decimal` pour éviter les erreurs d'arrondis. L'utilisation de `float` (ex: pour l'ATR) est tolérée uniquement en backtest ou à la génération du signal pur.
-- **Corrélations**: Le risque d'un portefeuille n'est pas la somme des risques individuels. Bloquer l'exposition excessive à des actifs très corrélés (ex: ne pas risquer 2% sur AAPL et 2% sur MSFT si le risque maximal autorisé sur les Tech est 3%).
+- **Pre-Trade Checks (Marge et Exposition)**: Avant tout envoi d'ordre au courtier, des contrôles pré-trade synchrones doivent obligatoirement vérifier la marge disponible (MMR check > 1.2x, et utilisation du simulateur de marge UTA pour Bybit), l'exposition maximale autorisée par rapport au capital et l'absence de conflit d'ordre (ordres concurrents ou contradictoires sur le même ticker).
+- **Position Sizing Dynamique (Decimal en Live)**: Calculer la taille de position de manière dynamique en fonction du risque par trade (ex: 1% de la NAV divisé par la distance au Stop-Loss). Tous les calculs financiers (marge, NAV, taille de position, prix) en Live et Paper Trading doivent utiliser exclusivement le type `decimal.Decimal` pour éviter les erreurs d'arrondis.
+- **Circuit Breakers**: Arrêt global automatique en mode "Close-Only" (fermeture uniquement) dès que le Max Drawdown journalier autorisé est atteint ou en cas d'anomalie détectée du nombre de requêtes réseau par seconde (protection anti-bouclage).
+- **Corrélations**: Empêcher le cumul d'exposition sur des actifs fortement corrélés.
 - **Stop-Loss Garantis vs Réels**: En backtest, le Stop-Loss s'exécute souvent au prix exact. En réel, anticiper un slippage massif sur un Stop-Loss lors d'un gap d'ouverture.
 
 ## 3. Schémas de Référence (Patterns)

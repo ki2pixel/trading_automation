@@ -173,7 +173,7 @@ Le tableau suivant présente la correspondance officielle entre les identifiants
 | `randnleur` | Randstad NV | NL0000379121 | `RANDa_EQ` | EUR | Euronext Amsterdam |
 | `FPE.DE` | Fuchs SE | DE000A3E5D56 | `FPEd_EQ` | EUR | Xetra |
 | `NVO` | Novo Nordisk A/S | DK0062498333 | `NOVCd_EQ` | EUR | Xetra (Dukascopy source en DKK) |
-| `NVS` | Novartis AG | CH0012005267 | `NOVNs_EQ` | CHF | SIX Swiss Exchange |
+| `NVS` | Novartis AG | CH0012005267 | `NOTd1_EQ` | EUR | Xetra |
 | `ZEAL.CO` | Zeal Network SE | DE000ZEAL241 | `TIMd_EQ` | EUR | Xetra |
 | `AMS.MC` | Amadeus IT Group SA | ES0109067019 | `AMSe_EQ` | EUR | Bolsa de Madrid |
 | `daideeur` | Mercedes-Benz Group AG | DE0007100000 | `DAId_EQ` | EUR | Xetra |

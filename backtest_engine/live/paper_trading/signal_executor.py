@@ -39,6 +39,20 @@ class SignalExecutor:
     @t212_client.setter
     def t212_client(self, value: Any) -> None:
         self._t212_client = value
+        self._t212_resolver = None
+
+    @property
+    def t212_resolver(self) -> Optional[Any]:
+        if not hasattr(self, "_t212_resolver") or self._t212_resolver is None:
+            self._t212_resolver = None
+            client = self.t212_client
+            if client:
+                try:
+                    from backtest_engine.live.trading212.resolver import Trading212TickerResolver
+                    self._t212_resolver = Trading212TickerResolver(client)
+                except Exception as e:
+                    logger.warning(f"[PaperTrader] Failed to initialize Trading212TickerResolver: {e}")
+        return self._t212_resolver
 
     @property
     def bybit_client(self) -> Any:
@@ -602,6 +616,36 @@ class SignalExecutor:
                             continue
                             
                     # Execute BUY
+                    import os
+                    if source == 'trading212' and os.getenv("T212_PAPER_ROUTING_ENABLED", "false").lower() == "true":
+                        if self.t212_client:
+                            try:
+                                # Résoudre le ticker Trading 212
+                                t212_ticker = self.t212_resolver.resolve(asset)
+                                logger.info(f"[PaperTrader] Routing real market BUY order for {asset} (mapped to {t212_ticker}): {qty} units")
+                                
+                                # Placer l'ordre réel (idempotent)
+                                order_res = self.t212_client.place_market_order(ticker=t212_ticker, quantity=float(qty))
+                                logger.info(f"[PaperTrader] T212 API Order Success: {order_res}")
+                            except Exception as e:
+                                logger.exception(f"[PaperTrader] T212 API BUY order failed for {asset}")
+                                self.log_evaluation(
+                                    conn, strategy_name, asset, timeframe,
+                                    price=current_price, signal_type='ENTRY',
+                                    signal_triggered=True, status='FAILED',
+                                    fail_reason=f"T212 API Order Error: {str(e)}"
+                                )
+                                continue
+                        else:
+                            logger.error("[PaperTrader] T212 client is missing while T212_PAPER_ROUTING_ENABLED is true")
+                            self.log_evaluation(
+                                conn, strategy_name, asset, timeframe,
+                                price=current_price, signal_type='ENTRY',
+                                signal_triggered=True, status='FAILED',
+                                fail_reason="T212 client is uninitialized"
+                            )
+                            continue
+
                     try:
                         with conn.cursor() as cur:
                             # 1. Insert position
@@ -748,6 +792,46 @@ class SignalExecutor:
                             
                 if trigger_exit:
                     # Execute SELL
+                    import os
+                    if source == 'trading212' and os.getenv("T212_PAPER_ROUTING_ENABLED", "false").lower() == "true":
+                        if self.t212_client:
+                            try:
+                                # Résoudre le ticker Trading 212
+                                t212_ticker = self.t212_resolver.resolve(asset)
+                                logger.info(f"[PaperTrader] Routing real market SELL order for {asset} (mapped to {t212_ticker}): {-qty} units")
+                                
+                                # Placer l'ordre réel (négatif pour la vente)
+                                order_res = self.t212_client.place_market_order(ticker=t212_ticker, quantity=float(-qty))
+                                logger.info(f"[PaperTrader] T212 API Order Success: {order_res}")
+                            except Exception as e:
+                                logger.exception(f"[PaperTrader] T212 API SELL order failed for {asset}")
+                                self.log_evaluation(
+                                    conn, strategy_name, asset, timeframe,
+                                    price=current_price, signal_type='EXIT',
+                                    signal_triggered=True, status='FAILED',
+                                    fail_reason=f"T212 API Order Error: {str(e)}",
+                                    details={
+                                        "qty": float(qty),
+                                        "entry_price": float(entry_price),
+                                        "current_price": float(current_price)
+                                    }
+                                )
+                                continue
+                        else:
+                            logger.error("[PaperTrader] T212 client is missing while T212_PAPER_ROUTING_ENABLED is true")
+                            self.log_evaluation(
+                                conn, strategy_name, asset, timeframe,
+                                price=current_price, signal_type='EXIT',
+                                signal_triggered=True, status='FAILED',
+                                fail_reason="T212 client is uninitialized",
+                                details={
+                                    "qty": float(qty),
+                                    "entry_price": float(entry_price),
+                                    "current_price": float(current_price)
+                                }
+                            )
+                            continue
+
                     actual_revenue = qty * current_price
                     fee_rate = Decimal("0.0010") if source == 'bybit' else Decimal("0.0")
                     sell_fee = actual_revenue * fee_rate

@@ -12,10 +12,12 @@ L'ingestion doit être résiliente (tolérance aux pannes réseau), conforme aux
 ## 2. Principes Fondamentaux & Contraintes
 
 - **WebSockets pour le Temps Réel**: Privilégier les connexions WebSocket persistantes pour les flux temps réel. Utiliser les API REST uniquement pour les requêtes historiques ou les snapshots de récupération.
-- **Backoff Exponentiel**: Obligatoire pour toute interaction réseau. Si une API (ex: Trading 212) renvoie un `429 Too Many Requests` ou un `5xx`, implémenter un retry intelligent.
-- **Normalisation**: Les structures de données reçues de courtiers distincts doivent être standardisées avant d'entrer dans le pipeline du moteur de backtest ou de la DB.
+- **Mode Public-Only sans Clé (Render)**: Sur les environnements comme Render, l'ingestion des prix Bybit doit pouvoir s'exécuter sans clés privées configurées. Seuls les endpoints publics sont interrogés, et les endpoints signés ne doivent pas être appelés (lever une erreur ValueError explicite et contrôlée en cas de tentative).
+- **Timeouts Réseau & Backoff Exponentiel**: Obligatoire pour toute interaction réseau. Chaque appel API doit comporter un timeout réseau centralisé (ex: `10.0`s). En cas de code `429 Too Many Requests` ou `5xx`, implémenter une logique de retries automatiques (ex: avec `tenacity` et backoff exponentiel).
+- **Normalisation**: Les structures de données reçues de courtiers distincts doivent être standardisées avant d'entrer dans le pipeline ou la DB.
 - **Nettoyage et Imputation**: Gérer les trous de liquidité. Ne jamais forwarder des valeurs `NaN` ou infinies. Si une bougie manque, imputer via Forward Fill ou interpoler selon le contexte.
-- **Précision Financière (Live)**: Lors de l'ingestion de flux en direct destinés à l'exécution, les prix critiques (bid, ask) doivent être parsés en `decimal.Decimal` pour éviter toute perte de précision avant de rejoindre la file d'attente (Queue Pipelining).
+- **Précision Financière (Live)**: Lors de l'ingestion de flux en direct destinés à l'exécution, les prix critiques (bid, ask, close) doivent être obligatoirement parsés en `decimal.Decimal` pour éviter toute perte de précision.
+- **Robustesse Redis Pub/Sub**: Pour contrer les déconnexions silencieuses du réseau Aiven/Render, toute initialisation de client Redis pour Pub/Sub ou écoute de signaux doit activer le keepalive TCP (`socket_keepalive=True`) et définir un intervalle de health check régulier (ex: `health_check_interval=30`).
 
 ## 3. Schémas de Référence (Patterns)
 

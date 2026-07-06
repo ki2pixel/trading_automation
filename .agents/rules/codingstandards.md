@@ -18,13 +18,14 @@
   ```
 - **PEP 8 & Docstrings**: Respect strict du style PEP 8. Documentez l'objectif, les arguments et retours des fonctions complexes.
 - **Audit & Logging**: Logs structurés (format JSON) requis pour le routage d'ordres (`timestamp_utc`, `order_id`, `symbole`, `quantité`, `prix`, `statut`).
-- **Secrets & Conf**: Secrets masqués via variables d'environnement. Mode public-only pour l'ingestion Bybit sur Render (sans clé).
+- **Secrets & Conf**: Secrets masqués via variables d'environnement. Mode public-only pour l'ingestion Bybit sur Render (sans clé). Les appels signés Bybit dans le Paper Trader doivent s'exécuter conditionnellement (lever `ValueError` contrôlée si les clés sont absentes pour éviter les 401).
+- **Failsafe de clés d'API (CRITIQUE)**: Validation stricte des hashes SHA256 des clés Bybit lors de l'initialisation pour interdire formellement l'utilisation d'une clé de démo en production ou d'une clé de production en démo/testnet.
 - **Timeouts Réseau Centralisés**: Timeout explicite obligatoire sur chaque appel HTTP (Bybit, Trading 212, warm-ups). Constante globale `NETWORK_TIMEOUT_DEFAULT = 10` dans `utils.py`. Maximum standard de 10s (jusqu'à 30s pour téléchargements lourds).
 
 ## 3. Gestion des Erreurs et Robustesse
 - **Exceptions spécifiques**: Interdiction de capturer `Exception` de manière générique et silencieuse (`except Exception: pass`). Interceptez des exceptions typées.
 - **Middleware exception**: Captures globales `except Exception as e` tolérées uniquement au niveau du middleware FastAPI ou de l'orchestrateur global.
-- **Logging de tracebacks**: Utilisez obligatoirement `logger.exception()` pour logger les erreurs système et de transport critiques avec leur traceback complet.
+- **Logging de tracebacks**: Utilisez obligatoirement `logger.exception()` pour logger les erreurs système et de transport critiques avec leur traceback complet. Cependant, les déconnexions d'inactivité prévisibles et pertes de connexion réseau transitoires (comme le timeout d'inactivité ou la reconnexion périodique de Redis Pub/Sub) doivent être loggées de manière modérée sans traceback (`logger.info` ou `logger.warning`) tant que la reconnexion automatique les prend en charge afin d'éviter la pollution des logs.
 - **Exceptions d'Affaires**: Levez des exceptions métier dédiées (ex: `SignalExecutionError`, `PortfolioUpdateError`).
 - **Masquage en Production**: API en production masquant les détails internes. Utilisation de `safe_error_response(exc, request)` retournant un message standard et un UUID de corrélation unique. Traces verbeuses affichées uniquement si `DEBUG=true` en dev.
 
@@ -67,7 +68,8 @@
 ## 8. Résilience Réseau et API (Live Execution)
 - **Rate Limiting**: Backoff exponentiel obligatoire face aux limitations des brokers.
 - **WebSocket**: Heartbeats (ping/pong) et reconnexion automatique/silencieuse requis.
-- **Idempotence**: Vérification systématique d'exécution via un `client_order_id` unique après un timeout d'ordre, avant toute tentative de renvoi.
+- **Idempotence**: Vérification systématique d'exécution via un `client_order_id` / `orderLinkId` unique (UUID v4 de 36 caractères) après un timeout d'ordre ou échec réseau. Toute tentative de rejeu doit être précédée d'une interrogation de statut d'ordre (`_recover_order_state()`) auprès du broker.
+- **Redis Pub/Sub (Stabilisation)**: Les écoutes asynchrones Pub/Sub (ex: KillSwitchListener sur le canal URGENCY) doivent configurer un TCP keepalive au niveau OS socket (`socket_keepalive=True`) et un intervalle régulier de health check Redis (`health_check_interval=30`) pour contrer les déconnexions silencieuses du réseau.
 
 ## 9. Tests, Validation et Mocking
 - **Structure**: Tests unitaires via `pytest` au format **Given/When/Then**.
@@ -80,7 +82,8 @@
 - **Schémas stricts**: Versionnage explicite du schéma de données lors des modifications d'indicateurs.
 
 ## 11. Risk & Money Management (Garde-fous)
-- **Pre-Trade Checks**: Vérification synchrone obligatoire de la marge, de l'exposition max et des conflits d'ordres avant routage.
+- **Pre-Trade Checks**: Vérification synchrone obligatoire de la marge (simulateur de marge UTA pour Bybit, MMR check > 1.2x), de l'exposition max et des conflits d'ordres avant routage.
+- **Contrainte de Devise Unique (Trading 212)**: Afin de respecter la devise unique du compte Trading 212 (ex: Euro) et d'éviter les rejets de transaction, tous les actifs doivent être mappés vers des instruments libellés dans cette devise (ex: passage de Novartis CHF `NOVNs_EQ` à Novartis EUR `NOTd1_EQ` sur Xetra dans `map_tickers.py` et les fichiers de mapping).
 - **Circuit Breakers**: Arrêt global automatique ("Close-Only") en cas de Max Drawdown journalier atteint ou anomalie de requêtes/sec.
 
 ## 12. Bonnes Pratiques Git

@@ -19,13 +19,19 @@ from backtest_engine.live.trading212.tracker import Trading212PositionTracker
 @pytest.fixture
 def mock_config():
     # Given: Set environment variables for tests
-    with patch.dict(os.environ, {
-        "T212_API_KEY_ID": "test_key",
-        "T212_API_SECRET": "test_secret",
-        "T212_ENV": "demo"
-    }):
-        config = Trading212Config()
-        yield config
+    with patch("dotenv.load_dotenv"):
+        env_copy = os.environ.copy()
+        for k in ["T212_DEMO_API_KEY_ID", "T212_DEMO_API_SECRET", "T212_LIVE_API_KEY_ID", "T212_LIVE_API_SECRET", "T212_API_KEY_ID", "T212_API_SECRET"]:
+            if k in env_copy:
+                del env_copy[k]
+        env_copy.update({
+            "T212_API_KEY_ID": "test_key",
+            "T212_API_SECRET": "test_secret",
+            "T212_ENV": "demo"
+        })
+        with patch.dict(os.environ, env_copy, clear=True):
+            config = Trading212Config(dotenv_path="/nonexistent_env")
+            yield config
 
 
 @pytest.fixture

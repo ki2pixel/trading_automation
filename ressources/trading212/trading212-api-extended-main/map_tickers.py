@@ -92,11 +92,11 @@ TARGET_ASSETS = {
     "NVS": {
         "search_name": "Novartis",
         "search_ticker": "NOV",
-        "preferred_currency": "CHF",
-        "suffixes": ["NOVNs_EQ", "NOTd1_EQ", "NOVN_CH_EQ", "NOVNd_EQ"],
+        "preferred_currency": "EUR",
+        "suffixes": ["NOTd1_EQ", "NOVNs_EQ", "NOVN_CH_EQ", "NOVNd_EQ"],
         "description_local": "Novartis AG",
         "isin_default": "CH0012005267",
-        "t212_ticker_default": "NOVNs_EQ"
+        "t212_ticker_default": "NOTd1_EQ"
     },
     "ZEAL.CO": {
         "search_name": "Zeal",

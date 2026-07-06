@@ -10,11 +10,12 @@ L'agent en charge de cette spécialisation est responsable du stockage, de l'ind
 
 ## 2. Principes Fondamentaux & Contraintes
 
-- **Format Binaire (Parquet vs CSV)**: Ne jamais utiliser de fichiers `.csv` pour le stockage en production de séries temporelles (ticks, candles). Le format Parquet est obligatoire pour sa compression en colonnes et sa vitesse de lecture.
+- **Format Binaire (Parquet vs CSV)**: Ne jamais utiliser de fichiers `.csv` pour le stockage en production de séries temporelles (ticks, candles). Le format Parquet compressé (`snappy` ou `zstd`) est obligatoire pour sa compression en colonnes et sa vitesse de lecture.
+- **Organisation & Dossiers**: Stocker sous forme de fichiers plats par symbole, dans des sous-dossiers organisés par timeframe (ex: `storage/processed/market_data_{tf}m/{symbol}.parquet`).
 - **Indexation Temporelle**: Lors de la sauvegarde d'un DataFrame, s'assurer que l'index (ex: `time`) ou les colonnes de filtrage (ex: `symbol`) sont correctement typés (Datetime UTC).
-- **Partitionnement par Dossiers**: Pour des datasets massifs (ex: ticks tick-par-tick sur plusieurs années), partitionner les fichiers physiquement sur le disque par année/mois ou par symbole (ex: `dataset/symbol=AAPL/year=2025/data.parquet`).
 - **Lazy Loading / Memory Mapping**: Pour analyser de gros volumes sans saturer la RAM, utiliser les capacités de lecture par partitions (`pyarrow.dataset`) ou les lectures filtrées (`filters` dans `read_parquet`).
-- **Shared Memory vs Pickle**: Les données massives chargées depuis les fichiers Parquet et destinées à être consommées par des processus concurrents (ex: Optuna workers) ne doivent jamais être passées via `pickle`. Elles doivent être injectées dans la mémoire partagée POSIX via `shm_allocators.py`.
+- **Shared Memory vs Pickle (Optuna/Multi-Workers)**: Les données massives chargées depuis les fichiers Parquet et destinées à être consommées par des processus concurrents (ex: workers d'optimisation Optuna) ne doivent jamais être passées via `pickle`. Elles doivent être obligatoirement injectées dans la mémoire partagée POSIX via le module `shm_allocators.py` pour éviter les risques de saturation RAM/OOM.
+- **Versionnage Strict de Schéma**: Versionner de manière explicite le schéma de données dans les fichiers Parquet lors de modifications de la structure des colonnes, de l'ajout ou de la mise à jour d'indicateurs mathématiques.
 
 ## 3. Schémas de Référence (Patterns)
 
