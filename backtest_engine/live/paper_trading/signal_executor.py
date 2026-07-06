@@ -155,12 +155,22 @@ class SignalExecutor:
                 if self.t212_client is not None:
                     try:
                         summary = self.t212_client.get_account_summary()
-                        if summary and "totalValue" in summary:
-                            api_cash = Decimal(str(summary["totalValue"]))
-                            cur.execute(
-                                "UPDATE paper_portfolio_balance SET cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'",
-                                (api_cash,)
-                            )
+                        if summary:
+                            api_cash = None
+                            if "cash" in summary and isinstance(summary["cash"], dict) and "availableToTrade" in summary["cash"]:
+                                api_cash = Decimal(str(summary["cash"]["availableToTrade"]))
+                            elif "free" in summary:
+                                api_cash = Decimal(str(summary["free"]))
+                            elif "balance" in summary:
+                                api_cash = Decimal(str(summary["balance"]))
+                            elif "totalValue" in summary:
+                                api_cash = Decimal(str(summary["totalValue"]))
+                            
+                            if api_cash is not None:
+                                cur.execute(
+                                    "UPDATE paper_portfolio_balance SET cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'",
+                                    (api_cash,)
+                                )
                     except requests.exceptions.RequestException as api_err:
                         logger.exception("[PaperTrader] Failed to fetch account summary from Trading 212 API")
 

@@ -137,7 +137,7 @@ class TestPaperTradingEngine:
             if "SELECT id, asset, qty, entry_price" in last_query:
                 return [(1, "AAPL", 10, 100.0, 150.0)]
             if "FROM paper_portfolio_balance" in last_query:
-                return [("trading212", 4995.58, 0.0), ("bybit", 10000.0, 0.0)]
+                return [("trading212", 4872.03, 0.0), ("bybit", 10000.0, 0.0)]
             if "SELECT ticker, price, updated_at FROM live_prices" in last_query:
                 return [("aapl", 150.0, None)]
             return []
@@ -161,22 +161,22 @@ class TestPaperTradingEngine:
         # 1. Trading 212 Client summary should be requested
         engine.t212_client.get_account_summary.assert_called_once()
         
-        # 2. Local DB cash_balance should be updated with API's totalValue
+        # 2. Local DB cash_balance should be updated with API's availableToTrade
         update_calls = [
             call[0] for call in mock_cursor.execute.call_args_list 
             if "UPDATE paper_portfolio_balance SET cash_balance" in call[0][0]
         ]
         assert len(update_calls) == 1
         from decimal import Decimal
-        assert update_calls[0][1] == (Decimal('4995.58'),)
+        assert update_calls[0][1] == (Decimal('4872.03'),)
 
-        # 3. Total NAV should be updated in DB (cash_balance 4995.58 + position value 10 * 150.0 = 6495.58)
+        # 3. Total NAV should be updated in DB (cash_balance 4872.03 + position value 10 * 150.0 = 6372.03)
         nav_update_calls = [
             call[0] for call in mock_cursor.execute.call_args_list 
             if "UPDATE paper_portfolio_balance SET total_nav" in call[0][0]
         ]
         assert len(nav_update_calls) == 2
-        assert nav_update_calls[0][1] == (Decimal('6495.58'),)
+        assert nav_update_calls[0][1] == (Decimal('6372.03'),)
         assert nav_update_calls[1][1] == (Decimal('10000.0'),)
 
     def test_update_portfolio_nav_fallback_local(self):
@@ -300,6 +300,7 @@ class TestPaperTradingEngine:
         mock_strat_info.overrides_from_mapping_function.return_value = MagicMock()
 
         engine = PaperTradingEngine(db_url="sqlite:///:memory:")
+        engine.t212_client = MagicMock()
         engine.is_market_open = MagicMock(return_value=True)
 
         # WHEN: _evaluate_and_execute_strategies is executed

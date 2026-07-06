@@ -103,7 +103,10 @@ class TestSignalExecutor:
 
         # Clients are active
         mock_t212 = MagicMock()
-        mock_t212.get_account_summary.return_value = {"totalValue": 105000.0}
+        mock_t212.get_account_summary.return_value = {
+            "cash": {"availableToTrade": 105000.0},
+            "totalValue": 105000.0
+        }
 
         mock_bybit = MagicMock()
         mock_bybit.config.base_currency = "USDT"
