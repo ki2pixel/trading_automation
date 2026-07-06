@@ -137,11 +137,21 @@ class Trading212Client:
             # Pre-Trade Controls check
             from backtest_engine.live.controls import PreTradeController, Decimal
             from backtest_engine.live.connection import get_db_connection
+            from backtest_engine.live.utils import T212_STATIC_MAPPING
             
             nav = Decimal("100000.0")
             price = Decimal("0.0")
             current_qty = Decimal("0.0")
             
+            # Resolve T212 ticker back to original asset for database queries
+            original_asset = ticker
+            try:
+                rev_mapping = {v.lower(): k for k, v in T212_STATIC_MAPPING.items()}
+                if ticker.lower() in rev_mapping:
+                    original_asset = rev_mapping[ticker.lower()]
+            except Exception as me:
+                print(f"[Trading212Client] Failed to load reverse asset mapping: {me}")
+
             try:
                 with get_db_connection() as conn:
                     with conn.cursor() as cur:
@@ -150,12 +160,12 @@ class Trading212Client:
                         if row and row[0] is not None:
                             nav = Decimal(str(row[0]))
                             
-                        cur.execute("SELECT price FROM live_prices WHERE ticker = %s", (ticker.lower(),))
+                        cur.execute("SELECT price FROM live_prices WHERE LOWER(ticker) = %s", (original_asset.lower(),))
                         row = cur.fetchone()
                         if row and row[0] is not None:
                             price = Decimal(str(row[0]))
                             
-                        cur.execute("SELECT quantity FROM paper_positions WHERE ticker = %s AND status = 'OPEN'", (ticker,))
+                        cur.execute("SELECT qty FROM paper_positions WHERE LOWER(asset) = LOWER(%s)", (original_asset,))
                         row = cur.fetchone()
                         if row and row[0] is not None:
                             current_qty = Decimal(str(row[0]))
@@ -179,11 +189,22 @@ class Trading212Client:
             initial_qty = 0.0
             try:
                 positions = self.get_positions()
-                matching = [p for p in positions if p.get("ticker") == ticker]
+                matching = [p for p in positions if p.get("instrument", {}).get("ticker", "").lower() == ticker.lower()]
                 if matching:
                     initial_qty = float(matching[0].get("quantity", 0.0))
             except Exception as pe:
                 print(f"[Trading212Client] Pre-trade check positions fetch failed: {pe}")
+
+            # If it's a sell order (negative quantity), cap it by broker holdings to avoid 400 Bad Request
+            if quantity < 0:
+                abs_qty = abs(float(quantity))
+                if initial_qty <= 0:
+                    print(f"[Trading212Client] Capping SELL order: Broker holds 0 units of {ticker} (requested {quantity}). Skipping real order.")
+                    return {"ticker": ticker, "quantity": 0.0, "status": "FILLED", "reconciled": True, "comment": "Skipped real order (0 held)"}
+                elif initial_qty < abs_qty:
+                    adjusted_qty = -initial_qty
+                    print(f"[Trading212Client] Capping SELL order: Broker holds {initial_qty} units of {ticker} (requested {quantity}). Adjusting to {adjusted_qty}.")
+                    quantity = adjusted_qty
 
             payload = {
                 "ticker": ticker,
@@ -198,7 +219,7 @@ class Trading212Client:
                     print(f"[Trading212Client] Reconciling state before retry attempt {attempt + 1}...")
                     try:
                         positions = self.get_positions()
-                        matching = [p for p in positions if p.get("ticker") == ticker]
+                        matching = [p for p in positions if p.get("instrument", {}).get("ticker", "").lower() == ticker.lower()]
                         current_qty = float(matching[0].get("quantity", 0.0)) if matching else 0.0
                         
                         expected_qty = initial_qty + float(quantity)

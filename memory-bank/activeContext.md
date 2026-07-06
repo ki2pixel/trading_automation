@@ -11,6 +11,7 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-06 11:45:00] - Correction des anomalies d'exécution et de validation du client Trading 212 en Paper Trading : résolution de l'erreur SQL sur la table `paper_positions` (absence de la colonne `quantity` et `status`), correction de l'accès imbriqué au ticker dans les positions de l'API T212, et implémentation d'un failsafe de bridage de quantité sur les ordres de vente pour éviter les rejets HTTP 400.
 - [2026-07-06 10:20:00] - Audit et alignement de l'intégralité des fiches de compétences (.agents/skills/) : mise à jour des 7 fiches de compétences critiques (execution-order-routing, trading212-api, paper-trading, risk-money-management, market-data-ingestion, local-parquet-storage, backtesting-engine) pour correspondre à l'état réel de la plateforme (idempotence UUID v4 36-char, devise unique T212, sécurité SHA256, keepalive Redis, allocations mémoire POSIX).
 - [2026-07-06 10:10:00] - Alignement et mise à jour des standards de développement (.agents/rules/codingstandards.md) : intégration des contraintes d'idempotence (UUID v4 36 caractères, interrogation post-timeout), robustesse Redis Pub/Sub (TCP keepalive, health check), logging discret des déconnexions d'inactivité, et respect de la devise unique Trading 212.
 - [2026-07-06 10:01:00] - Correction du mapping du ticker Novartis (NVS) pour Trading 212 : passage du ticker CHF (NOVNs_EQ) au ticker EUR (NOTd1_EQ sur Xetra) dans map_tickers.py, t212_assets_mapping.json et t212_assets_mapping.csv pour respecter la contrainte de devise unique du compte.

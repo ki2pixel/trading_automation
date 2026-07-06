@@ -207,3 +207,61 @@ def test_eurusd_rate_timeout(mock_urlopen):
     rate = get_eurusd_rate(mock_conn)
     assert rate == Decimal("1.08")
 
+
+@patch("requests.request")
+def test_trading212_client_order_capping(mock_request):
+    """
+    Given a Trading212Client
+    When trying to place a SELL order for more units than held on the broker
+    Then it should cap the quantity to the held amount
+    """
+    from backtest_engine.live.trading212.client import Trading212Client
+    from backtest_engine.live.trading212.config import Trading212Config
+    from decimal import Decimal
+    
+    # Mock T212 config
+    with patch.dict(os.environ, {"T212_API_KEY_ID": "mock_key", "T212_API_SECRET": "mock_secret", "T212_ENV": "demo"}):
+        config = Trading212Config(dotenv_path="/nonexistent")
+    client = Trading212Client(config)
+    
+    # Mock database connections to avoid real SQL queries
+    mock_conn = MagicMock()
+    mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+    mock_cursor.fetchone.return_value = (Decimal("10.0"),) # Price, NAV, current_qty
+    
+    # Mock positions response
+    positions_payload = [
+        {
+            "instrument": {"ticker": "AMSe_EQ"},
+            "quantity": 0.1
+        }
+    ]
+    
+    # Mock methods on client
+    client.get_positions = MagicMock(return_value=positions_payload)
+    client._request = MagicMock()
+    
+    # Mock connection functions
+    with patch("backtest_engine.live.connection.get_redis_client", return_value=None), \
+         patch("backtest_engine.live.connection.get_db_connection", return_value=mock_conn):
+         
+        # Case 1: Sell 5.7 units when holding 0.1 -> should cap to 0.1
+        client.place_market_order("AMSe_EQ", -5.7)
+        
+        # Verify that client._request was called with adjusted quantity -0.1
+        client._request.assert_called_once_with(
+            "POST", "/equity/orders/market",
+            json_data={"ticker": "AMSe_EQ", "quantity": -0.1},
+            max_retries=1
+        )
+        
+        # Reset mocks
+        client._request.reset_mock()
+        
+        # Case 2: Sell 5.7 units when holding 0.0 -> should skip the order
+        client.get_positions.return_value = []
+        res = client.place_market_order("AMSe_EQ", -5.7)
+        assert res["status"] == "FILLED"
+        assert res["comment"] == "Skipped real order (0 held)"
+        client._request.assert_not_called()
+
