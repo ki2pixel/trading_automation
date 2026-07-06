@@ -1,6 +1,7 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-06 09:30:00] - Résolution de l'erreur de dépendance VectorBT : ajout de `vectorbt>=1.0,<2` dans `requirements-live.txt` pour éviter l'erreur ModuleNotFoundError lors de l'initialisation des indicateurs (comme MomentumBasedZigZag) importés globalement par le registre des stratégies dans le Paper Trader. Validation locale de l'import de run_paper_trader.py et des 216 tests unitaires de test_strategy_registry.py.
 - [x] [2026-07-05 02:56:00] - Résolution de l'erreur d'importation Numba : ajout explicite de `numba>=0.61.2,<0.62` dans `requirements-base.txt`, validation locale de l'installation et des imports du module de stratégie, et passage de la suite de tests de registre des stratégies et du moteur de paper trading (216/216 passés).
 - [x] [2026-07-05 12:30:00] - Stabilisation du KillSwitchListener sur le canal Redis URGENCY. Intégration du health check Redis (toutes les 30s) et du keepalive socket TCP pour contrer les timeouts de déconnexion réseau (toutes les 5 minutes), avec amélioration de la journalisation pour éviter les stacktraces d'exceptions attendues.
 - [x] [2026-07-05 02:42:00] - Retrait complet de la logique Infisical (Secrets Manager Client) dans `run_paper_trader.py` et les tests unitaires associés suite à des erreurs 403 API persistantes. La gestion de la configuration est exclusivement stabilisée par les variables d'environnement standard.

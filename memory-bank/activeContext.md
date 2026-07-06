@@ -11,6 +11,7 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-06 09:30:00] - Résolution de l'erreur d'importation de VectorBT (ModuleNotFoundError: No module named 'vectorbt') dans l'environnement Paper Trading live. Ajout de `vectorbt>=1.0,<2` à `requirements-live.txt` pour s'assurer que toutes les stratégies (zigzag, hmm, trend_type) peuvent être instanciées en production.
 - [2026-07-05 12:30:00] - Stabilisation du KillSwitchListener par l'ajout du health check et du keepalive TCP sur la connexion Redis Pub/Sub, et masquage (niveau INFO) des stacktraces lors des déconnexions d'inactivité prévisibles (idle timeout).
 - [2026-07-05 02:56:00] - Résolution de l'erreur d'importation Numba (No module named 'numba') lors de l'exécution de la stratégie cybernetic_hilbert pour les paires crypto (ltcusdc et dotusdc) dans le Paper Trader en direct. Ajout de numba>=0.61.2,<0.62 dans requirements-base.txt pour garantir la compatibilité avec numpy>=2.2, validation de l'import et de la suite de tests unitaires (216/216 passés).
 - [2026-07-04 20:35:00] - Sécurisation des appels d'API signés Bybit dans le Paper Trader (s'exécutent uniquement si des clés de configuration Bybit sont explicitement présentes, évitant ainsi les erreurs 401 en mode public-only).
