@@ -1,3 +1,4 @@
+import os
 from unittest.mock import MagicMock, patch
 from decimal import Decimal
 from datetime import datetime, timezone
@@ -179,6 +180,7 @@ class TestSignalExecutor:
         assert float(nav_calls[0][0][1][0]) == 101600.0
         assert float(nav_calls[1][0][1][0]) == 26000.0
 
+    @patch.dict('os.environ', {"T212_PAPER_ROUTING_ENABLED": "false"})
     @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
     @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
     def test_evaluate_and_execute_strategies_buy_order(self, mock_registry_get, mock_get_redis):
@@ -266,6 +268,7 @@ class TestSignalExecutor:
         assert float(balance_calls[0][0][1][1]) == 5000.0 # allocated added
         assert balance_calls[0][0][1][2] == "trading212"
 
+    @patch.dict('os.environ', {"T212_PAPER_ROUTING_ENABLED": "false"})
     @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
     @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
     def test_evaluate_and_execute_strategies_sell_order(self, mock_registry_get, mock_get_redis):
@@ -345,4 +348,97 @@ class TestSignalExecutor:
         assert float(balance_calls[0][0][1][0]) == 1650.0 # net revenue added
         assert float(balance_calls[0][0][1][1]) == 1500.0 # entry cost deducted
         assert balance_calls[0][0][1][2] == "trading212"
+
+
+    @patch.dict('os.environ', {"T212_PAPER_ROUTING_ENABLED": "true"})
+    @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
+    @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
+    def test_evaluate_and_execute_strategies_sell_order_with_routing_and_protection(self, mock_registry_get, mock_get_redis):
+        # Given: A setup with paper routing enabled and a position to be sold
+        mock_conn = MagicMock()
+        mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+
+        # Mock active configs
+        mock_cursor.fetchall.side_effect = [
+            [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)],
+            [
+                (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
+                (datetime.now(), 150.5, 152.0, 150.0, 151.0),
+                (datetime.now(), 151.0, 153.0, 151.0, 152.0),
+                (datetime.now(), 152.0, 154.0, 152.0, 153.0),
+                (datetime.now(), 153.0, 155.0, 153.0, 154.0),
+                (datetime.now(), 154.0, 156.0, 154.0, 155.0),
+                (datetime.now(), 155.0, 157.0, 155.0, 156.0),
+                (datetime.now(), 156.0, 158.0, 156.0, 157.0),
+                (datetime.now(), 157.0, 159.0, 157.0, 158.0),
+                (datetime.now(), 158.0, 160.0, 158.0, 159.0),
+                (datetime.now(), 159.0, 161.0, 159.0, 160.0),
+            ]
+        ]
+        
+        # Position row query (paper position of 10.0001 shares)
+        mock_cursor.fetchone.side_effect = [
+            (401, Decimal("10.0001"), Decimal("150.0")), 
+            (Decimal("165.0"),) # price from live_prices table
+        ]
+
+        # Mock strategy registry run results (long_exit is True)
+        mock_run_result = MagicMock()
+        idx = pd.date_range("2023-10-04 12:00:00", periods=3, freq="5min", tz="UTC")
+        mock_run_result.bars = pd.DataFrame(
+            {"long_entry": [False, False, False], "long_exit": [False, True, False]},
+            index=idx
+        )
+        
+        mock_strat_info = MagicMock()
+        mock_strat_info.overrides_from_mapping_function.return_value = {}
+        mock_strat_info.run_function.return_value = mock_run_result
+        mock_registry_get.return_value = mock_strat_info
+
+        # Mock Trading 212 Client and Bootstrapper
+        mock_t212_client = MagicMock()
+        mock_t212_client.get_positions.return_value = [
+            {"instrument": {"ticker": "SAPd_EQ"}, "quantity": 0.0001},
+            {"instrument": {"ticker": "AAPL_T212_TICKER"}, "quantity": 10.0001}  # real qty is 10.0001
+        ]
+        mock_t212_client.place_market_order.return_value = {"id": "order-123", "status": "FILLED"}
+
+        # Mock Resolver
+        mock_resolver = MagicMock()
+        mock_resolver.resolve.return_value = "AAPL_T212_TICKER"
+
+        # Mock Bootstrapper
+        mock_bootstrapper = MagicMock()
+        mock_bootstrapper.micro_qty = 0.0001
+        mock_bootstrapper.bootstrap.return_value = []
+
+        # Instancier le SignalExecutor avec nos mocks
+        executor = SignalExecutor(
+            t212_client=mock_t212_client,
+            is_market_open_func=lambda x: True
+        )
+        
+        # Injecter manuellement le resolver et le bootstrapper pour éviter le chargement réel
+        executor._t212_resolver = mock_resolver
+        executor._t212_bootstrapper = mock_bootstrapper
+
+        with patch('pandas.DataFrame.resample') as mock_resample:
+            mock_resample.return_value.agg.return_value.dropna.return_value = pd.DataFrame(
+                {"open": [150.0, 155.0, 160.0], "high": [151.0, 156.0, 161.0], "low": [149.0, 154.0, 159.0], "close": [150.5, 155.5, 160.0]},
+                index=idx
+            )
+            executor.evaluate_and_execute_strategies(mock_conn)
+
+        # Then:
+        # 1. Resolver was called to find the ticker
+        mock_resolver.resolve.assert_called_once_with("AAPL")
+        
+        # 2. Trading 212 Client was called with a quantity protecting the micro-position:
+        # paper qty = 10.0001, real qty = 10.0001, micro_qty = 0.0001
+        # max_sellable = 10.0001 - 0.0001 = 10.0
+        # sell_qty = min(10.0001, max_sellable) = 10.0
+        mock_t212_client.place_market_order.assert_called_once_with(ticker="AAPL_T212_TICKER", quantity=-10.0)
+        
+        # 3. Bootstrapper bootstrap was triggered right after exit commit
+        mock_bootstrapper.bootstrap.assert_called_once()
 

@@ -1,6 +1,10 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-09 17:38:00] - Protection et auto-cicatrisation des micro-positions Trading 212 :
+  1. Conception et implémentation de la vente partielle préventive (Solution A) dans `SignalExecutor` pour protéger le reliquat minimal de tracking.
+  2. Implémentation du bootstrap réactif d'auto-cicatrisation instantané (Solution B) post-EXIT dans `SignalExecutor`.
+  3. Intégration et validation par un test d'intégration dédié et 100% de réussite de la suite de tests (40/40 tests passés).
 - [x] [2026-07-09 11:58:00] - Réconciliation et nettoyage des positions sur Trading212 Demo :
   1. Correction du bug de précision d'arrondi de quantité dans le client. Les micro-positions de Novo Nordisk (NVO) et Amadeus IT (AMS.MC) ont été ouvertes avec succès en utilisant un arrondi par excès (`math.ceil` sur la valeur absolue) pour s'adapter simultanément aux contraintes de pas boursier et de valeur minimum d'ordre (1,00 €).
   2. Nettoyage de la watchlist de [test_multi_tickers.py](file:///home/kidpixel/trading_automation_v2/ressources/trading212/trading212-api-extended-main/test_multi_tickers.py) en supprimant les tickers extra (Logitech, Zealand Pharma, Siemens Healthineers) afin de prévenir toute divergence future.

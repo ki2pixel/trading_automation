@@ -10,6 +10,10 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-09 17:38:00] - Protection et auto-cicatrisation des micro-positions Trading 212 :
+  1. Implémentation de la vente partielle préventive (Solution A) dans `SignalExecutor` pour protéger la micro-position de tracking lors de l'envoi d'ordres de vente réels.
+  2. Implémentation du bootstrap d'auto-cicatrisation instantané (Solution B) post-EXIT dans le cycle de vie du robot de paper trading.
+  3. Ajout et réussite d'un test d'intégration complet (40/40 tests verts).
 - [2026-07-09 11:58:00] - Réconciliation et nettoyage de Trading212 Demo :
   1. Résolution du bug de précision d'arrondi dans le bootstrapper Trading212 (arrondi par excès de la valeur absolue) permettant de placer avec succès les micro-positions de Novo Nordisk (NVO / NOVCd_EQ) et Amadeus IT (AMS.MC / AMSe_EQ).
   2. Nettoyage de la watchlist de [test_multi_tickers.py](file:///home/kidpixel/trading_automation_v2/ressources/trading212/trading212-api-extended-main/test_multi_tickers.py) pour retirer les tickers extra non configurés (Logitech, Zealand Pharma, Siemens Healthineers) afin d'éviter toute future divergence.

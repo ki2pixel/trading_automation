@@ -55,6 +55,20 @@ class SignalExecutor:
         return self._t212_resolver
 
     @property
+    def t212_bootstrapper(self) -> Optional[Any]:
+        if not hasattr(self, "_t212_bootstrapper") or self._t212_bootstrapper is None:
+            self._t212_bootstrapper = None
+            client = self.t212_client
+            resolver = self.t212_resolver
+            if client and resolver:
+                try:
+                    from backtest_engine.live.trading212.bootstrapper import Trading212Bootstrapper
+                    self._t212_bootstrapper = Trading212Bootstrapper(client, resolver)
+                except Exception as e:
+                    logger.warning(f"[PaperTrader] Failed to initialize Trading212Bootstrapper: {e}")
+        return self._t212_bootstrapper
+
+    @property
     def bybit_client(self) -> Any:
         if self.engine:
             return getattr(self.engine, "bybit_client", None)
@@ -808,11 +822,35 @@ class SignalExecutor:
                             try:
                                 # Résoudre le ticker Trading 212
                                 t212_ticker = self.t212_resolver.resolve(asset)
-                                logger.info(f"[PaperTrader] Routing real market SELL order for {asset} (mapped to {t212_ticker}): {-qty} units")
                                 
-                                # Placer l'ordre réel (négatif pour la vente)
-                                order_res = self.t212_client.place_market_order(ticker=t212_ticker, quantity=float(-qty))
-                                logger.info(f"[PaperTrader] T212 API Order Success: {order_res}")
+                                # Déterminer la quantité à vendre réellement sans liquider la micro-position de tracking
+                                sell_qty = qty
+                                bootstrapper = self.t212_bootstrapper
+                                if bootstrapper:
+                                    try:
+                                        real_positions = self.t212_client.get_positions()
+                                        real_qty = Decimal("0")
+                                        for pos in real_positions:
+                                            if pos.get("instrument", {}).get("ticker") == t212_ticker:
+                                                real_qty = Decimal(str(pos.get("quantity", "0")))
+                                                break
+                                        
+                                        if real_qty > Decimal("0"):
+                                            micro_qty = Decimal(str(bootstrapper.micro_qty))
+                                            max_sellable = real_qty - micro_qty
+                                            if max_sellable < Decimal("0"):
+                                                max_sellable = Decimal("0")
+                                            sell_qty = min(qty, max_sellable)
+                                    except Exception as e:
+                                        logger.warning(f"[PaperTrader] Failed to adjust sell quantity for {asset} to protect micro-position: {e}")
+                                
+                                if sell_qty > Decimal("0"):
+                                    logger.info(f"[PaperTrader] Routing real market SELL order for {asset} (mapped to {t212_ticker}): {-sell_qty} units (target paper qty: {-qty})")
+                                    # Placer l'ordre réel (négatif pour la vente)
+                                    order_res = self.t212_client.place_market_order(ticker=t212_ticker, quantity=float(-sell_qty))
+                                    logger.info(f"[PaperTrader] T212 API Order Success: {order_res}")
+                                else:
+                                    logger.info(f"[PaperTrader] Skipping real market SELL order for {asset} (only micro-position of tracking remains).")
                             except Exception as e:
                                 logger.exception(f"[PaperTrader] T212 API SELL order failed for {asset}")
                                 self.log_evaluation(
@@ -886,6 +924,14 @@ class SignalExecutor:
                             
                         conn.commit()
                         logger.info(f"[PaperTrader] Executed virtual SELL for {asset} ({strategy_name}) [Reason: {exit_reason}]: {qty} units @ {current_price} € (PnL: {pnl} €, Fee: {sell_fee} €, Net Revenue: {net_revenue} €)")
+                        
+                        # Auto-cicatrisation réactive instantanée si la micro-position a quand même disparu
+                        if source == 'trading212' and self.t212_bootstrapper:
+                            try:
+                                logger.info(f"[PaperTrader] Triggering reactive self-healing bootstrap for {asset} after EXIT.")
+                                self.t212_bootstrapper.bootstrap()
+                            except Exception as e:
+                                logger.error(f"[PaperTrader] Failed to run reactive self-healing bootstrap for {asset}: {e}")
                         
                         self.log_evaluation(
                             conn, strategy_name, asset, timeframe,
