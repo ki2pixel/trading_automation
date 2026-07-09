@@ -85,6 +85,21 @@ def test_config_missing_keys():
             assert "Missing Trading 212 credentials" in str(excinfo.value)
 
 
+def test_config_custom_env():
+    # Given: T212_ENV set to live but custom env parameter is demo
+    with patch.dict(os.environ, {
+        "T212_API_KEY_ID": "test_key",
+        "T212_API_SECRET": "test_secret",
+        "T212_ENV": "live"
+    }):
+        # When: Configuration is loaded with env="demo"
+        config = Trading212Config(env="demo")
+        config.validate()
+        # Then: Environment is demo
+        assert config.env == "demo"
+        assert config.base_url == "https://demo.trading212.com"
+
+
 # =====================================================================
 # CLIENT API TESTS
 # =====================================================================

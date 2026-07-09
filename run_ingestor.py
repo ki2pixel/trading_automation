@@ -4,6 +4,12 @@ import time
 from fastapi import FastAPI
 import uvicorn
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from backtest_engine.live.trading212.config import Trading212Config
 from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.trading212.resolver import Trading212TickerResolver
@@ -25,14 +31,15 @@ async def lifespan(app: FastAPI):
     
     # 1. Initialize Trading 212 Client and Ingestor dynamically if not initialized (Uvicorn worker re-import)
     if t212_ingestor is None:
-        t212_config = Trading212Config()
+        t212_env = os.getenv("T212_INGESTOR_ENV", "demo").lower()
+        t212_config = Trading212Config(env=t212_env)
         try:
             t212_config.validate()
             t212_client = Trading212Client(t212_config)
             t212_ingestor = Trading212PriceIngestor(t212_client)
-            print("[Runner] Trading 212 client and ingestor initialized dynamically in lifespan.")
+            print(f"[Runner] Trading 212 client and ingestor initialized dynamically in lifespan (env={t212_env}).")
         except Exception as e:
-            print(f"[Runner] Trading 212 not configured: {e}. Skipping.")
+            print(f"[Runner] Trading 212 not configured (env={t212_env}): {e}. Skipping.")
             t212_ingestor = None
             
     # 2. Initialize Bybit Client and Ingestor dynamically if not initialized (Uvicorn worker re-import)
@@ -158,14 +165,15 @@ def main():
     global t212_ingestor, bybit_ingestor
     
     # 1. Initialize Trading 212 Client and Ingestor
-    t212_config = Trading212Config()
+    t212_env = os.getenv("T212_INGESTOR_ENV", "demo").lower()
+    t212_config = Trading212Config(env=t212_env)
     try:
         t212_config.validate()
         t212_client = Trading212Client(t212_config)
         t212_ingestor = Trading212PriceIngestor(t212_client)
-        print("[Runner] Trading 212 client and ingestor initialized successfully.")
+        print(f"[Runner] Trading 212 client and ingestor initialized successfully (env={t212_env}).")
     except Exception as e:
-        print(f"[Runner] Trading 212 not configured: {e}. Skipping.")
+        print(f"[Runner] Trading 212 not configured (env={t212_env}): {e}. Skipping.")
         t212_ingestor = None
         
     # 2. Initialize Bybit Client and Ingestor

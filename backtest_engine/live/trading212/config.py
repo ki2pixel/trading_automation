@@ -3,7 +3,7 @@ import os
 class Trading212Config:
     """Configuration loader for the Trading 212 API integration."""
 
-    def __init__(self, dotenv_path: str = None):
+    def __init__(self, dotenv_path: str = None, env: str = None):
         # Try to load using python-dotenv if available
         try:
             from dotenv import load_dotenv
@@ -21,7 +21,10 @@ class Trading212Config:
 
         self._load_dotenv()
         
-        self.env = os.getenv("T212_ENV", "demo").lower()
+        if env is not None:
+            self.env = env.lower()
+        else:
+            self.env = os.getenv("T212_ENV", "demo").lower()
         
         if self.env == "live":
             self.api_key_id = os.getenv("T212_LIVE_API_KEY_ID") or os.getenv("T212_API_KEY_ID")
