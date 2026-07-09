@@ -249,7 +249,10 @@ class Trading212Client:
                                     match = re.search(r"invalid quantity precision (\d+)", err_detail)
                                     if match:
                                         allowed_precision = int(match.group(1))
-                                        new_qty = round(quantity, allowed_precision)
+                                        import math
+                                        factor = 10 ** allowed_precision
+                                        sign = 1 if quantity >= 0 else -1
+                                        new_qty = sign * (math.ceil(abs(quantity) * factor) / factor)
                                         print(f"[Trading212Client] Precision mismatch detected. Re-rounding quantity from {quantity} to {new_qty} (precision: {allowed_precision}).")
                                         quantity = new_qty
                                         payload["quantity"] = float(quantity)
