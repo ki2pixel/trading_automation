@@ -1,7 +1,7 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Finaliser la validation et le suivi en production de la remédiation de sécurité et de robustesse.
+- Suivi en production de l'ensemble des remédiations.
 
 ## Prochaines Étapes
 - Suivre le comportement en direct, affiner les paramètres de risque si nécessaire.
@@ -10,6 +10,12 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-11 12:00:00] - Remédiation de l'audit frontend (FT-01 à FT-10) et couverture de test Playwright complétée :
+  1. Intégrité financière (FT-01 Bybit Spot USDT, FT-02 alignement tables).
+  2. Sécurisation anti-XSS via DOM node building (FT-05) et sérialisation du polling avec verrou (FT-06).
+  3. Gestion temporelle (FT-03 invalidation cache graphique, FT-04 rafraîchissement config).
+  4. Accessibilité (FT-09 focus-trapping modales / touche Escape, FT-07 sidebar responsive).
+  5. Validation automatique réussie des tests d'intégration Playwright (3/3 tests verts).
 - [2026-07-11 00:40:00] - Remédiation complète de l'audit backend (C-01 à C-05, H-01 à H-05) :
   1. Implémentation de la persistance de statut PENDING pré-POST, récupération d'état en cas de crash, et arrêt de vidage d'accumulateur en dry-run.
   2. Intégration de verrous FOR UPDATE SQL pour le BUY/SELL et panic close, et vérification stricte de suppression.

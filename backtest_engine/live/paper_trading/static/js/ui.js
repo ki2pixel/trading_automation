@@ -3,6 +3,11 @@
 export const formatCurrency = (val) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(val);
 export const formatPercent = (val) => new Intl.NumberFormat('fr-FR', { style: 'percent', minimumFractionDigits: 2 }).format(val);
 export const formatUSDT = (val) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) + ' USDT';
+export const formatAmountForAsset = (asset, value) =>
+    asset?.toLowerCase().endsWith('usdt')
+        ? formatUSDT(value)
+        : formatCurrency(value);
+
 
 // Show toast notification (Glassmorphic Toast)
 export function showToast(message, type = 'info') {

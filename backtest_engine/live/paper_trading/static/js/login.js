@@ -6,8 +6,14 @@ if (urlParams.get('error') === 'true') {
     errorAlert.style.display = 'block';
 }
 
-document.getElementById('loginForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
+console.log("login.js starting...");
+const loginForm = document.getElementById('loginForm');
+console.log("loginForm found:", !!loginForm);
+
+if (loginForm) {
+    loginForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        console.log("Submit event triggered!");
     
     const submitBtn = document.getElementById('submitBtn');
     const errorAlert = document.getElementById('errorAlert');
@@ -46,3 +52,4 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         submitBtn.textContent = 'Se connecter';
     }
 });
+}

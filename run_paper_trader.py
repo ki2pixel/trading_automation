@@ -132,7 +132,7 @@ class CookieSessionAuthMiddleware(BaseHTTPMiddleware):
             path = path.rstrip("/")
 
         # Exclude public monitoring endpoints, styles, and login page/endpoint
-        if path in ("/health", "/keep-alive", "/login.html", "/style.css", "/api/login"):
+        if path in ("/health", "/keep-alive", "/login.html", "/style.css", "/js/login.js", "/api/login"):
             return await call_next(request)
 
         session_token = request.cookies.get("paper_trader_session")
