@@ -108,9 +108,16 @@ class Trading212PriceIngestor(BasePriceIngestor):
         redis_client = get_redis_client()
         if redis_client:
             try:
+                from datetime import datetime, timezone
+                import json
                 pipe = redis_client.pipeline()
+                now_str = datetime.now(timezone.utc).isoformat()
                 for ticker, price in prices.items():
-                    pipe.set(f"price:{ticker.lower()}", str(price))
+                    price_payload = json.dumps({
+                        "price": str(price),
+                        "timestamp": now_str
+                    })
+                    pipe.set(f"price:{ticker.lower()}", price_payload, ex=180)
                 pipe.execute()
                 print(f"[PriceIngestor] Successfully published {len(prices)} prices to Redis.")
             except Exception as e:

@@ -193,6 +193,7 @@ def test_spot_router_dry_run():
     conn_mock = MagicMock()
     cur_mock = MagicMock()
     conn_mock.cursor.return_value.__enter__.return_value = cur_mock
+    cur_mock.fetchone.return_value = None
     
     accumulator_mock = MagicMock()
     accumulator_mock.should_trigger.return_value = (True, Decimal("20.00"))
@@ -214,12 +215,24 @@ def test_spot_router_dry_run():
         client_mock, accumulator_mock, margin_sim_mock, dry_run=True
     )
     
-    order = router.try_convert(conn_mock)
+    # We patch get_db_connection to return valid NAV and Price for PTC check
+    with patch("backtest_engine.live.connection.get_db_connection") as mock_db_conn:
+        mock_conn_inner = MagicMock()
+        mock_cur_inner = MagicMock()
+        mock_db_conn.return_value.__enter__.return_value = mock_conn_inner
+        mock_conn_inner.cursor.return_value.__enter__.return_value = mock_cur_inner
+        mock_cur_inner.fetchone.side_effect = [
+            (Decimal("100000.00"),), # NAV
+            (Decimal("1.08"),),      # Price eurusd
+        ]
+        
+        order = router.try_convert(conn_mock)
+        
     assert order is not None
     assert order.status == ConversionOrderStatus.FILLED
     assert order.qty_usdc == Decimal("20.00")
-    # In dry-run, we drain the accumulator
-    accumulator_mock.drain.assert_called_once_with(conn_mock, order.client_order_id)
+    # In dry-run, we must NOT drain the accumulator
+    accumulator_mock.drain.assert_not_called()
     # We shouldn't call Bybit API in dry-run
     client_mock._request.assert_not_called()
 
@@ -228,6 +241,7 @@ def test_spot_router_idempotent_recovery():
     conn_mock = MagicMock()
     cur_mock = MagicMock()
     conn_mock.cursor.return_value.__enter__.return_value = cur_mock
+    cur_mock.fetchone.return_value = None
     
     accumulator_mock = MagicMock()
     accumulator_mock.should_trigger.return_value = (True, Decimal("20.00"))
@@ -273,7 +287,19 @@ def test_spot_router_idempotent_recovery():
         client_mock, accumulator_mock, margin_sim_mock, dry_run=False
     )
     
-    order = router.try_convert(conn_mock)
+    # We patch get_db_connection to return valid NAV and Price for PTC check
+    with patch("backtest_engine.live.connection.get_db_connection") as mock_db_conn:
+        mock_conn_inner = MagicMock()
+        mock_cur_inner = MagicMock()
+        mock_db_conn.return_value.__enter__.return_value = mock_conn_inner
+        mock_conn_inner.cursor.return_value.__enter__.return_value = mock_cur_inner
+        mock_cur_inner.fetchone.side_effect = [
+            (Decimal("100000.00"),), # NAV
+            (Decimal("1.08"),),      # Price eurusd
+        ]
+        
+        order = router.try_convert(conn_mock)
+        
     assert order is not None
     assert order.status == ConversionOrderStatus.FILLED
     assert order.broker_order_id == "bybit_order_123"

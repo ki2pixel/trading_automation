@@ -124,7 +124,12 @@ class BybitPriceIngestor(BasePriceIngestor):
                 redis_client = get_redis_client()
                 if redis_client:
                     try:
-                        redis_client.set(f"price:{symbol_lower}", str(price_val))
+                        import json
+                        price_payload = json.dumps({
+                            "price": str(price_val),
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        })
+                        redis_client.set(f"price:{symbol_lower}", price_payload, ex=180)
                     except Exception as re:
                         print(f"[BybitIngestor] Redis error for {symbol_lower}: {re}")
 

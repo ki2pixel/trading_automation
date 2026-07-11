@@ -1,6 +1,14 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-11 00:40:00] - Remédiation complète de l'audit backend (C-01 à C-05, H-01 à H-05) :
+  1. Implémentation de la persistance de statut PENDING pré-POST, récupération d'état en cas de crash, et arrêt de vidage d'accumulateur en dry-run.
+  2. Intégration de verrous FOR UPDATE SQL pour le BUY/SELL et panic close, et vérification stricte de suppression.
+  3. Validation SHA256 obligatoire des clés API en production.
+  4. Stockage JSON des prix Redis (180s TTL) et contrôle de fraîcheur de 3 minutes (Redis + SQL).
+  5. Capping max_capital_bucket, vérification available_balance dans le margin simulator, retrait des defaults de prix PTC, suppression N+1 des positions, TIMESTAMPTZ, rate limit login et masquage traceback.
+  6. Réalisation de tests unitaires et d'intégration étendus (37/37 tests au vert).
+- [x] [2026-07-09 19:11:00] - Harmonisation et complétude de la documentation du Paper Trading et Ingesteur Live : mise à jour du README unifié et du guide de déploiement (sécurité API, protection des micro-positions, rate limiter Redis, variables d'environnement T212_INGESTOR_ENV/T212_PAPER_ROUTING_ENABLED).
 - [x] [2026-07-09 17:38:00] - Protection et auto-cicatrisation des micro-positions Trading 212 :
   1. Conception et implémentation de la vente partielle préventive (Solution A) dans `SignalExecutor` pour protéger le reliquat minimal de tracking.
   2. Implémentation du bootstrap réactif d'auto-cicatrisation instantané (Solution B) post-EXIT dans `SignalExecutor`.

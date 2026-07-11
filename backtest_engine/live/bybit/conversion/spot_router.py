@@ -47,6 +47,37 @@ class SpotConversionRouter:
         Main entry point: attempts a conversion cycle.
         Returns the ConversionOrder if executed, None otherwise.
         """
+        # Step 0: Check for any unfinished conversion order in database first (idempotency recovery)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT client_order_id, broker_order_id, status, qty_usdc, filled_qty_eur, avg_fill_price, fee_usdc, error_message, dry_run
+                    FROM conversion_audit_log
+                    WHERE status IN ('PENDING', 'SUBMITTED', 'PARTIAL')
+                    LIMIT 1
+                """)
+                row = cur.fetchone()
+                if row:
+                    logger.info(f"[SpotRouter] Found unfinished order {row[0]} in status {row[2]}. Recovering...")
+                    unfinished_order = ConversionOrder(
+                        client_order_id=row[0],
+                        broker_order_id=row[1],
+                        status=ConversionOrderStatus(row[2]),
+                        qty_usdc=Decimal(str(row[3])),
+                        filled_qty_eur=Decimal(str(row[4])),
+                        avg_fill_price=Decimal(str(row[5])),
+                        fee_usdc=Decimal(str(row[6])),
+                        error_message=row[7],
+                        dry_run=row[8]
+                    )
+                    recovered_order = self._recover_order_state(unfinished_order)
+                    self._log_conversion(conn, recovered_order, dry_run=recovered_order.dry_run)
+                    if recovered_order.status == ConversionOrderStatus.FILLED:
+                        self.accumulator.drain(conn, recovered_order.client_order_id)
+                    return recovered_order
+        except Exception as e:
+            logger.error(f"[SpotRouter] Failed to check/recover unfinished orders: {e}")
+
         # Step 1: Check accumulator threshold
         should_trigger, balance = self.accumulator.should_trigger(conn)
         if not should_trigger:
@@ -59,8 +90,7 @@ class SpotConversionRouter:
         # Step 2: Pre-trade margin check
         if self.margin_sim.is_locked:
             logger.warning(
-                "[SpotRouter] Conversion locked by margin simulator. "
-                "Skipping."
+                "[SpotRouter] Conversion locked by margin simulator. Skipping."
             )
             return None
 
@@ -80,25 +110,31 @@ class SpotConversionRouter:
             )
             order.status = ConversionOrderStatus.FILLED  # Simulate success
             order.filled_qty_eur = balance  # Approximate
-            self.accumulator.drain(conn, order.client_order_id)
+            # Do NOT drain accumulator in dry-run!
             self._log_conversion(conn, order, dry_run=True)
             return order
 
         # Live execution
-        order = self._submit_order(order)
+        # First, persist the order with PENDING status before calling Bybit API
+        order.status = ConversionOrderStatus.PENDING
+        self._log_conversion(conn, order)
+
+        order = self._submit_order(conn, order)
         
         if order.status == ConversionOrderStatus.FILLED:
             self.accumulator.drain(conn, order.client_order_id)
             self._log_conversion(conn, order)
         elif order.status in (
             ConversionOrderStatus.REJECTED,
-            ConversionOrderStatus.FAILED
+            ConversionOrderStatus.FAILED,
+            ConversionOrderStatus.SUBMITTED,
+            ConversionOrderStatus.PARTIAL
         ):
             self._log_conversion(conn, order)
         
         return order
 
-    def _submit_order(self, order: ConversionOrder) -> ConversionOrder:
+    def _submit_order(self, conn, order: ConversionOrder) -> ConversionOrder:
         """
         Submits the order to Bybit V5 POST /v5/order/create.
         Implements retry with idempotent client_order_id.
@@ -107,12 +143,13 @@ class SpotConversionRouter:
         from backtest_engine.live.controls import PreTradeController, PreTradeControlError
         from backtest_engine.live.connection import get_db_connection
         
-        nav = Decimal("100000.0")
-        price = Decimal("1.08") # Default fallback for EURUSDC
+        # In actual execution, we fail fast instead of using dummy/fallback values
+        nav = None
+        price = None
         
         try:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
+            with get_db_connection() as db_conn:
+                with db_conn.cursor() as cur:
                     cur.execute("SELECT total_nav FROM paper_portfolio_balance WHERE source = 'bybit'")
                     row = cur.fetchone()
                     if row and row[0] is not None:
@@ -123,13 +160,22 @@ class SpotConversionRouter:
                     if row and row[0] is not None:
                         price = Decimal(str(row[0]))
         except Exception as dbe:
-            logger.warning(f"[SpotRouter] PTC warning: Failed to query database: {dbe}")
+            logger.error(f"[SpotRouter] Failed to query DB for Pre-Trade Controls: {dbe}")
+            order.status = ConversionOrderStatus.FAILED
+            order.error_message = f"Pre-Trade Controls DB query failed: {dbe}"
+            return order
+
+        if nav is None or nav <= Decimal("0") or price is None or price <= Decimal("0"):
+            logger.error(f"[SpotRouter] PTC Check Failed: Fresh positive NAV ({nav}) and price ({price}) are required.")
+            order.status = ConversionOrderStatus.REJECTED
+            order.error_message = f"Pre-Trade Controls Check Failed: invalid NAV ({nav}) or price ({price})"
+            return order
             
         try:
             ptc = PreTradeController()
             ptc.check_limits(
                 ticker=order.symbol,
-                quantity=order.qty_usdc / price if price > 0 else order.qty_usdc,
+                quantity=order.qty_usdc / price,
                 price=price,
                 current_nav=nav,
                 current_position_qty=Decimal("0"),
@@ -147,6 +193,8 @@ class SpotConversionRouter:
             try:
                 order.submitted_at = datetime.now(timezone.utc)
                 order.status = ConversionOrderStatus.SUBMITTED
+                # Persist the SUBMITTED status before the network request
+                self._log_conversion(conn, order)
                 
                 response = self.client._request(
                     "POST",
@@ -160,14 +208,13 @@ class SpotConversionRouter:
                 if ret_code == 0:
                     result = data.get("result", {})
                     order.broker_order_id = result.get("orderId")
-                    order.status = ConversionOrderStatus.FILLED
-                    order.filled_at = datetime.now(timezone.utc)
                     
+                    # Confirm execution status from the broker via reconciliation (non-presumptive)
                     logger.info(
-                        f"[SpotRouter] Order FILLED: {order.client_order_id} "
-                        f"→ Bybit ID: {order.broker_order_id}"
+                        f"[SpotRouter] Order submitted successfully: {order.client_order_id} "
+                        f"→ Bybit ID: {order.broker_order_id}. Confirming status..."
                     )
-                    return order
+                    return self._recover_order_state(order)
                 else:
                     error_msg = data.get("retMsg", "Unknown error")
                     order.error_message = f"retCode={ret_code}: {error_msg}"
@@ -193,8 +240,8 @@ class SpotConversionRouter:
                     f"[SpotRouter] Submit failed (attempt {attempt+1}): {e}"
                 )
 
-        order.status = ConversionOrderStatus.FAILED
-        return order
+        # Reconcile status to check if it actually succeeded despite the exceptions/errors
+        return self._recover_order_state(order)
 
     def _recover_order_state(self, order: ConversionOrder) -> ConversionOrder:
         """
@@ -242,15 +289,31 @@ class SpotConversionRouter:
                     order.avg_fill_price = Decimal(
                         existing.get("avgPrice", "0")
                     )
+                    order.filled_at = datetime.now(timezone.utc)
                 elif bybit_status == "PartiallyFilled":
                     order.status = ConversionOrderStatus.PARTIAL
+                    order.filled_qty_eur = Decimal(
+                        existing.get("cumExecQty", "0")
+                    )
+                    order.avg_fill_price = Decimal(
+                        existing.get("avgPrice", "0")
+                    )
                 elif bybit_status in ("Cancelled", "Rejected"):
                     order.status = ConversionOrderStatus.CANCELED
+                else:
+                    order.status = ConversionOrderStatus.SUBMITTED
+            else:
+                # Si l'ordre n'est pas trouvé chez le courtier et qu'on a eu une exception, il est FAILED
+                if order.status == ConversionOrderStatus.PENDING:
+                    order.status = ConversionOrderStatus.FAILED
+                    order.error_message = "Order not found on broker and submission failed."
                     
         except Exception as e:
             logger.error(f"[SpotRouter] Recovery failed: {e}")
-            order.status = ConversionOrderStatus.FAILED
-            order.error_message = f"Recovery failed: {e}"
+            # Do not overwrite a prior SUBMITTED state with FAILED if we just had a temporary network issue on GET
+            if order.status not in (ConversionOrderStatus.SUBMITTED, ConversionOrderStatus.PARTIAL):
+                order.status = ConversionOrderStatus.FAILED
+                order.error_message = f"Recovery failed: {e}"
         
         return order
 
@@ -273,7 +336,7 @@ class SpotConversionRouter:
         }
         logger.info(f"[AUDIT] {json.dumps(log_entry)}")
         
-        # Persist to DB
+        # Persist to DB using UPSERT to prevent unique constraint violation on client_order_id
         try:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -282,6 +345,15 @@ class SpotConversionRouter:
                      filled_qty_eur, avg_fill_price, fee_usdc, 
                      error_message, dry_run, created_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (client_order_id) DO UPDATE SET
+                        broker_order_id = EXCLUDED.broker_order_id,
+                        status = EXCLUDED.status,
+                        qty_usdc = EXCLUDED.qty_usdc,
+                        filled_qty_eur = EXCLUDED.filled_qty_eur,
+                        avg_fill_price = EXCLUDED.avg_fill_price,
+                        fee_usdc = EXCLUDED.fee_usdc,
+                        error_message = EXCLUDED.error_message,
+                        dry_run = EXCLUDED.dry_run;
                 """, (
                     order.client_order_id, order.broker_order_id,
                     order.status.value, order.qty_usdc,

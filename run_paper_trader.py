@@ -264,7 +264,7 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Exclude rate limiting for auth/csrf initialization
-        if path in ("/api/csrf-token", "/api/login"):
+        if path == "/api/csrf-token":
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
@@ -398,10 +398,9 @@ def safe_error_response(exc: Exception, request: Request) -> JSONResponse:
     correlation_id = str(uuid.uuid4())
     logger.exception(f"Unhandled exception occurred. Reference: {correlation_id} | Path: {request.url.path}")
     
-    is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
     is_debug = os.getenv("DEBUG", "false").lower() == "true"
     
-    if is_prod and not is_debug:
+    if not is_debug:
         return JSONResponse(
             status_code=500,
             content={"error": f"An internal error occurred. Reference: {correlation_id}"}

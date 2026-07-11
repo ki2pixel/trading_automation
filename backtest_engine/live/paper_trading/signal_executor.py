@@ -259,12 +259,22 @@ class SignalExecutor:
 
                     # 1. Batch Redis mget (single round-trip)
                     redis_prices = {}
+                    now_utc = datetime.now(timezone.utc)
                     if redis_client:
                         try:
                             redis_values = redis_client.mget(redis_keys)
                             for ticker, val in zip(tickers, redis_values):
                                 if val is not None:
-                                    redis_prices[ticker] = Decimal(str(val))
+                                    try:
+                                        data = json.loads(val)
+                                        price_val = Decimal(data["price"])
+                                        ts = datetime.fromisoformat(data["timestamp"])
+                                        if now_utc - ts <= timedelta(minutes=3):
+                                            redis_prices[ticker] = price_val
+                                        else:
+                                            logger.warning(f"[PaperTrader] Stale Redis price for {ticker} (age: {(now_utc - ts).total_seconds()}s). Ignoring.")
+                                    except Exception as je:
+                                        logger.error(f"[PaperTrader] Failed to parse Redis price for {ticker}: {je}")
                         except Exception as redis_err:
                             logger.exception("[PaperTrader] Redis mget error")
 
@@ -276,17 +286,17 @@ class SignalExecutor:
                             "SELECT ticker, price, updated_at FROM live_prices WHERE ticker = ANY(%s)",
                             (missing_tickers,)
                         )
-                        now_utc = datetime.now(timezone.utc)
                         for row in cur.fetchall():
                             ticker, price, updated_at = row[0], row[1], row[2]
-                            sql_prices[ticker] = Decimal(str(price))
-                            # Check freshness (3 minutes warning)
+                            price_val = Decimal(str(price))
                             if updated_at:
                                 if updated_at.tzinfo is None:
                                     updated_at = updated_at.replace(tzinfo=timezone.utc)
                                 age = now_utc - updated_at
-                                if age > timedelta(minutes=3):
-                                    logger.warning(f"[PaperTrader] WARNING: price for {ticker} is stale (age: {age.total_seconds():.0f}s). Using it anyway.")
+                                if age <= timedelta(minutes=3):
+                                    sql_prices[ticker] = price_val
+                                else:
+                                    logger.error(f"[PaperTrader] Postgres price for {ticker} is stale (age: {age.total_seconds()}s). Ignoring.")
 
                     # 3. Merge prices: Redis takes priority, then SQL
                     all_prices = {**sql_prices, **redis_prices}
@@ -360,6 +370,14 @@ class SignalExecutor:
             """)
             configs = cur.fetchall()
             
+            # Fetch all active positions to avoid N+1 queries in the loop
+            cur.execute("SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions")
+            positions_rows = cur.fetchall()
+            active_positions = {
+                (r[1].lower(), r[2]): (r[0], Decimal(str(r[3])), Decimal(str(r[4])))
+                for r in positions_rows
+            }
+            
         for config_id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params in configs:
             indicator_params = indicator_params or {}
             # Check market hours
@@ -368,14 +386,8 @@ class SignalExecutor:
                 
             source = 'bybit' if is_crypto_asset(asset) else 'trading212'
                 
-            # Check if we have an active position for this strategy + asset
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, qty, entry_price FROM paper_positions 
-                    WHERE asset = %s AND strategy_name = %s LIMIT 1
-                """, (asset, strategy_name))
-                position_row = cur.fetchone()
-                
+            # Check if we have an active position for this strategy + asset (O(1) local dict check)
+            position_row = active_positions.get((asset.lower(), strategy_name))
             has_position = position_row is not None
             
             # Fetch 1m candles for this asset (up to 7 days = 10080 minutes)
@@ -515,26 +527,45 @@ class SignalExecutor:
                 
             # Fetch current live price (Redis first, then Postgres)
             current_price = None
+            now_utc = datetime.now(timezone.utc)
             if redis_client:
                 try:
                     redis_val = redis_client.get(f"price:{asset.lower()}")
                     if redis_val is not None:
-                        current_price = Decimal(str(redis_val))
+                        try:
+                            data = json.loads(redis_val)
+                            price_val = Decimal(data["price"])
+                            ts = datetime.fromisoformat(data["timestamp"])
+                            if now_utc - ts <= timedelta(minutes=3):
+                                current_price = price_val
+                            else:
+                                logger.warning(f"[PaperTrader] Stale Redis price for {asset} (age: {(now_utc - ts).total_seconds()}s). Ignoring.")
+                        except Exception as je:
+                            logger.error(f"[PaperTrader] Failed to parse Redis price for {asset}: {je}")
                 except Exception as re:
                     logger.exception("[PaperTrader] Redis read error")
             if current_price is None:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT price FROM live_prices WHERE ticker = %s", (asset.lower(),))
+                    cur.execute("SELECT price, updated_at FROM live_prices WHERE ticker = %s", (asset.lower(),))
                     price_row = cur.fetchone()
                     if price_row:
-                        current_price = Decimal(str(price_row[0]))
+                        price_val = Decimal(str(price_row[0]))
+                        updated_at = price_row[1]
+                        if updated_at:
+                            if updated_at.tzinfo is None:
+                                updated_at = updated_at.replace(tzinfo=timezone.utc)
+                            age = now_utc - updated_at
+                            if age <= timedelta(minutes=3):
+                                current_price = price_val
+                            else:
+                                logger.error(f"[PaperTrader] Postgres price for {asset} is stale (age: {age.total_seconds()}s). Ignoring.")
             if current_price is None:
-                # No price available
+                # No fresh price available
                 self.log_evaluation(
                     conn, strategy_name, asset, timeframe,
                     price=None, signal_type='EXIT' if has_position else 'ENTRY',
                     signal_triggered=False, status='WAITING_DATA',
-                    fail_reason='No price available'
+                    fail_reason='No fresh price available'
                 )
                 continue
                 
@@ -570,8 +601,13 @@ class SignalExecutor:
                     # Kelly sizing: notional value = NAV * kelly_weight
                     kelly_size_cash = total_nav * Decimal(str(kelly_weight))
                     
-                    # Capital allocated = min(Kelly Size, cash_balance, initial_capital_bucket)
-                    allocated_cash = min(kelly_size_cash, cash_balance, Decimal(str(initial_capital_bucket)))
+                    # Capital allocated = min(Kelly Size, cash_balance, initial_capital_bucket, max_capital_bucket)
+                    allocated_cash = min(
+                        kelly_size_cash,
+                        cash_balance,
+                        Decimal(str(initial_capital_bucket)),
+                        Decimal(str(max_capital_bucket))
+                    )
                     if allocated_cash <= 0:
                         self.log_evaluation(
                             conn, strategy_name, asset, timeframe,
@@ -672,6 +708,9 @@ class SignalExecutor:
 
                     try:
                         with conn.cursor() as cur:
+                            # Lock the balance row first to prevent concurrent balance mutations
+                            cur.execute("SELECT cash_balance FROM paper_portfolio_balance WHERE source = %s FOR UPDATE", (source,))
+                            
                             # 1. Insert position
                             cur.execute("""
                                 INSERT INTO paper_positions (asset, strategy_name, qty, entry_price, current_price, pnl, updated_at)
@@ -891,8 +930,16 @@ class SignalExecutor:
                     
                     try:
                         with conn.cursor() as cur:
-                            # 1. Remove position
-                            cur.execute("DELETE FROM paper_positions WHERE id = %s", (pos_id,))
+                            # Lock the balance row first
+                            cur.execute("SELECT cash_balance FROM paper_portfolio_balance WHERE source = %s FOR UPDATE", (source,))
+                            
+                            # Remove position using RETURNING to verify it actually existed
+                            cur.execute("DELETE FROM paper_positions WHERE id = %s RETURNING id", (pos_id,))
+                            deleted_row = cur.fetchone()
+                            if not deleted_row:
+                                logger.warning(f"[PaperTrader] Position {pos_id} already closed/deleted by concurrent task. Skipping SELL credit.")
+                                conn.rollback()
+                                continue
                             
                             # 2. Add cash back and remove allocated balance from correct source
                             if pnl > 0 and source == 'bybit':

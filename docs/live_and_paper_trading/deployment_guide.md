@@ -37,17 +37,19 @@ Configurez les variables suivantes dans l'onglet **Environment** de vos services
 - `T212_POLLING_INTERVAL`: `60` (intervalle d'ingestion en secondes).
 - `T212_BOOTSTRAP`: `true` ou `false` (activer le bootstrap des micro-positions sur Trading 212 au lancement).
 - `T212_BOOTSTRAP_QTY`: `0.0001` (ajuster si des erreurs 400 surviennent à cause d'une valeur d'ordre inférieure à la devise minimale).
+- `T212_INGESTOR_ENV`: `demo` ou `live` (permet de découpler l'ingesteur de prix; par exemple `demo` pour l'ingesteur et `live` pour le reste du moteur).
 
 ### Moteur de Paper Trading (`run_paper_trader.py`)
 - `PAPER_TRADER_POLLING_INTERVAL`: `60` (fréquence de boucle du moteur en secondes).
 - `PORT`: `8081` (port d'écoute par défaut).
 - `PAPER_TRADER_PASSWORD`: Le mot de passe utilisateur requis pour se connecter à l'interface d'administration.
 - `HMAC_SECRET`: Le secret de signature des jetons HMAC (déclarez une clé hexadécimale forte d'au moins 32 octets).
+- `T212_PAPER_ROUTING_ENABLED`: `true` ou `false` (activer le routage réel des ordres sur le compte de démonstration Trading 212).
 
 ### Identifiants API Trading 212
 - `T212_API_KEY_ID`: Votre identifiant de clé d'API Trading 212.
 - `T212_API_SECRET`: Votre clé secrète Trading 212.
-- `T212_ENV`: `demo` ou `live` (toujours utiliser `demo` pour le Paper Trading).
+- `T212_ENV`: `demo` ou `live` (définit l'environnement global d'exécution du moteur).
 
 ### Identifiants API Bybit EU
 - `BYBIT_API_KEY`: Votre clé d'API de démonstration Bybit.

@@ -1,15 +1,25 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Surveiller le bon fonctionnement de la production (Ingesteur Bybit/Trading212, FastAPI, PostgreSQL, Redis).
+- Finaliser la validation et le suivi en production de la remédiation de sécurité et de robustesse.
 
 ## Prochaines Étapes
-- Surveiller le bon fonctionnement de la production (Ingesteur Bybit/Trading212, FastAPI, PostgreSQL, Redis).
+- Suivre le comportement en direct, affiner les paramètres de risque si nécessaire.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-11 00:40:00] - Remédiation complète de l'audit backend (C-01 à C-05, H-01 à H-05) :
+  1. Implémentation de la persistance de statut PENDING pré-POST, récupération d'état en cas de crash, et arrêt de vidage d'accumulateur en dry-run.
+  2. Intégration de verrous FOR UPDATE SQL pour le BUY/SELL et panic close, et vérification stricte de suppression.
+  3. Validation SHA256 obligatoire des clés API en production.
+  4. Stockage JSON des prix Redis (180s TTL) et contrôle de fraîcheur de 3 minutes (Redis + SQL).
+  5. Capping max_capital_bucket, vérification available_balance dans le margin simulator, retrait des defaults de prix PTC, suppression N+1 des positions, TIMESTAMPTZ, rate limit login et masquage traceback.
+  6. Réalisation de tests unitaires et d'intégration étendus (37/37 tests au vert).
+- [2026-07-09 19:11:00] - Harmonisation de la documentation du Paper Trading et Ingesteur Live :
+  1. Mise à jour complète du README unifié avec les concepts de sécurité API (CSRF Content-Type, rate limiter Redis, CSP hors-ligne) et de protection/auto-cicatrisation des micro-positions.
+  2. Intégration dans le guide de déploiement Render des variables T212_INGESTOR_ENV et T212_PAPER_ROUTING_ENABLED pour découpler les environnements.
 - [2026-07-09 17:38:00] - Protection et auto-cicatrisation des micro-positions Trading 212 :
   1. Implémentation de la vente partielle préventive (Solution A) dans `SignalExecutor` pour protéger la micro-position de tracking lors de l'envoi d'ordres de vente réels.
   2. Implémentation du bootstrap d'auto-cicatrisation instantané (Solution B) post-EXIT dans le cycle de vie du robot de paper trading.

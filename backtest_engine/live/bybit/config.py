@@ -59,9 +59,11 @@ class BybitConfig:
         expected_demo_hash = os.getenv("EXPECTED_BYBIT_DEMO_KEY_HASH")
         
         if self.env == "live":
+            if not expected_live_hash:
+                raise ValueError("[Failsafe] CRITICAL: EXPECTED_BYBIT_LIVE_KEY_HASH is not set in a Live environment! This is strictly forbidden.")
             if expected_demo_hash and key_hash == expected_demo_hash:
                 raise ValueError("[Failsafe] CRITICAL: Bybit Demo API key detected in Live environment! Shutting down immediately.")
-            if expected_live_hash and key_hash != expected_live_hash:
+            if key_hash != expected_live_hash:
                 raise ValueError("[Failsafe] CRITICAL: Bybit API key does not match EXPECTED_BYBIT_LIVE_KEY_HASH in Live environment! Shutting down immediately.")
         else:
             if expected_live_hash and key_hash == expected_live_hash:

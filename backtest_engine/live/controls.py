@@ -37,8 +37,11 @@ class PreTradeController:
         Validate the order parameters against PTC thresholds.
         Raises PreTradeControlError if any check fails.
         """
-        if current_nav <= 0:
-            current_nav = Decimal("100000.0")
+        if current_nav <= Decimal("0") or price <= Decimal("0"):
+            raise PreTradeControlError("Fresh positive NAV and reference price are required")
+
+        if reference_price is None or reference_price <= Decimal("0"):
+            raise PreTradeControlError("Fresh independent reference price is required")
 
         # 1. Volumetric Check (NAV percentage)
         order_value = abs(quantity * price)

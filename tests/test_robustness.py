@@ -41,7 +41,7 @@ def test_safe_error_response_development():
     mock_request = MagicMock(spec=Request)
     mock_request.url.path = "/test-route"
     
-    with patch.dict(os.environ, {"ENVIRONMENT": "development", "DEBUG": "false"}):
+    with patch.dict(os.environ, {"ENVIRONMENT": "development", "DEBUG": "true"}):
         try:
             raise ValueError("Secret database credentials leak")
         except ValueError as exc:
@@ -226,8 +226,16 @@ def test_trading212_client_order_capping(mock_request):
     
     # Mock database connections to avoid real SQL queries
     mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
     mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
-    mock_cursor.fetchone.return_value = (Decimal("10.0"),) # Price, NAV, current_qty
+    mock_cursor.fetchone.side_effect = [
+        (Decimal("100000.00"),), # NAV (Case 1)
+        (Decimal("10.00"),),     # Price (Case 1)
+        (Decimal("10.00"),),     # Position Qty (Case 1)
+        (Decimal("100000.00"),), # NAV (Case 2)
+        (Decimal("10.00"),),     # Price (Case 2)
+        (Decimal("0.00"),)       # Position Qty (Case 2)
+    ]
     
     # Mock positions response
     positions_payload = [
@@ -285,8 +293,13 @@ def test_trading212_client_precision_mismatch(mock_request):
     
     # Mock database connections to avoid real SQL queries
     mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
     mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
-    mock_cursor.fetchone.return_value = (Decimal("10.0"),) # Price, NAV, current_qty
+    mock_cursor.fetchone.side_effect = [
+        (Decimal("100000.00"),), # NAV
+        (Decimal("10.00"),),     # Price
+        (Decimal("0.00"),)       # Position Qty (empty)
+    ]
     
     client.get_positions = MagicMock(return_value=[])
     
@@ -325,4 +338,260 @@ def test_trading212_client_precision_mismatch(mock_request):
         assert calls[0][1]["json_data"]["quantity"] == 13.256739
         assert calls[1][1]["json_data"]["quantity"] == 13.257
 
+
+# ---------------------------------------------------------
+# Phase 4 Robustness and Recovery Tests
+# ---------------------------------------------------------
+
+def test_bybit_conversion_crash_recovery():
+    """
+    Given a SpotConversionRouter
+    When an order was already submitted but crashed, returning duplicate orderLinkId on retry
+    Then the router must recover the filled status and drain the accumulator
+    """
+    from backtest_engine.live.bybit.conversion.spot_router import SpotConversionRouter
+    from backtest_engine.live.bybit.conversion.order_types import ConversionOrder, ConversionOrderStatus
+    from backtest_engine.live.bybit.conversion.margin_simulator import MarginCheckResult
+    from decimal import Decimal
+    
+    conn_mock = MagicMock()
+    cur_mock = MagicMock()
+    conn_mock.cursor.return_value.__enter__.return_value = cur_mock
+    
+    # 1. No unfinished order initially, but should trigger = True (with balance 20)
+    # The query for step 0 checks if there is any unfinished order in status PENDING/SUBMITTED/PARTIAL
+    cur_mock.fetchone.side_effect = [
+        None, # Step 0 check: no unfinished order
+        (True, Decimal("20.00")), # accumulator.should_trigger
+    ]
+    
+    accumulator_mock = MagicMock()
+    accumulator_mock.should_trigger.return_value = (True, Decimal("20.00"))
+    
+    margin_sim_mock = MagicMock()
+    margin_sim_mock.is_locked = False
+    margin_sim_mock.check_conversion_safety.return_value = MarginCheckResult(
+        is_safe=True,
+        margin_state=None,
+        post_conversion_equity=Decimal("0"),
+        required_minimum=Decimal("0"),
+        headroom=Decimal("0"),
+        reason=""
+    )
+    
+    client_mock = MagicMock()
+    
+    # Mock POST returning duplicate orderLinkId
+    response_post_mock = MagicMock()
+    response_post_mock.json.return_value = {
+        "retCode": 110071,
+        "retMsg": "Duplicate orderLinkId"
+    }
+    
+    # Mock GET /v5/order/realtime returning Filled status
+    response_get_mock = MagicMock()
+    response_get_mock.json.return_value = {
+        "retCode": 0,
+        "result": {
+            "list": [
+                {
+                    "orderId": "bybit_order_crashed_123",
+                    "orderStatus": "Filled",
+                    "cumExecQty": "18.50",
+                    "avgPrice": "1.08"
+                }
+            ]
+        }
+    }
+    
+    client_mock._request.side_effect = [response_post_mock, response_get_mock]
+    
+    router = SpotConversionRouter(
+        client_mock, accumulator_mock, margin_sim_mock, dry_run=False
+    )
+    
+    # Mock DB PTC query
+    with patch("backtest_engine.live.connection.get_db_connection") as mock_db_conn:
+        mock_conn_inner = MagicMock()
+        mock_cur_inner = MagicMock()
+        mock_db_conn.return_value.__enter__.return_value = mock_conn_inner
+        mock_conn_inner.cursor.return_value.__enter__.return_value = mock_cur_inner
+        # Return NAV and reference price for PTC check
+        mock_cur_inner.fetchone.side_effect = [
+            (Decimal("100000.00"),), # NAV
+            (Decimal("1.08"),),      # Price eurusd
+        ]
+        
+        order = router.try_convert(conn_mock)
+        
+    assert order is not None
+    assert order.status == ConversionOrderStatus.FILLED
+    assert order.broker_order_id == "bybit_order_crashed_123"
+    assert order.filled_qty_eur == Decimal("18.50")
+    
+    # Confirm accumulator is drained on verified filled status
+    accumulator_mock.drain.assert_called_once_with(conn_mock, order.client_order_id)
+
+def test_bybit_conversion_dry_run_not_destructive():
+    """
+    Given a SpotConversionRouter in dry-run mode
+    When try_convert is executed
+    Then it should NOT drain the accumulator buffer
+    """
+    from backtest_engine.live.bybit.conversion.spot_router import SpotConversionRouter
+    from backtest_engine.live.bybit.conversion.margin_simulator import MarginCheckResult
+    from backtest_engine.live.bybit.conversion.order_types import ConversionOrderStatus
+    from decimal import Decimal
+    
+    conn_mock = MagicMock()
+    cur_mock = MagicMock()
+    conn_mock.cursor.return_value.__enter__.return_value = cur_mock
+    
+    # Step 0 check: no unfinished order
+    cur_mock.fetchone.return_value = None
+    
+    accumulator_mock = MagicMock()
+    accumulator_mock.should_trigger.return_value = (True, Decimal("20.00"))
+    
+    margin_sim_mock = MagicMock()
+    margin_sim_mock.is_locked = False
+    margin_sim_mock.check_conversion_safety.return_value = MarginCheckResult(
+        is_safe=True,
+        margin_state=None,
+        post_conversion_equity=Decimal("0"),
+        required_minimum=Decimal("0"),
+        headroom=Decimal("0"),
+        reason=""
+    )
+    
+    client_mock = MagicMock()
+    router = SpotConversionRouter(
+        client_mock, accumulator_mock, margin_sim_mock, dry_run=True
+    )
+    
+    # Mock DB PTC query
+    with patch("backtest_engine.live.connection.get_db_connection") as mock_db_conn:
+        mock_conn_inner = MagicMock()
+        mock_cur_inner = MagicMock()
+        mock_db_conn.return_value.__enter__.return_value = mock_conn_inner
+        mock_conn_inner.cursor.return_value.__enter__.return_value = mock_cur_inner
+        mock_cur_inner.fetchone.side_effect = [
+            (Decimal("100000.00"),), # NAV
+            (Decimal("1.08"),),      # Price eurusd
+        ]
+        
+        order = router.try_convert(conn_mock)
+        
+    assert order is not None
+    assert order.status == ConversionOrderStatus.FILLED
+    
+    # Accumulator MUST NOT be drained in dry_run
+    accumulator_mock.drain.assert_not_called()
+
+
+def test_margin_simulator_available_balance():
+    """
+    Given a UTAMarginSimulator
+    When checking conversion safety but the required USDC amount exceeds available balance
+    Then the check should return unsafe even if maintenance margin is zero
+    """
+    from backtest_engine.live.bybit.conversion.margin_simulator import UTAMarginSimulator
+    from decimal import Decimal
+    
+    client_mock = MagicMock()
+    client_mock.config.base_currency = "USDC"
+    # Available balance 2000, equity 5000, maintenance margin 0
+    client_mock.get_account_summary.return_value = {
+        "retCode": 0,
+        "result": {
+            "list": [
+                {
+                    "totalEquity": "5000.00",
+                    "totalMaintenanceMargin": "0.00",
+                    "totalAvailableBalance": "2000.00"
+                }
+            ]
+        }
+    }
+    
+    sim = UTAMarginSimulator(client_mock)
+    
+    # Try converting 3000 USDC (exceeds available balance of 2000)
+    result = sim.check_conversion_safety(Decimal("3000.00"))
+    assert result.is_safe is False
+    assert "exceeds available balance" in result.reason
+    assert sim.is_locked is True
+
+
+def test_stale_redis_price_resolution():
+    """
+    Given a SignalExecutor resolving live prices
+    When the Redis cache contains a price older than 3 minutes
+    Then it should ignore the Redis price and fallback to SQL or skip the evaluation
+    """
+    from backtest_engine.live.paper_trading.signal_executor import SignalExecutor
+    from backtest_engine.strategy_registry import StrategyRegistry
+    from decimal import Decimal
+    from datetime import datetime, timezone, timedelta
+    import json
+    import pandas as pd
+    
+    executor = SignalExecutor()
+    
+    redis_client_mock = MagicMock()
+    # Mock price in Redis stale by 5 minutes (300 seconds)
+    stale_time = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    stale_payload = json.dumps({
+        "price": "150.00",
+        "timestamp": stale_time
+    })
+    redis_client_mock.get.return_value = stale_payload
+    
+    conn_mock = MagicMock()
+    cur_mock = MagicMock()
+    conn_mock.cursor.return_value.__enter__.return_value = cur_mock
+    
+    # Mock SQL fallback also stale (4 minutes)
+    stale_sql_time = datetime.now(timezone.utc) - timedelta(minutes=4)
+    cur_mock.fetchone.return_value = (149.00, stale_sql_time)
+    
+    # 100 candle rows 1 minute apart to satisfy minimum bars and resampling
+    base_time = pd.Timestamp("2026-07-11 00:00:00", tz='UTC')
+    mock_candles = [
+        (base_time + timedelta(minutes=i), 100.0, 101.0, 99.0, 100.0)
+        for i in range(100)
+    ]
+    
+    # Mock StrategyRegistry.get to return a mock strategy that succeeds and triggers buy
+    mock_strat_info = MagicMock()
+    mock_run_result = MagicMock()
+    last_closed_time = base_time + timedelta(minutes=98)
+    mock_run_result.bars = pd.DataFrame(
+        {"long_entry": [True], "long_exit": [False]}, 
+        index=[last_closed_time]
+    )
+    mock_strat_info.run_function.return_value = mock_run_result
+    mock_strat_info.overrides_from_mapping_function.return_value = {}
+    
+    with patch("backtest_engine.live.connection.get_redis_client", return_value=redis_client_mock), \
+         patch.object(StrategyRegistry, "get", return_value=mock_strat_info), \
+         patch.object(SignalExecutor, "is_market_open", return_value=True):
+         
+        # We mock active config fetch and candle queries
+        cur_mock.fetchall.side_effect = [
+            [(1, "RSI", "AAPL", "1m", 0.1, 1000, 1000, 5000, 10000, {})], # configs
+            [], # positions
+            mock_candles # candles
+        ]
+        
+        executor.evaluate_and_execute_strategies(conn_mock)
+        
+        # Check that it did NOT trigger any trade, and evaluations logged 'WAITING_DATA' due to stale price
+        logged = False
+        for call in cur_mock.execute.call_args_list:
+            args = call[0]
+            if len(args) > 1 and "paper_evaluations" in args[0] and "No fresh price available" in args[1]:
+                logged = True
+                break
+        assert logged, "Expected WAITING_DATA evaluation log not found"
 

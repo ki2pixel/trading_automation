@@ -167,19 +167,50 @@ La base de données PostgreSQL subit des accès concurrents importants de la par
 ### 3. Sécurisation Critique de l'Interface
 L'API exposée est renforcée contre les menaces d'intrusion web :
 *   **Protection CSRF (Double Submit Cookie)** : Un middleware intercepte toutes les requêtes d'écriture (`POST`, `PUT`, `DELETE`). Il génère un cookie sécurisé et valide la correspondance avec le header personnalisé `X-CSRFToken` envoyé par le frontend.
-*   **Headers CORS et CSP Stricts** : Le middleware CORS restreint explicitement les requêtes aux domaines autorisés (pas d'utilisation du joker `*`). Les en-têtes de sécurité bloquent le détournement d'iframe (`X-Frame-Options: DENY`), le reniflage de type MIME (`X-Content-Type-Options: nosniff`) et forcent l'utilisation de canaux chiffrés (HSTS).
+*   **Durcissement du Type de Contenu (Content-Type Enforcement)** : Pour bloquer les contournements CSRF via des objets Blob, FormData ou text/plain, l'API exige strictement un en-tête `Content-Type: application/json` pour toute requête modificative.
+*   **Limiteur de Débit Redis (Rate Limiter)** : Un middleware implémente l'algorithme Token Bucket stocké dans Redis pour contrer les attaques DoS et limiter le spam des points d'accès critiques.
+*   **Headers CORS et CSP Stricts** : Le middleware CORS restreint explicitement les requêtes aux domaines autorisés. Les en-têtes de sécurité bloquent le détournement d'iframe (`X-Frame-Options: DENY`), le reniflage de type MIME (`X-Content-Type-Options: nosniff`), et forcent l'utilisation de canaux chiffrés (HSTS). La politique de sécurité du contenu (CSP) a été ajustée pour permettre le chargement de Lightweight Charts en mode local hors-ligne.
 *   **Signature de Token HMAC** : Les clés de signature des jetons de session ne reposent plus sur le mot de passe utilisateur. Au démarrage du serveur, un secret HMAC robuste et éphémère de 32 octets est généré via `secrets.token_hex(32)`.
 *   **Validation Pydantic** : Les paramètres des stratégies reçus par l'API (`indicator_params`) sont validés à l'entrée par un modèle Pydantic strict (`IndicatorParamsModel`), bloquant les injections de clés ou les types invalides.
 
 ### 4. Robustesse et Traçabilité des Erreurs
 Le traitement des exceptions est conçu pour simplifier le diagnostic tout en protégeant les informations sensibles :
-*   **Exceptions Métier Spécifiques** : Les exceptions génériques `except Exception` ont été remplacées par des filtres précis (`ConnectionError`, `asyncpg.PostgresError`, `ValueError`).
+*   **Exceptions Métier Spécifiques** : Les exceptions génériques ont été remplacées par des filtres précis (`ConnectionError`, `asyncpg.PostgresError`, `ValueError`).
 *   **Masquage des Erreurs en Production** : Lorsqu'une défaillance serveur survient, l'utilisateur reçoit une réponse sécurisée : `"An internal error occurred. Reference: {uuid}"`.
-*   **UUID de Corrélation** : L'erreur complète est enregistrée dans les logs système accompagnée de cet UUID unique, permettant au développeur de retrouver instantanément la trace d'exécution sans divulguer le schéma de base de données ou les variables d'environnement sur le réseau.
-*   **Timeouts Réseau Explicites** : Tous les appels HTTP vers des APIs tierces intègrent un timeout explicite (10 secondes par défaut) pour éviter le blocage indéfini des threads d'exécution.
+*   **UUID de Corrélation et SIEM** : L'erreur complète est enregistrée dans les logs système accompagnée d'un UUID unique. Les logs d'audit sont structurés au format JSON et centralisés dans `trading_audit.log` pour faciliter l'ingestion SIEM.
+*   **Timeouts Réseau Explicites** : Tous les appels HTTP vers des APIs tierces intègrent un timeout explicite de 10 secondes pour éviter le blocage indéfini des threads d'exécution.
+
+### 5. Protection contre l'Évaporation des Micro-Positions (Trading 212)
+Lors de l'activation du routage des ordres réels sur compte démo (`T212_PAPER_ROUTING_ENABLED=true`), les signaux de sortie de stratégie (`EXIT`) présentent un risque majeur : liquider l'intégralité de la position réelle d'un actif, détruisant ainsi la micro-position minimale de tracking (0.0001 actions) indispensable au fonctionnement de l'API.
+
+Le système résout ce problème via une double ligne de défense :
+*   **Écrêtage Préventif (Solution A)** : Avant de transmettre un ordre de vente réel au courtier, `SignalExecutor` interroge les positions actives. Il calcule la quantité maximale vendable en soustrayant le reliquat minimum de tracking (`micro_qty`) de la quantité réelle détenue. La vente virtuelle de Paper Trading est ainsi écrêtée à ce plafond.
+*   **Auto-Cicatrisation Réactive (Solution B)** : Si la micro-position disparaît malgré l'écrêtage (due à une réconciliation manuelle ou à une erreur de traitement), le moteur déclenche immédiatement après le commit de transaction un cycle réactif de bootstrap pour racheter instantanément la micro-position manquante.
+
+#### ❌ Logique de vente non protégée
+```python
+# Risque de liquider la totalité des parts réelles (ex: 10.0001)
+# détruisant la micro-position de 0.0001
+client.place_market_order(ticker=ticker, quantity=-10.0001)
+```
+
+#### ✅ Logique protégée avec écrêtage et auto-cicatrisation
+```python
+# 1. Calcul de la quantité maximale vendable
+max_sellable = real_qty - micro_qty  # 10.0001 - 0.0001 = 10.0
+sell_qty = min(paper_qty, max_sellable)  # Vente limitée à 10.0
+
+# 2. Transmission de l'ordre écrêté
+client.place_market_order(ticker=ticker, quantity=-float(sell_qty))
+
+# 3. Post-transaction : déclenchement du bootstrap de secours si nécessaire
+if micro_position_missing:
+    bootstrapper.bootstrap()
+```
 
 ---
 
 ## The Golden Rule
 
-> **Règle d'or**: Ne laissez jamais un système de trading décider d'une taille de transaction sans une validation active de ses contraintes de liquidité; la gestion du risque doit valider chaque quantité calculée avant la transmission de l'ordre.
+> **Règle d'or** : Ne laissez jamais un système de trading décider d'une taille de transaction sans une validation active de ses contraintes de liquidité; la gestion du risque doit valider chaque quantité calculée avant la transmission de l'ordre.
+

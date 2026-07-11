@@ -463,13 +463,11 @@ async def get_heartbeat():
 async def panic_close_all():
     pool = await _get_pool()
     try:
-        from backtest_engine.live.connection import get_redis_client
-        redis_client = get_redis_client()
-
         async with pool.acquire() as conn:
             async with conn.transaction():
+                # 1. Fetch positions with FOR UPDATE lock to prevent concurrent modifications
                 positions = await conn.fetch(
-                    "SELECT id, asset, strategy_name, qty, entry_price, current_price FROM paper_positions"
+                    "SELECT id, asset, strategy_name, qty, entry_price, current_price FROM paper_positions FOR UPDATE"
                 )
 
                 closed_count = 0
@@ -480,23 +478,15 @@ async def panic_close_all():
                     qty = Decimal(str(pos["qty"]))
                     entry_price = Decimal(str(pos["entry_price"]))
 
-                    # Get live price from Redis → DB → fallback
+                    # Resolve price exclusively from live_prices in DB (using asyncpg, non-blocking)
                     live_price = None
-                    if redis_client:
-                        try:
-                            redis_val = redis_client.get(f"price:{asset.lower()}")
-                            if redis_val is not None:
-                                live_price = Decimal(str(redis_val))
-                        except Exception:
-                            pass
-                    if live_price is None:
-                        price_row = await conn.fetchrow(
-                            "SELECT price FROM live_prices WHERE ticker = $1",
-                            asset.lower(),
-                        )
-                        if price_row:
-                            live_price = Decimal(str(price_row["price"]))
-                    if live_price is None:
+                    price_row = await conn.fetchrow(
+                        "SELECT price FROM live_prices WHERE LOWER(ticker) = $1",
+                        asset.lower(),
+                    )
+                    if price_row and price_row["price"] is not None:
+                        live_price = Decimal(str(price_row["price"]))
+                    else:
                         live_price = Decimal(str(pos["current_price"]))
 
                     source = 'bybit' if is_crypto_asset(asset) else 'trading212'
@@ -509,10 +499,23 @@ async def panic_close_all():
                     total_entry_cost = (qty * entry_price) * (Decimal("1.0") + fee_rate)
                     pnl = net_revenue - total_entry_cost
 
-                    # Delete position
-                    await conn.execute("DELETE FROM paper_positions WHERE id = $1", pos_id)
+                    # 2. Lock the portfolio balance row before updating
+                    await conn.execute(
+                        "SELECT cash_balance FROM paper_portfolio_balance WHERE source = $1 FOR UPDATE",
+                        source
+                    )
 
-                    # Update balance
+                    # 3. Delete position using RETURNING to verify we actually deleted it
+                    deleted_pos = await conn.fetchrow(
+                        "DELETE FROM paper_positions WHERE id = $1 RETURNING id",
+                        pos_id
+                    )
+                    if not deleted_pos:
+                        # The position was already deleted by another concurrent transaction/thread
+                        logger.warning(f"[PaperTrader] Position {pos_id} already closed/deleted by concurrent task. Skipping balance credit.")
+                        continue
+
+                    # 4. Update balance
                     await conn.execute(
                         "UPDATE paper_portfolio_balance "
                         "SET cash_balance = cash_balance + $1, "

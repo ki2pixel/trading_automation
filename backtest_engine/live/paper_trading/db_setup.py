@@ -524,7 +524,8 @@ def init_db():
                         entry_price NUMERIC NOT NULL,
                         current_price NUMERIC NOT NULL,
                         pnl NUMERIC NOT NULL DEFAULT 0,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT paper_positions_asset_strategy_key UNIQUE (asset, strategy_name)
                     )
                 """)
 
@@ -532,7 +533,7 @@ def init_db():
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS paper_transactions (
                         id SERIAL PRIMARY KEY,
-                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         asset VARCHAR(50) NOT NULL,
                         strategy_name VARCHAR(100) NOT NULL,
                         action VARCHAR(20) NOT NULL,
@@ -589,7 +590,7 @@ def init_db():
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS paper_evaluations (
                         id SERIAL PRIMARY KEY,
-                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         strategy_name VARCHAR(100) NOT NULL,
                         asset VARCHAR(50) NOT NULL,
                         timeframe VARCHAR(20) NOT NULL,
@@ -637,6 +638,23 @@ def init_db():
                 """)
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_conv_audit_status ON conversion_audit_log (status)")
                 
+                # Migrations: Alter timestamp columns to TIMESTAMP WITH TIME ZONE
+                cur.execute("ALTER TABLE paper_positions ALTER COLUMN updated_at TYPE TIMESTAMP WITH TIME ZONE;")
+                cur.execute("ALTER TABLE paper_transactions ALTER COLUMN timestamp TYPE TIMESTAMP WITH TIME ZONE;")
+                cur.execute("ALTER TABLE paper_evaluations ALTER COLUMN timestamp TYPE TIMESTAMP WITH TIME ZONE;")
+                
+                # Migration: Add unique constraint to paper_positions if not exists
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'paper_positions_asset_strategy_key'
+                        ) THEN
+                            ALTER TABLE paper_positions ADD CONSTRAINT paper_positions_asset_strategy_key UNIQUE (asset, strategy_name);
+                        END IF;
+                    END $$;
+                """)
+
                 # Add run_status column if it doesn't exist
                 cur.execute("""
                     ALTER TABLE paper_strategy_configs 
@@ -666,6 +684,7 @@ def init_db():
             print("[DB Setup] Paper trading database schema initialized and seeded.")
     except Exception as e:
         print(f"[DB Setup] Database setup failed: {e}")
+        raise e
 
 if __name__ == "__main__":
     init_db()

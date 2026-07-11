@@ -102,6 +102,24 @@ class UTAMarginSimulator:
         required_min = state.total_maintenance_margin * self.safety_factor
         headroom = post_equity - required_min
         
+        # Check if conversion amount exceeds available balance
+        if state.available_balance < amount_usdc:
+            reason = (
+                f"UNSAFE: conversion amount ({amount_usdc} USDC) exceeds "
+                f"available balance ({state.available_balance} USDC). CONVERSION BLOCKED."
+            )
+            logger.warning(f"[MarginSimulator] {reason}")
+            self._conversion_locked = True
+            self._lock_reason = reason
+            return MarginCheckResult(
+                is_safe=False,
+                margin_state=state,
+                post_conversion_equity=post_equity,
+                required_minimum=required_min,
+                headroom=headroom,
+                reason=reason
+            )
+
         # Cas trivial: pas de positions ouvertes (MM = 0)
         if state.total_maintenance_margin == Decimal("0"):
             return MarginCheckResult(

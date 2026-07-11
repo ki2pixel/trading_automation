@@ -1,0 +1,36 @@
+# Starlark execution policy rules for Codex in trading_automation_v2
+
+# Rule to allow python executions (backtests, trading loops, tests) outside sandbox without prompt
+prefix_rule(
+    pattern = ["python"],
+    decision = "allow",
+    justification = "Allow running python automation, backtesting engine, and tests",
+    match = [
+        "python run_paper_trader.py",
+        "python -m pytest tests/",
+        "python run_ingestor.py",
+    ]
+)
+
+# Rule to allow git commands for version control management
+prefix_rule(
+    pattern = ["git"],
+    decision = "allow",
+    justification = "Allow git version control operations",
+    match = [
+        "git status",
+        "git diff",
+        "git add .",
+        "git commit -m 'feat: update config'",
+    ]
+)
+
+# Rule to prompt before installing dependencies via pip
+prefix_rule(
+    pattern = ["pip", "install"],
+    decision = "prompt",
+    justification = "Prompt before installing new python packages",
+    match = [
+        "pip install -r requirements-base.txt",
+    ]
+)

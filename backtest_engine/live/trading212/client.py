@@ -139,8 +139,8 @@ class Trading212Client:
             from backtest_engine.live.connection import get_db_connection
             from backtest_engine.live.utils import T212_STATIC_MAPPING
             
-            nav = Decimal("100000.0")
-            price = Decimal("0.0")
+            nav = None
+            price = None
             current_qty = Decimal("0.0")
             
             # Resolve T212 ticker back to original asset for database queries
@@ -170,10 +170,10 @@ class Trading212Client:
                         if row and row[0] is not None:
                             current_qty = Decimal(str(row[0]))
             except Exception as dbe:
-                print(f"[Trading212Client] PTC Warning: Failed to query DB for risk controls: {dbe}")
+                raise ValueError(f"[Trading212Client] PTC Fail: Failed to query DB for risk controls: {dbe}")
                 
-            if price <= 0:
-                price = Decimal("1.0")
+            if nav is None or nav <= Decimal("0") or price is None or price <= Decimal("0"):
+                raise ValueError(f"[Trading212Client] PTC Fail: Fresh positive NAV ({nav}) and price ({price}) are required.")
                 
             ptc = PreTradeController()
             ptc.check_limits(
