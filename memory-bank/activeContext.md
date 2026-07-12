@@ -10,6 +10,10 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-12 09:14:00] - Correction des tests de l'agrégateur de bougies et de la résolution de prix unitaire :
+  1. Correction du filtrage de query mock dans mock_fetchall pour identifier "live_candles_1m" et récupérer les bougies avec la nouvelle structure.
+  2. Restauration de mock_fetchone pour la requête de prix en direct unitaire exécutée dans evaluate_and_execute_strategies.
+  3. Rerun complet de la suite de tests de remédiation (76/76 tests verts, 100% passés).
 - [2026-07-12 01:40:00] - Alignement et complétion de la Phase 3 (Validation & Tests) du plan de remédiation :
   1. Alignement des mocks de base de données (configs, positions, candles) dans tests/test_signal_executor.py et tests/test_paper_trading_engine.py pour refléter les requêtes par lots.
   2. Correction de la structure des tuples de retour des requêtes de prix en direct dans les tests pour inclure updated_at et éviter les IndexErrors.

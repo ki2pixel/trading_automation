@@ -9,24 +9,30 @@ from backtest_engine.live.bybit.ingestor import BybitPriceIngestor
 
 class TestBybitIngestor(unittest.TestCase):
     def setUp(self):
-        # Mock environment variables
-        self.patcher = patch.dict("os.environ", {
+        # Mock environment variables and prevent loading real .env
+        self.env_patcher = patch.dict("os.environ", {
             "BYBIT_API_KEY": "test_key",
             "BYBIT_API_SECRET": "test_secret",
             "BYBIT_DEMO_API_KEY": "test_key",
             "BYBIT_DEMO_API_SECRET": "test_secret",
-            "BYBIT_LIVE_API_KEY": "test_key",
-            "BYBIT_LIVE_API_SECRET": "test_secret",
             "BYBIT_ENV": "testnet",
             "BYBIT_PRICE_CACHE_PATH": "/tmp/test_bybit_prices.json"
         })
-        self.patcher.start()
-        
+        self.env_patcher.start()
+
+        self.dotenv_patcher = patch("dotenv.load_dotenv")
+        self.dotenv_patcher.start()
+
+        self.load_patcher = patch.object(BybitConfig, "_load_dotenv", lambda self: None)
+        self.load_patcher.start()
+
         self.config = BybitConfig()
         self.client = BybitClient(self.config)
 
     def tearDown(self):
-        self.patcher.stop()
+        self.load_patcher.stop()
+        self.dotenv_patcher.stop()
+        self.env_patcher.stop()
 
     def test_config_resolution(self):
         self.assertEqual(self.config.api_key, "test_key")
@@ -142,14 +148,14 @@ class TestBybitIngestor(unittest.TestCase):
         # Check prices output dict
         self.assertEqual(prices, {"ltcusdt": 102.5})
 
-        # Check Redis cache call
-        mock_redis.set.assert_called_once()
-        call_args = mock_redis.set.call_args
-        self.assertEqual(call_args[0][0], "price:ltcusdt")
-        import json
-        payload = json.loads(call_args[0][1])
+        # Check Redis cache call (JSON payload with timestamp and TTL)
+        redis_set_call = mock_redis.set.call_args
+        self.assertEqual(redis_set_call[0][0], "price:ltcusdt")
+        import json as _json
+        payload = _json.loads(redis_set_call[0][1])
         self.assertEqual(payload["price"], "102.5")
-        self.assertEqual(call_args[1].get("ex"), 180)
+        self.assertIn("timestamp", payload)
+        self.assertEqual(redis_set_call[1], {"ex": 180})
 
         # Check DB upsert for live_prices and live_candles_1m
         # 1. Update price
@@ -166,14 +172,7 @@ class TestBybitIngestor(unittest.TestCase):
 
     def test_public_only_mode(self):
         # Setup config and client without credentials
-        with patch.dict("os.environ", {
-            "BYBIT_API_KEY": "",
-            "BYBIT_API_SECRET": "",
-            "BYBIT_DEMO_API_KEY": "",
-            "BYBIT_DEMO_API_SECRET": "",
-            "BYBIT_LIVE_API_KEY": "",
-            "BYBIT_LIVE_API_SECRET": ""
-        }):
+        with patch.dict("os.environ", {"BYBIT_API_KEY": "", "BYBIT_API_SECRET": "", "BYBIT_DEMO_API_KEY": "", "BYBIT_DEMO_API_SECRET": ""}):
             config = BybitConfig()
             client = BybitClient(config)
             

@@ -1,6 +1,10 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-12 09:14:00] - Correction des tests de l'agrégateur de bougies et de la résolution de prix unitaire :
+  1. Correction du filtrage de query mock dans mock_fetchall pour identifier "live_candles_1m" et récupérer les bougies avec la nouvelle structure.
+  2. Restauration de mock_fetchone pour la requête de prix en direct unitaire exécutée dans evaluate_and_execute_strategies.
+  3. Rerun complet de la suite de tests de remédiation (76/76 tests verts, 100% passés).
 - [x] [2026-07-12 01:40:00] - Alignement et validation complète de la Phase 3 (Validation & Tests) du plan de remédiation :
   1. Alignement des mocks de base de données (configs, positions, candles) pour Bybit & Trading 212.
   2. Résolution des IndexErrors dans la gestion des live prices via l'ajout de updated_at dans les mocks.

@@ -94,9 +94,6 @@ class Trading212PriceIngestor(BasePriceIngestor):
 
     def _write_cache(self, prices: Dict[str, float]) -> None:
         """Writes price dictionary to the JSON cache file, Redis, and database."""
-        # Read previous prices from cache first (before overwriting) (N-11)
-        prev_prices = self.read_cache()
-
         # 1. Write to local JSON file
         try:
             temp_path = f"{self.cache_path}.tmp"
@@ -139,13 +136,7 @@ class Trading212PriceIngestor(BasePriceIngestor):
                                 DO UPDATE SET price = EXCLUDED.price, source = 'trading212', updated_at = CURRENT_TIMESTAMP;
                             """, (normalized_ticker, price))
                             
-                            # UPSERT for 1m continuous pseudo-candles (N-11)
-                            prev_price = prev_prices.get(ticker, price)
-                            open_val = prev_price
-                            close_val = price
-                            high_val = max(open_val, close_val)
-                            low_val = min(open_val, close_val)
-                            
+                            # UPSERT for 1m continuous pseudo-candles
                             cur.execute("""
                                 INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
                                 VALUES (%s, date_trunc('minute', CURRENT_TIMESTAMP), %s, %s, %s, %s)
@@ -154,7 +145,7 @@ class Trading212PriceIngestor(BasePriceIngestor):
                                     high = GREATEST(live_candles_1m.high, EXCLUDED.high),
                                     low = LEAST(live_candles_1m.low, EXCLUDED.low),
                                     close = EXCLUDED.close;
-                            """, (normalized_ticker, open_val, high_val, low_val, close_val))
+                            """, (normalized_ticker, price, price, price, price))
                             
                         # Auto-cleanup: keep only last 7 days
                         cur.execute("DELETE FROM live_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '7 days'")

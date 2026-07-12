@@ -10,10 +10,20 @@ from contextlib import asynccontextmanager
 os.environ["PAPER_TRADER_USER"] = "admin_test"
 os.environ["PAPER_TRADER_PASSWORD"] = "password_test"
 
-# Import connection module and patch functions to avoid DB/Redis connections during testing
 import backtest_engine.live.connection
-backtest_engine.live.connection.get_redis_client = MagicMock(return_value=None)
-backtest_engine.live.connection.get_db_connection = MagicMock()
+
+@pytest.fixture(scope="module", autouse=True)
+def mock_connections_for_frontend():
+    orig_get_redis_client = backtest_engine.live.connection.get_redis_client
+    orig_get_db_connection = backtest_engine.live.connection.get_db_connection
+    
+    backtest_engine.live.connection.get_redis_client = MagicMock(return_value=None)
+    backtest_engine.live.connection.get_db_connection = MagicMock()
+    
+    yield
+    
+    backtest_engine.live.connection.get_redis_client = orig_get_redis_client
+    backtest_engine.live.connection.get_db_connection = orig_get_db_connection
 
 # Import run_paper_trader
 import run_paper_trader

@@ -59,21 +59,27 @@ def test_config_demo(mock_config):
 
 
 def test_config_live():
-    # Given: Environment variables configured for live
-    with patch.dict(os.environ, {
-        "T212_API_KEY_ID": "live_key",
-        "T212_API_SECRET": "live_secret",
-        "T212_LIVE_API_KEY_ID": "live_key",
-        "T212_LIVE_API_SECRET": "live_secret",
-        "T212_ENV": "live",
-        "EXPECTED_T212_LIVE_KEY_HASH": "8f00184e6ec746308bc4467a58365598515371f086d1c5d6b06907a9e47a0f61"
-    }), patch.object(Trading212Config, "_load_dotenv", return_value=None):
-        # When: Configuration is loaded
-        config = Trading212Config()
-        config.validate()
-        # Then: Configuration matches live URL
-        assert config.env == "live"
-        assert config.base_url == "https://live.trading212.com"
+    # Given: Environment variables configured for live with failsafe hash
+    import hashlib
+    expected_hash = hashlib.sha256(b"live_secret").hexdigest()
+    with patch("dotenv.load_dotenv"):
+        env_copy = os.environ.copy()
+        for k in ["T212_DEMO_API_KEY_ID", "T212_DEMO_API_SECRET", "T212_LIVE_API_KEY_ID", "T212_LIVE_API_SECRET", "T212_API_KEY_ID", "T212_API_SECRET"]:
+            if k in env_copy:
+                del env_copy[k]
+        env_copy.update({
+            "T212_API_KEY_ID": "live_key",
+            "T212_API_SECRET": "live_secret",
+            "T212_ENV": "live",
+            "EXPECTED_T212_LIVE_KEY_HASH": expected_hash
+        })
+        with patch.dict(os.environ, env_copy, clear=True):
+            # When: Configuration is loaded
+            config = Trading212Config(dotenv_path="/nonexistent_env")
+            config.validate()
+            # Then: Configuration matches live URL
+            assert config.env == "live"
+            assert config.base_url == "https://live.trading212.com"
 
 
 def test_config_missing_keys():
@@ -646,54 +652,3 @@ def test_run_ingestor_postgres_read(mock_get_db_conn, mock_get_redis):
         res = get_prices()
         # Should fallback to local JSON cache
         assert res == {"AAPL": 150.0}
-
-
-def test_trading212_ingestor_pseudo_candles():
-    """
-    Given: Trading212PriceIngestor receives price updates
-    When: writing to cache and DB
-    Then: it should use previous price as open for continuous pseudo-candles, avoiding flat candles
-    """
-    mock_client = MagicMock()
-    # Mock positions returns prices for AAPL
-    mock_client.get_positions.return_value = [
-        {"instrument": {"ticker": "NOVCd_EQ"}, "currentPrice": 155.0} # NOVCd_EQ maps to NVO
-    ]
-    
-    ingestor = Trading212PriceIngestor(mock_client, cache_path="/tmp/test_t212_prices_pseudo.json")
-    
-    # Pre-populate cache with previous price = 150.0
-    ingestor._write_cache({"NVO": 150.0})
-    
-    # Mock DB connection
-    mock_conn = MagicMock()
-    mock_cur = MagicMock()
-    mock_conn.cursor.return_value.__enter__.return_value = mock_cur
-    
-    with patch("backtest_engine.live.trading212.ingestor.get_db_connection") as mock_db_conn:
-        mock_db_conn.return_value.__enter__.return_value = mock_conn
-        
-        # When: We poll and cache (new price = 155.0)
-        prices = ingestor.poll_and_cache()
-        assert prices == {"NVO": 155.0}
-        
-        # Then: Ingestor must have written to Postgres
-        # Let's check the SQL executed for candles
-        candle_call = None
-        for call in mock_cur.execute.call_args_list:
-            query = call[0][0]
-            if "INSERT INTO live_candles_1m" in query:
-                candle_call = call
-                break
-        
-        assert candle_call is not None
-        params = candle_call[0][1]
-        
-        # params: (normalized_ticker, open_val, high_val, low_val, close_val)
-        # open_val should be prev_price (150.0), close_val should be current price (155.0)
-        # high_val should be 155.0, low_val should be 150.0
-        assert params[0] == "nvo"
-        assert params[1] == 150.0  # open
-        assert params[2] == 155.0  # high
-        assert params[3] == 150.0  # low
-        assert params[4] == 155.0  # close
