@@ -30,6 +30,7 @@ class SignalExecutor:
         self.market_hours: Dict[str, Any] = market_hours or {}
         self._is_market_open_func: Optional[Callable[[str], bool]] = is_market_open_func
         self._last_eval_timestamps: Dict[int, Any] = {}
+        self._broker_simulators: Dict[tuple, Any] = {}
 
     @property
     def t212_client(self) -> Any:
@@ -223,7 +224,7 @@ class SignalExecutor:
                 positions = cur.fetchall()
                 
                 # Retrieve exchange rate to integrate secured_balance (in EUR) converted to USDC/USDT in Bybit total NAV
-                from backtest_engine.live.paper_trading.engine import get_eurusd_rate
+                from backtest_engine.live.utils import get_eurusd_rate
                 eurusd_rate = get_eurusd_rate(conn)
                 bybit_nav += bybit_secured * eurusd_rate
 
@@ -371,12 +372,20 @@ class SignalExecutor:
             """)
             configs = cur.fetchall()
             
-            # Fetch all active positions to avoid N+1 queries in the loop
+             # Fetch all active positions to avoid N+1 queries in the loop
             cur.execute("SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions")
             positions_rows = cur.fetchall()
             active_positions = {
                 (r[1].lower(), r[2]): (r[0], Decimal(str(r[3])), Decimal(str(r[4])))
                 for r in positions_rows
+            }
+            
+            # Fetch balances to avoid N+1 and fetchone shifts in the loop
+            cur.execute("SELECT source, cash_balance, total_nav FROM paper_portfolio_balance")
+            balance_rows = cur.fetchall()
+            balances = {
+                r[0]: (Decimal(str(r[1])), Decimal(str(r[2])))
+                for r in balance_rows
             }
             
         # N-01: Filter configs and extract unique tickers for batch fetching
@@ -623,17 +632,14 @@ class SignalExecutor:
                         
                     # Calculate quantity to buy
                     # Determine source depending on asset type
-                    source = 'bybit' if asset.lower().endswith(("usdt", "usdc")) else 'trading212'
+                    source = 'bybit' if is_crypto_asset(asset) else 'trading212'
                     
-                    # First fetch total portfolio NAV and cash balance
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT cash_balance, total_nav FROM paper_portfolio_balance WHERE source = %s", (source,))
-                        balance_row = cur.fetchone()
-                        
+                    # First fetch total portfolio NAV and cash balance from loaded balances
+                    balance_row = balances.get(source)
                     if not balance_row:
                         continue
-                    cash_balance = Decimal(str(balance_row[0]))
-                    total_nav = Decimal(str(balance_row[1]))
+                    cash_balance = balance_row[0]
+                    total_nav = balance_row[1]
                     
                     # Kelly sizing: notional value = NAV * kelly_weight
                     kelly_size_cash = total_nav * Decimal(str(kelly_weight))
@@ -710,19 +716,53 @@ class SignalExecutor:
                                     "qty_precision": qty_precision
                                 }
                             )
-                            continue
-                            
+                    # Pre-Trade Controls check
+                    try:
+                        from backtest_engine.live.controls import PreTradeController
+                        ptc = PreTradeController()
+                        pos_key = (asset.lower(), strategy_name)
+                        current_qty = active_positions[pos_key][1] if pos_key in active_positions else Decimal("0.0")
+                        ptc.check_limits(
+                            ticker=asset,
+                            quantity=qty,
+                            price=current_price,
+                            current_nav=total_nav,
+                            current_position_qty=current_qty,
+                            reference_price=current_price
+                        )
+                    except Exception as ptce:
+                        logger.error(f"[PaperTrader] BUY Order REJECTED by Pre-Trade Controls for {asset} on {strategy_name}: {ptce}")
+                        self.log_evaluation(
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='ENTRY',
+                            signal_triggered=True, status='REJECTED',
+                            fail_reason=f"Pre-Trade Controls Check Failed: {str(ptce)}",
+                            details={
+                                "qty": float(qty),
+                                "price": float(current_price),
+                                "current_qty": float(current_qty),
+                                "nav": float(total_nav)
+                            }
+                        )
+                        continue
+
                     # Execute BUY
                     import os
+                    import uuid
+                    client_order_id = str(uuid.uuid4())
                     if source == 'trading212' and os.getenv("T212_PAPER_ROUTING_ENABLED", "false").lower() == "true":
                         if self.t212_client:
                             try:
                                 # Résoudre le ticker Trading 212
                                 t212_ticker = self.t212_resolver.resolve(asset)
-                                logger.info(f"[PaperTrader] Routing real market BUY order for {asset} (mapped to {t212_ticker}): {qty} units")
+                                logger.info(f"[PaperTrader] Routing real market BUY order for {asset} (mapped to {t212_ticker}) with client_order_id {client_order_id}: {qty} units")
                                 
                                 # Placer l'ordre réel (idempotent)
-                                order_res = self.t212_client.place_market_order(ticker=t212_ticker, quantity=float(qty))
+                                order_res = self.t212_client.place_market_order(
+                                    ticker=t212_ticker,
+                                    quantity=float(qty),
+                                    client_order_id=client_order_id
+                                )
                                 logger.info(f"[PaperTrader] T212 API Order Success: {order_res}")
                             except Exception as e:
                                 logger.exception(f"[PaperTrader] T212 API BUY order failed for {asset}")
@@ -770,6 +810,11 @@ class SignalExecutor:
                             """, (asset, strategy_name, qty, current_price, total_buy_cost))
                             
                         conn.commit()
+                        if redis_client:
+                            try:
+                                redis_client.delete(f"perf_metrics:{asset}")
+                            except Exception as re_err:
+                                logger.warning(f"[PaperTrader] Failed to clear metrics cache for {asset} on BUY: {re_err}")
                         logger.info(f"[PaperTrader] Executed virtual BUY for {asset} ({strategy_name}): {qty} units @ {current_price} € (Cost: {actual_cost} €, Fee: {buy_fee} €, Total: {total_buy_cost} €)")
                         
                         self.log_evaluation(
@@ -821,12 +866,17 @@ class SignalExecutor:
                 if not trigger_exit:
                     from backtest_engine.broker import BrokerSimulator, BrokerConfig, Position as BrokerPosition
                     
-                    broker_config = BrokerConfig(
-                        account_currency=indicator_params.get("account_currency", "EUR"),
-                        asset_currency=indicator_params.get("asset_currency", "EUR"),
-                        point_value=indicator_params.get("point_value", 1.0)
-                    )
-                    broker = BrokerSimulator(broker_config)
+                    sim_key = (strategy_name, asset.lower())
+                    broker = self._broker_simulators.get(sim_key)
+                    if not broker:
+                        broker_config = BrokerConfig(
+                            account_currency=indicator_params.get("account_currency", "EUR"),
+                            asset_currency=indicator_params.get("asset_currency", "EUR"),
+                            point_value=indicator_params.get("point_value", 1.0)
+                        )
+                        broker = BrokerSimulator(broker_config)
+                        self._broker_simulators[sim_key] = broker
+                    
                     broker.cash = float(qty * entry_price)
                     from backtest_engine.broker import _OpenPositionEntry
                     broker._open_entry = _OpenPositionEntry(
@@ -891,8 +941,43 @@ class SignalExecutor:
                             exit_reason = f"{action.rule_name}: {action.comment}"
                             
                 if trigger_exit:
+                    # Pre-Trade Controls check
+                    try:
+                        from backtest_engine.live.controls import PreTradeController
+                        ptc = PreTradeController()
+                        
+                        # Fetch total portfolio NAV for PTC validation from loaded balances
+                        balance_row = balances.get(source)
+                        total_nav = balance_row[1] if balance_row else Decimal("0.0")
+                        
+                        ptc.check_limits(
+                            ticker=asset,
+                            quantity=-qty,  # Negative for sell/exit
+                            price=current_price,
+                            current_nav=total_nav,
+                            current_position_qty=qty,
+                            reference_price=current_price
+                        )
+                    except Exception as ptce:
+                        logger.error(f"[PaperTrader] SELL Order REJECTED by Pre-Trade Controls for {asset} on {strategy_name}: {ptce}")
+                        self.log_evaluation(
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='EXIT',
+                            signal_triggered=True, status='REJECTED',
+                            fail_reason=f"Pre-Trade Controls Check Failed: {str(ptce)}",
+                            details={
+                                "qty": float(-qty),
+                                "price": float(current_price),
+                                "current_qty": float(qty),
+                                "nav": float(total_nav)
+                            }
+                        )
+                        continue
+
                     # Execute SELL
                     import os
+                    import uuid
+                    client_order_id = str(uuid.uuid4())
                     if source == 'trading212' and os.getenv("T212_PAPER_ROUTING_ENABLED", "false").lower() == "true":
                         if self.t212_client:
                             try:
@@ -921,9 +1006,13 @@ class SignalExecutor:
                                         logger.warning(f"[PaperTrader] Failed to adjust sell quantity for {asset} to protect micro-position: {e}")
                                 
                                 if sell_qty > Decimal("0"):
-                                    logger.info(f"[PaperTrader] Routing real market SELL order for {asset} (mapped to {t212_ticker}): {-sell_qty} units (target paper qty: {-qty})")
-                                    # Placer l'ordre réel (négatif pour la vente)
-                                    order_res = self.t212_client.place_market_order(ticker=t212_ticker, quantity=float(-sell_qty))
+                                    logger.info(f"[PaperTrader] Routing real market SELL order for {asset} (mapped to {t212_ticker}) with client_order_id {client_order_id}: {-sell_qty} units (target paper qty: {-qty})")
+                                    # Placer l'ordre réel (négatif pour la vente) (idempotent)
+                                    order_res = self.t212_client.place_market_order(
+                                        ticker=t212_ticker,
+                                        quantity=float(-sell_qty),
+                                        client_order_id=client_order_id
+                                    )
                                     logger.info(f"[PaperTrader] T212 API Order Success: {order_res}")
                                 else:
                                     logger.info(f"[PaperTrader] Skipping real market SELL order for {asset} (only micro-position of tracking remains).")
@@ -980,7 +1069,7 @@ class SignalExecutor:
                             
                             # 2. Add cash back and remove allocated balance from correct source
                             if pnl > 0 and source == 'bybit':
-                                from backtest_engine.live.paper_trading.engine import get_eurusd_rate
+                                from backtest_engine.live.utils import get_eurusd_rate
                                 eurusd_rate = get_eurusd_rate(conn)
                                 pnl_eur = pnl / eurusd_rate
                                 cur.execute("""
@@ -1007,6 +1096,11 @@ class SignalExecutor:
                             """, (asset, strategy_name, qty, current_price, net_revenue))
                             
                         conn.commit()
+                        if redis_client:
+                            try:
+                                redis_client.delete(f"perf_metrics:{asset}")
+                            except Exception as re_err:
+                                logger.warning(f"[PaperTrader] Failed to clear metrics cache for {asset} on SELL: {re_err}")
                         logger.info(f"[PaperTrader] Executed virtual SELL for {asset} ({strategy_name}) [Reason: {exit_reason}]: {qty} units @ {current_price} € (PnL: {pnl} €, Fee: {sell_fee} €, Net Revenue: {net_revenue} €)")
                         
                         # Auto-cicatrisation réactive instantanée si la micro-position a quand même disparu

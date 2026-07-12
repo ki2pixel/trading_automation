@@ -204,6 +204,7 @@ class TestSignalExecutor:
         mock_cursor.fetchall.side_effect = [
             [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)], # config query
             [], # positions batch query (no active positions)
+            [("trading212", Decimal("100000"), Decimal("100000")), ("bybit", Decimal("100000"), Decimal("100000"))], # balances query
             [
                 (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
                 (datetime.now(), 150.5, 152.0, 150.0, 151.0),
@@ -219,10 +220,9 @@ class TestSignalExecutor:
             ]
         ]
 
-        # Mock live price and balance queries
+        # Mock live price query
         mock_cursor.fetchone.side_effect = [
             (Decimal("160.0"), datetime.now(timezone.utc)), # price query with updated_at
-            (Decimal("100000"), Decimal("100000")), # Balance row query (cash_balance, total_nav)
         ]
 
         # Mock strategy registry run results
@@ -292,6 +292,7 @@ class TestSignalExecutor:
         mock_cursor.fetchall.side_effect = [
             [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)], # config query
             [(401, "AAPL", "hma_crossover", Decimal("10.0"), Decimal("150.0"))], # positions batch query
+            [("trading212", Decimal("100000"), Decimal("100000")), ("bybit", Decimal("100000"), Decimal("100000"))], # balances query
             [
                 (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
                 (datetime.now(), 150.5, 152.0, 150.0, 151.0),
@@ -376,6 +377,7 @@ class TestSignalExecutor:
         mock_cursor.fetchall.side_effect = [
             [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)],
             [(401, "AAPL", "hma_crossover", Decimal("10.0001"), Decimal("150.0"))], # positions batch query
+            [("trading212", Decimal("100000"), Decimal("100000")), ("bybit", Decimal("100000"), Decimal("100000"))], # balances query
             [
                 (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
                 (datetime.now(), 150.5, 152.0, 150.0, 151.0),
@@ -452,7 +454,12 @@ class TestSignalExecutor:
         # paper qty = 10.0001, real qty = 10.0001, micro_qty = 0.0001
         # max_sellable = 10.0001 - 0.0001 = 10.0
         # sell_qty = min(10.0001, max_sellable) = 10.0
-        mock_t212_client.place_market_order.assert_called_once_with(ticker="AAPL_T212_TICKER", quantity=-10.0)
+        from unittest.mock import ANY
+        mock_t212_client.place_market_order.assert_called_once_with(
+            ticker="AAPL_T212_TICKER",
+            quantity=-10.0,
+            client_order_id=ANY
+        )
         
         # 3. Bootstrapper bootstrap was triggered right after exit commit
         mock_bootstrapper.bootstrap.assert_called_once()

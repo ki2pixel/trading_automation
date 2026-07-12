@@ -84,4 +84,7 @@ scratch_*.py
 update_sonar.py
 scratch/
 
+# ZenFlow
+.zenflow/*
+
 

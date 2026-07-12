@@ -141,16 +141,7 @@ def get_db_connection() -> Generator[psycopg2.extensions.connection, None, None]
     """Context manager for obtaining a database connection from the pool."""
     pool = get_db_pool()
     if not pool:
-        # Fallback to direct connection if pool init failed but URL is set
-        db_url = os.getenv("DATABASE_URL")
-        if not db_url:
-            raise RuntimeError("DATABASE_URL not configured")
-        conn = psycopg2.connect(db_url)
-        try:
-            yield conn
-        finally:
-            conn.close()
-        return
+        raise RuntimeError("[ConnectionManager] ThreadedConnectionPool is uninitialized. Refusing to fallback to direct unmanaged connections to prevent DB exhaustion.")
 
     conn = pool.getconn()
     if conn.closed:

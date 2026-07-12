@@ -118,7 +118,9 @@ def test_environment_failsafe():
         "BYBIT_API_SECRET": "secret",
         "BYBIT_ENV": "live",
         "EXPECTED_BYBIT_DEMO_KEY_HASH": demo_hash,
-        "EXPECTED_BYBIT_LIVE_KEY_HASH": live_hash
+        "EXPECTED_BYBIT_LIVE_KEY_HASH": live_hash,
+        "BYBIT_LIVE_API_KEY": "",
+        "BYBIT_LIVE_API_SECRET": ""
     }):
         config = BybitConfig()
         with pytest.raises(ValueError) as exc_info:
@@ -130,7 +132,9 @@ def test_environment_failsafe():
         "BYBIT_API_SECRET": "secret",
         "BYBIT_ENV": "testnet",
         "EXPECTED_BYBIT_DEMO_KEY_HASH": demo_hash,
-        "EXPECTED_BYBIT_LIVE_KEY_HASH": live_hash
+        "EXPECTED_BYBIT_LIVE_KEY_HASH": live_hash,
+        "BYBIT_DEMO_API_KEY": "",
+        "BYBIT_DEMO_API_SECRET": ""
     }):
         config = BybitConfig()
         with pytest.raises(ValueError) as exc_info:
@@ -143,7 +147,9 @@ def test_environment_failsafe():
         "T212_API_SECRET": demo_key,
         "T212_ENV": "live",
         "EXPECTED_T212_DEMO_KEY_HASH": demo_hash,
-        "EXPECTED_T212_LIVE_KEY_HASH": live_hash
+        "EXPECTED_T212_LIVE_KEY_HASH": live_hash,
+        "T212_LIVE_API_KEY_ID": "",
+        "T212_LIVE_API_SECRET": ""
     }):
         config = Trading212Config()
         with pytest.raises(ValueError) as exc_info:
@@ -155,7 +161,9 @@ def test_environment_failsafe():
         "T212_API_SECRET": live_key,
         "T212_ENV": "demo",
         "EXPECTED_T212_DEMO_KEY_HASH": demo_hash,
-        "EXPECTED_T212_LIVE_KEY_HASH": live_hash
+        "EXPECTED_T212_LIVE_KEY_HASH": live_hash,
+        "T212_DEMO_API_KEY_ID": "",
+        "T212_DEMO_API_SECRET": ""
     }):
         config = Trading212Config()
         with pytest.raises(ValueError) as exc_info:
@@ -173,7 +181,7 @@ def test_trading212_idempotency_and_reconciliation():
     from backtest_engine.live.trading212.config import Trading212Config
     from unittest.mock import MagicMock
     import requests
-    
+
     with patch.dict(os.environ, {
         "T212_API_KEY_ID": "id",
         "T212_API_SECRET": "secret",
@@ -182,13 +190,32 @@ def test_trading212_idempotency_and_reconciliation():
         config = Trading212Config()
         client = Trading212Client(config)
 
+    # Mock DB for PTC checks in client.place_market_order
+    mock_db_ctx = MagicMock()
+    mock_db_conn = mock_db_ctx.__enter__.return_value
+    mock_db_cur = mock_db_conn.cursor.return_value.__enter__.return_value
+
+    def mock_db_fetchone():
+        q = mock_db_cur.execute.call_args[0][0]
+        if "total_nav" in q:
+            return (10000.0,)
+        if "price FROM live_prices" in q:
+            return (150.0,)
+        return None
+
+    mock_db_cur.fetchone = MagicMock(side_effect=mock_db_fetchone)
+
+    # Mock currency check to avoid consuming _request side_effects
+    client._get_instrument_currency = MagicMock(return_value="EUR")
+
     mock_redis = MagicMock()
     mock_redis.set.side_effect = [True, False]
-    
-    with patch("backtest_engine.live.connection.get_redis_client", return_value=mock_redis):
+
+    with patch("backtest_engine.live.connection.get_db_connection", return_value=mock_db_ctx), \
+         patch("backtest_engine.live.connection.get_redis_client", return_value=mock_redis):
         with patch.object(client, "_request") as mock_req:
             mock_req.return_value.json.return_value = {"id": 111, "status": "NEW"}
-            
+
             with patch.object(client, "get_positions", return_value=[]):
                 res1 = client.place_market_order("AAPL_US_EQ", 1.5)
                 assert res1["id"] == 111
@@ -200,20 +227,21 @@ def test_trading212_idempotency_and_reconciliation():
         assert "Duplicate concurrent order blocked" in str(exc_info.value)
 
     mock_redis.set.side_effect = [True]
-    
-    with patch("backtest_engine.live.connection.get_redis_client", return_value=mock_redis):
+
+    with patch("backtest_engine.live.connection.get_db_connection", return_value=mock_db_ctx), \
+         patch("backtest_engine.live.connection.get_redis_client", return_value=mock_redis):
         with patch.object(client, "_request") as mock_req:
             mock_req.side_effect = [
                 requests.exceptions.Timeout("Request timed out"),
                 requests.exceptions.Timeout("Request timed out")
             ]
-            
+
             with patch.object(client, "get_positions", side_effect=[
                 [],
-                [{"ticker": "AAPL_US_EQ", "quantity": 1.5}]
+                [{"instrument": {"ticker": "AAPL_US_EQ"}, "quantity": 1.5}]
             ]):
                 res = client.place_market_order("AAPL_US_EQ", 1.5)
-                
+
                 assert res["status"] == "FILLED"
                 assert res.get("reconciled") is True
                 assert mock_req.call_count == 1

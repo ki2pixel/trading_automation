@@ -104,7 +104,19 @@ class Trading212TickerResolver:
         if matches:
             # Sort by score descending, then by ticker
             matches.sort(key=lambda x: (-x[0], x[1].get("ticker")))
-            resolved = matches[0][1].get("ticker")
+            best = matches[0][1]
+            
+            # Currency guard: reject non-target-currency instruments
+            account_currency = os.getenv("T212_ACCOUNT_CURRENCY", "EUR").upper()
+            inst_currency = best.get("currencyCode", "").upper()
+            if inst_currency != account_currency:
+                raise ValueError(
+                    f"[TickerResolver] Resolved ticker {best.get('ticker')} "
+                    f"has currency {inst_currency}, expected {account_currency}. "
+                    f"Aborting to respect single-currency account constraint."
+                )
+            
+            resolved = best.get("ticker")
             print(f"[TickerResolver] Dynamic mapping fallback: {asset} -> {resolved}")
             return resolved
             

@@ -271,6 +271,8 @@ class TestPaperTradingEngine:
                 return [(1, "momentum_based_zigzag", "ZEAL.CO", "15m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
             if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
                 return [] # No active positions (batched query)
+            if "SELECT source, cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+                return [("trading212", 10000.0, 10000.0)]
             if "live_candles_1m" in last_query:
                 return mock_candles
             if "SELECT ticker, price, updated_at FROM live_prices" in last_query:
@@ -489,6 +491,8 @@ class TestPaperTradingEngine:
                 return [(904, "cybernetic_hilbert", "ltcusdt", "45m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
             if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
                 return [] # No active positions (batched query)
+            if "SELECT source, cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+                return [("bybit", 10000.0, 10000.0)]
             if "live_candles_1m" in last_query:
                 return mock_candles
             if "SELECT ticker, price, updated_at FROM live_prices" in last_query:
@@ -552,7 +556,7 @@ class TestPaperTradingEngine:
         assert tx_total_value == total_cost_arg
 
 
-    @patch('backtest_engine.live.paper_trading.engine.get_eurusd_rate')
+    @patch('backtest_engine.live.utils.get_eurusd_rate')
     @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
     @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
     def test_bybit_secured_profit_routing(self, mock_get_redis_client, mock_strat_registry_get, mock_get_eurusd_rate):
@@ -590,6 +594,8 @@ class TestPaperTradingEngine:
                 return [(904, "cybernetic_hilbert", "ltcusdt", "45m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {"enable_take_profit": True, "take_profit_pct": 5.0})]
             if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
                 return [(99, "ltcusdt", "cybernetic_hilbert", Decimal("10.0"), Decimal("100.0"))]
+            if "SELECT source, cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+                return [("bybit", 15000.0, 15000.0)]
             if "live_candles_1m" in last_query:
                 return mock_candles
             if "SELECT ticker, price, updated_at FROM live_prices" in last_query:

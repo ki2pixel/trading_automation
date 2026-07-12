@@ -457,8 +457,6 @@ async def get_heartbeat():
     except asyncpg.PostgresError as e:
         logger.exception("[API] Database error fetching heartbeat")
         raise
-
-
 @router.post("/control/panic")
 async def panic_close_all():
     from backtest_engine.live.kill_switch import set_trading_suspended
@@ -468,7 +466,11 @@ async def panic_close_all():
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # 1. Fetch positions with FOR UPDATE lock to prevent concurrent modifications
+                # 1. Lock all balance rows first (consistent with signal_executor lock ordering)
+                await conn.execute("SELECT 1 FROM paper_portfolio_balance WHERE source = 'trading212' FOR UPDATE")
+                await conn.execute("SELECT 1 FROM paper_portfolio_balance WHERE source = 'bybit' FOR UPDATE")
+
+                # 2. Fetch positions with FOR UPDATE lock to prevent concurrent modifications
                 positions = await conn.fetch(
                     "SELECT id, asset, strategy_name, qty, entry_price, current_price FROM paper_positions FOR UPDATE"
                 )
@@ -501,12 +503,6 @@ async def panic_close_all():
 
                     total_entry_cost = (qty * entry_price) * (Decimal("1.0") + fee_rate)
                     pnl = net_revenue - total_entry_cost
-
-                    # 2. Lock the portfolio balance row before updating
-                    await conn.execute(
-                        "SELECT cash_balance FROM paper_portfolio_balance WHERE source = $1 FOR UPDATE",
-                        source
-                    )
 
                     # 3. Delete position using RETURNING to verify we actually deleted it
                     deleted_pos = await conn.fetchrow(
@@ -618,6 +614,22 @@ async def stream_logs(request: Request):
 
 @router.get("/performance/metrics")
 async def get_performance_metrics(ticker: str):
+    from backtest_engine.live.connection import get_redis_client
+    redis_client = None
+    try:
+        redis_client = get_redis_client()
+    except Exception:
+        pass
+        
+    # 1. Cache lookup
+    if redis_client:
+        try:
+            cached = redis_client.get(f"perf_metrics:{ticker.lower()}")
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
+            
     pool = await _get_pool()
     try:
         async with pool.acquire() as conn:
@@ -670,7 +682,7 @@ async def get_performance_metrics(ticker: str):
             
             txs = [
                 {
-                    "timestamp": r["timestamp"].replace(tzinfo=timezone.utc),
+                    "timestamp_ms": r["timestamp"].replace(tzinfo=timezone.utc).timestamp() * 1000,
                     "action": r["action"],
                     "qty": float(r["qty"]),
                     "price": float(r["price"]),
@@ -678,119 +690,152 @@ async def get_performance_metrics(ticker: str):
                 } for r in tx_rows
             ]
             
-            # 4. FIFO closed trade analysis
-            buy_queue = []
-            closed_trades = []
-            
-            for tx in txs:
-                if tx["action"] == 'BUY':
-                    buy_queue.append({"qty": tx["qty"], "price": tx["price"]})
-                elif tx["action"] == 'SELL':
-                    sell_qty = tx["qty"]
-                    total_buy_cost = 0.0
-                    
-                    while sell_qty > 0 and buy_queue:
-                        oldest_buy = buy_queue[0]
-                        if oldest_buy["qty"] <= sell_qty:
-                            total_buy_cost += oldest_buy["qty"] * oldest_buy["price"]
-                            sell_qty -= oldest_buy["qty"]
-                            buy_queue.pop(0)
-                        else:
-                            total_buy_cost += sell_qty * oldest_buy["price"]
-                            oldest_buy["qty"] -= sell_qty
-                            sell_qty = 0.0
-                            
-                    sell_revenue = tx["total_value"]
-                    pnl = sell_revenue - total_buy_cost
-                    closed_trades.append({"pnl": pnl, "cost_basis": total_buy_cost})
-                    
-            # Compute KPI metrics
-            wins = 0
-            total_profit = 0.0
-            total_losses = 0.0
-            net_profit = 0.0
-            
-            for t in closed_trades:
-                pnl = t["pnl"]
-                net_profit += pnl
-                if pnl > 0:
-                    wins += 1
-                    total_profit += pnl
-                else:
-                    total_losses += abs(pnl)
-                    
-            total_trades = len(closed_trades)
-            win_rate = float(wins) / total_trades if total_trades > 0 else 0.0
-            
-            if total_losses > 0:
-                profit_factor = total_profit / total_losses
-            else:
-                profit_factor = None if total_profit > 0 else 1.0
+        # 2. Cache miss -> compute in thread pool (non-blocking)
+        result = await asyncio.to_thread(
+            _compute_performance_metrics_sync, initial_capital, candles, txs
+        )
+        
+        # 3. Populate cache
+        if redis_client and result.get("total_trades", 0) > 0:
+            try:
+                redis_client.setex(f"perf_metrics:{ticker.lower()}", 300, json.dumps(result))
+            except Exception:
+                pass
                 
-            # 5. Reconstruct Account Value Curves over candle intervals
-            cash = initial_capital
-            qty = 0.0
-            tx_idx = 0
-            
-            strategy_curve = []
-            buy_hold_curve = []
-            
-            first_buy_price = None
-            if txs and txs[0]["action"] == 'BUY':
-                first_buy_price = txs[0]["price"]
-                
-            for c in candles:
-                candle_time_ms = c["time"] * 1000
-                
-                # Process any transactions that occurred up to this candle's timestamp
-                while tx_idx < len(txs) and txs[tx_idx]["timestamp"].timestamp() * 1000 <= candle_time_ms:
-                    tx = txs[tx_idx]
-                    if tx["action"] == 'BUY':
-                        cash -= tx["total_value"]
-                        qty += tx["qty"]
-                        if first_buy_price is None:
-                            first_buy_price = tx["price"]
-                    elif tx["action"] == 'SELL':
-                        cash += tx["total_value"]
-                        qty -= tx["qty"]
-                    tx_idx += 1
-                    
-                current_nav = cash + qty * c["close"]
-                strategy_curve.append({"time": c["time"], "value": current_nav})
-                
-                bh_nav = initial_capital
-                if first_buy_price is not None and first_buy_price > 0:
-                    bh_nav = initial_capital * (c["close"] / first_buy_price)
-                buy_hold_curve.append({"time": c["time"], "value": bh_nav})
-                
-            # Calculate Drawdowns
-            peak = -float('inf')
-            max_drawdown = 0.0
-            current_drawdown = 0.0
-            
-            for pt in strategy_curve:
-                val = pt["value"]
-                if val > peak:
-                    peak = val
-                dd = ((peak - val) / peak) * 100.0 if peak > 0 else 0.0
-                if dd > max_drawdown:
-                    max_drawdown = dd
-                current_drawdown = dd
-                
-            # Replace infinity with None for standard JSON compliance
-            pf_val = None if profit_factor == float('inf') or profit_factor is None else profit_factor
-            
-            return {
-                "win_rate": win_rate,
-                "profit_factor": pf_val,
-                "max_drawdown": max_drawdown,
-                "current_drawdown": current_drawdown,
-                "net_profit": net_profit,
-                "total_trades": total_trades,
-                "strategy_curve": strategy_curve,
-                "buy_hold_curve": buy_hold_curve
-            }
-            
+        return result
+        
     except asyncpg.PostgresError as e:
         logger.exception(f"[API] Database error fetching performance metrics for {ticker}")
         raise HTTPException(status_code=500, detail="Database error calculating performance metrics")
+
+
+def _compute_performance_metrics_sync(initial_capital: float, candles: list, txs: list) -> dict:
+    # 4. FIFO closed trade analysis
+    buy_queue = []
+    closed_trades = []
+    
+    for tx in txs:
+        if tx["action"] == 'BUY':
+            buy_queue.append({"qty": tx["qty"], "price": tx["price"]})
+        elif tx["action"] == 'SELL':
+            sell_qty = tx["qty"]
+            total_buy_cost = 0.0
+            
+            while sell_qty > 0 and buy_queue:
+                oldest_buy = buy_queue[0]
+                if oldest_buy["qty"] <= sell_qty:
+                    total_buy_cost += oldest_buy["qty"] * oldest_buy["price"]
+                    sell_qty -= oldest_buy["qty"]
+                    buy_queue.pop(0)
+                else:
+                    total_buy_cost += sell_qty * oldest_buy["price"]
+                    oldest_buy["qty"] -= sell_qty
+                    sell_qty = 0.0
+                    
+            sell_revenue = tx["total_value"]
+            pnl = sell_revenue - total_buy_cost
+            closed_trades.append({"pnl": pnl, "cost_basis": total_buy_cost})
+            
+    # Compute KPI metrics
+    wins = 0
+    total_profit = 0.0
+    total_losses = 0.0
+    net_profit = 0.0
+    
+    for t in closed_trades:
+        pnl = t["pnl"]
+        net_profit += pnl
+        if pnl > 0:
+            wins += 1
+            total_profit += pnl
+        else:
+            total_losses += abs(pnl)
+            
+    total_trades = len(closed_trades)
+    win_rate = float(wins) / total_trades if total_trades > 0 else 0.0
+    
+    if total_losses > 0:
+        profit_factor = total_profit / total_losses
+    else:
+        profit_factor = None if total_profit > 0 else 1.0
+        
+    # 5. Reconstruct Account Value Curves over candle intervals
+    cash = initial_capital
+    qty = 0.0
+    tx_idx = 0
+    
+    strategy_curve = []
+    buy_hold_curve = []
+    
+    first_buy_price = None
+    if txs and txs[0]["action"] == 'BUY':
+        first_buy_price = txs[0]["price"]
+        
+    for c in candles:
+        candle_time_ms = c["time"] * 1000
+        
+        # Process any transactions that occurred up to this candle's timestamp
+        while tx_idx < len(txs) and txs[tx_idx]["timestamp_ms"] <= candle_time_ms:
+            tx = txs[tx_idx]
+            if tx["action"] == 'BUY':
+                cash -= tx["total_value"]
+                qty += tx["qty"]
+                if first_buy_price is None:
+                    first_buy_price = tx["price"]
+            elif tx["action"] == 'SELL':
+                cash += tx["total_value"]
+                qty -= tx["qty"]
+            tx_idx += 1
+            
+        current_nav = cash + qty * c["close"]
+        strategy_curve.append({"time": c["time"], "value": current_nav})
+        
+        bh_nav = initial_capital
+        if first_buy_price is not None and first_buy_price > 0:
+            bh_nav = initial_capital * (c["close"] / first_buy_price)
+        buy_hold_curve.append({"time": c["time"], "value": bh_nav})
+        
+    # Calculate Drawdowns
+    peak = -float('inf')
+    max_drawdown = 0.0
+    current_drawdown = 0.0
+    
+    for pt in strategy_curve:
+        val = pt["value"]
+        if val > peak:
+            peak = val
+        dd = ((peak - val) / peak) * 100.0 if peak > 0 else 0.0
+        if dd > max_drawdown:
+            max_drawdown = dd
+        current_drawdown = dd
+        
+    # Replace infinity with None for standard JSON compliance
+    pf_val = None if profit_factor == float('inf') or profit_factor is None else profit_factor
+    
+    return {
+        "win_rate": win_rate,
+        "profit_factor": pf_val,
+        "max_drawdown": max_drawdown,
+        "current_drawdown": current_drawdown,
+        "net_profit": net_profit,
+        "total_trades": total_trades,
+        "strategy_curve": strategy_curve,
+        "buy_hold_curve": buy_hold_curve
+    }
+
+
+@router.post("/control/resume")
+async def resume_trading():
+    from backtest_engine.live.kill_switch import set_trading_suspended
+    set_trading_suspended(False)
+    
+    # Also clear Redis flag
+    from backtest_engine.live.connection import get_redis_client
+    redis_client = get_redis_client()
+    if redis_client:
+        try:
+            redis_client.delete("trading:suspended")
+        except Exception as e:
+            logger.error(f"[API] Failed to delete suspend flag in Redis: {e}")
+            
+    return {"status": "success", "message": "Trading resumed"}

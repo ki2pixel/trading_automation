@@ -473,7 +473,9 @@ async def login(request: Request):
     expected_user = os.getenv("PAPER_TRADER_USER", "admin")
     expected_password = os.getenv("PAPER_TRADER_PASSWORD") or PAPER_TRADER_PASSWORD
 
-    if username != expected_user or password != expected_password:
+    user_ok = hmac.compare_digest(username or "", expected_user)
+    pass_ok = hmac.compare_digest(password or "", expected_password)
+    if not (user_ok and pass_ok):
         if is_form:
             return RedirectResponse(url="/login.html?error=true", status_code=303)
         return JSONResponse(

@@ -115,13 +115,39 @@ class Trading212Client:
         response = self._request("DELETE", f"/equity/orders/{order_id}")
         return response.json()
 
-    def place_market_order(self, ticker: str, quantity: float) -> Dict[str, Any]:
+    def _get_instrument_currency(self, ticker: str) -> Optional[str]:
+        """Tries to find the currency of a ticker from cached instruments data."""
+        import json
+        import os
+        cache_paths = ["/tmp/t212_instruments.json", "/tmp/instruments.json"]
+        for path in cache_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        instruments = json.load(f)
+                        for inst in instruments:
+                            if inst.get("ticker", "").lower() == ticker.lower():
+                                return inst.get("currencyCode")
+                except Exception as e:
+                    print(f"[Trading212Client] Failed to read cached instrument currency from {path}: {e}")
+        
+        # If cache miss, fetch via API (throttled)
+        try:
+            instruments = self.get_instruments()
+            for inst in instruments:
+                if inst.get("ticker", "").lower() == ticker.lower():
+                    return inst.get("currencyCode")
+        except Exception as e:
+            print(f"[Trading212Client] Failed to fetch instrument currency via API: {e}")
+        return None
+
+    def place_market_order(self, ticker: str, quantity: float, client_order_id: Optional[str] = None) -> Dict[str, Any]:
         """Places a market order idempotently with a Redis SETNX lock and a pre-trade/retry portfolio reconciliation."""
         from backtest_engine.live.connection import get_redis_client
         
         redis_client = None
         lock_acquired = False
-        lock_key = f"lock:t212:order:{ticker}"
+        lock_key = f"lock:t212:order:{client_order_id or ticker}"
         
         try:
             redis_client = get_redis_client()
@@ -131,9 +157,19 @@ class Trading212Client:
         if redis_client:
             lock_acquired = redis_client.set(lock_key, "locked", ex=15, nx=True)
             if not lock_acquired:
-                raise ValueError(f"Duplicate concurrent order blocked for ticker {ticker}")
+                raise ValueError(f"Duplicate concurrent order blocked for ticker {ticker} (client_order_id: {client_order_id})")
                 
         try:
+            # Currency validation
+            import os
+            account_currency = os.getenv("T212_ACCOUNT_CURRENCY", "EUR").upper()
+            inst_currency = self._get_instrument_currency(ticker)
+            if inst_currency and inst_currency.upper() != account_currency:
+                raise ValueError(
+                    f"[T212] Currency mismatch: {ticker} is denominated in {inst_currency}, "
+                    f"but account currency is {account_currency}. Order rejected."
+                )
+                
             # Pre-Trade Controls check
             from backtest_engine.live.controls import PreTradeController, Decimal
             from backtest_engine.live.connection import get_db_connection

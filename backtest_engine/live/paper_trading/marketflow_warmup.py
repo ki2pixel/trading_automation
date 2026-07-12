@@ -70,6 +70,7 @@ def parse_and_insert(t212_ticker, candles, conn):
 
     with conn.cursor() as cur:
         inserted = 0
+        records = []
         for candle in candles:
             try:
                 # Determine timestamp format (unix timestamp in seconds or ms)
@@ -95,7 +96,13 @@ def parse_and_insert(t212_ticker, candles, conn):
                 if open_val == Decimal("0"):
                     continue
 
-                cur.execute("""
+                records.append((t212_ticker, dt_val, open_val, high_val, low_val, close_val))
+            except Exception as e:
+                logger.exception(f"[WarmUp] Erreur parsing bougie {candle} pour {t212_ticker}: {e}")
+                
+        if records:
+            try:
+                cur.executemany("""
                     INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
                     VALUES (%s, date_trunc('minute', %s::timestamptz), %s, %s, %s, %s)
                     ON CONFLICT (ticker, timestamp_minute) 
@@ -104,11 +111,10 @@ def parse_and_insert(t212_ticker, candles, conn):
                         high = EXCLUDED.high, 
                         low = EXCLUDED.low, 
                         close = EXCLUDED.close;
-                """, (t212_ticker, dt_val, open_val, high_val, low_val, close_val))
-                
-                inserted += 1
+                """, records)
+                inserted = len(records)
             except Exception as e:
-                logger.exception(f"[WarmUp] Erreur parsing bougie {candle} pour {t212_ticker}: {e}")
+                logger.exception(f"[WarmUp] Erreur insertion batch pour {t212_ticker}: {e}")
                 
         conn.commit()
         logger.info(f"[WarmUp] {inserted} bougies insérées pour {t212_ticker}")

@@ -10,6 +10,12 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-12 09:37:00] - Clôture des remédiations de l'audit Paper Trading (Phase 2 à Phase 4) :
+  1. Validation de l'idempotence et des pre-trade controls de la Phase 2 (34/34 tests verts).
+  2. Optimisation asynchrone non-bloquante FIFO/drawdown de l'API /performance/metrics avec cache-through Redis (Phase 3).
+  3. Implémentation du reset de suspension /api/control/resume et compatibilité USDC crypto (Phase 3).
+  4. Optimisations d'infrastructure (Phase 4) : insertions groupées SQL, cache de BrokerSimulator, DRY de source, résolutions d'imports circulaires et nettoyage debug.
+  5. Rerun et correction des 61 tests unitaires et d'intégration du moteur Paper Trading et de sécurité du Job Store (`test_paper_trading_engine.py` et `test_job_store_security.py`) au vert à 100%.
 - [2026-07-12 09:14:00] - Correction des tests de l'agrégateur de bougies et de la résolution de prix unitaire :
   1. Correction du filtrage de query mock dans mock_fetchall pour identifier "live_candles_1m" et récupérer les bougies avec la nouvelle structure.
   2. Restauration de mock_fetchone pour la requête de prix en direct unitaire exécutée dans evaluate_and_execute_strategies.

@@ -1,6 +1,14 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-12 09:37:00] - Clôture des remédiations de l'audit Paper Trading (Phase 2 à Phase 4) :
+  * Phase 2 validée par tests (idempotence T212, pre-trade controls, anti-N+1).
+  * Phase 3 asynchrone et cache-through pour metrics validée par tests.
+  * Phase 4 d'optimisations d'infrastructure (insertions SQL groupées, cache BrokerSimulator, etc.) validée par tests.
+  * Moteur de Paper Trading & Sécurité du Job Store validés avec 100% de réussite (61/61 tests verts).
+  1. Correction du filtrage de query mock dans mock_fetchall pour identifier "live_candles_1m" et récupérer les bougies avec la nouvelle structure.
+  2. Restauration de mock_fetchone pour la requête de prix en direct unitaire exécutée dans evaluate_and_execute_strategies.
+  3. Rerun complet de la suite de tests de remédiation (76/76 tests verts, 100% passés).
 - [x] [2026-07-12 09:14:00] - Correction des tests de l'agrégateur de bougies et de la résolution de prix unitaire :
   1. Correction du filtrage de query mock dans mock_fetchall pour identifier "live_candles_1m" et récupérer les bougies avec la nouvelle structure.
   2. Restauration de mock_fetchone pour la requête de prix en direct unitaire exécutée dans evaluate_and_execute_strategies.

@@ -101,7 +101,10 @@ export async function getHeartbeat() {
 }
 
 export async function executePanic() {
-    return await fetch('/api/control/panic', { method: 'POST' });
+    return await fetch('/api/control/panic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    });
 }
 
 export async function getPerformanceMetrics(ticker) {

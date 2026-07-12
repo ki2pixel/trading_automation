@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tbody.appendChild(tr);
             } else {
                 data.forEach(pos => {
-                    const isCrypto = pos.asset.toLowerCase().endsWith("usdt");
+                    const isCrypto = pos.asset.toLowerCase().endsWith("usdt") || pos.asset.toLowerCase().endsWith("usdc");
                     if (isCrypto) {
                         totalBybitPnl += pos.pnl;
                     } else {
@@ -958,9 +958,6 @@ document.addEventListener('DOMContentLoaded', () => {
         isLoading = true;
         try {
             const changed = await fetchHeartbeat();
-            
-            // Invalidate config cache on each tick to allow fresh status checks
-            cachedConfigs = null;
             
             // Refresh configs if configs view is active
             const configsTab = document.getElementById('configs');

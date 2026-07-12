@@ -1,5 +1,5 @@
 import { getCandles, getPerformanceMetrics, getTransactions } from './api.js';
-import { formatCurrency, formatPercent, formatUSDT, showError } from './ui.js';
+import { formatCurrency, formatPercent, formatUSDT, formatAmountForAsset, showError } from './ui.js';
 
 let currentChart = null;
 let candleSeries = null;
@@ -153,9 +153,8 @@ export async function loadChart(ticker, forceRefresh = false) {
         document.getElementById('analytic-maxdd').textContent = perfData.max_drawdown.toFixed(2) + '%';
         document.getElementById('analytic-currentdd').textContent = perfData.current_drawdown.toFixed(2) + '%';
         
-        const isCrypto = ticker.toLowerCase().endsWith('usdt');
         const totalProfitEl = document.getElementById('analytic-totalprofit');
-        totalProfitEl.textContent = isCrypto ? formatUSDT(perfData.net_profit) : formatCurrency(perfData.net_profit);
+        totalProfitEl.textContent = formatAmountForAsset(ticker, perfData.net_profit);
         totalProfitEl.className = 'kpi-value ' + (perfData.net_profit >= 0 ? 'positive' : 'negative');
         
         const totalTrades = perfData.total_trades;
