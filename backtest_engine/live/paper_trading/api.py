@@ -7,7 +7,7 @@ import threading
 from datetime import timezone, datetime
 from decimal import Decimal
 import asyncpg
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 from typing import Any
@@ -461,6 +461,9 @@ async def get_heartbeat():
 
 @router.post("/control/panic")
 async def panic_close_all():
+    from backtest_engine.live.kill_switch import set_trading_suspended
+    set_trading_suspended(True)
+    
     pool = await _get_pool()
     try:
         async with pool.acquire() as conn:
@@ -581,7 +584,7 @@ async def toggle_config(config_id: int, payload: ConfigToggle):
 
 
 @router.get("/logs/stream")
-async def stream_logs():
+async def stream_logs(request: Request):
     async def log_generator():
         # Send up to the last 100 logs from buffer for immediate context on connect
         last_sent_idx = 0
@@ -594,6 +597,9 @@ async def stream_logs():
             yield f"data: {json.dumps(log)}\n\n"
             
         while True:
+            if await request.is_disconnected():
+                logger.info("[API] Client disconnected from log stream. Stopping generator.")
+                break
             await asyncio.sleep(0.5)
             new_logs = []
             with log_lock:
@@ -719,7 +725,7 @@ async def get_performance_metrics(ticker: str):
             if total_losses > 0:
                 profit_factor = total_profit / total_losses
             else:
-                profit_factor = float('inf') if total_profit > 0 else 1.0
+                profit_factor = None if total_profit > 0 else 1.0
                 
             # 5. Reconstruct Account Value Curves over candle intervals
             cash = initial_capital
@@ -771,8 +777,8 @@ async def get_performance_metrics(ticker: str):
                     max_drawdown = dd
                 current_drawdown = dd
                 
-            # Replace infinity with a string/numeric representation for JSON
-            pf_val = "Infinity" if profit_factor == float('inf') else profit_factor
+            # Replace infinity with None for standard JSON compliance
+            pf_val = None if profit_factor == float('inf') or profit_factor is None else profit_factor
             
             return {
                 "win_rate": win_rate,

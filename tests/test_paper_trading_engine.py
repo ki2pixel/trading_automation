@@ -252,12 +252,10 @@ class TestPaperTradingEngine:
         
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
-            if "SELECT id, qty, entry_price FROM paper_positions" in last_query:
-                return None # No position open
             if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [10000.0, 10000.0] # 10k cash and nav
-            if "SELECT price FROM live_prices" in last_query:
-                return [10.0] # live price is 10.0
+            if "live_prices" in last_query:
+                return [10.0, datetime.now(timezone.utc)] # live price is 10.0
             return None
 
         # Return mock candles (at least 15 minutes of candles)
@@ -271,7 +269,9 @@ class TestPaperTradingEngine:
             if "SELECT id, strategy_name, asset, timeframe" in last_query:
                 # Active config
                 return [(1, "momentum_based_zigzag", "ZEAL.CO", "15m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
-            if "SELECT timestamp_minute, open, high, low, close" in last_query:
+            if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
+                return []
+            if "SELECT timestamp_minute, open, high, low, close" in last_query or "live_candles_1m" in last_query:
                 return mock_candles
             return []
 
@@ -348,7 +348,9 @@ class TestPaperTradingEngine:
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, strategy_name, asset, timeframe" in last_query:
                 return [(1, "momentum_based_zigzag", "ZEAL.CO", "15m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
-            if "SELECT timestamp_minute, open, high, low, close" in last_query:
+            if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
+                return []
+            if "SELECT timestamp_minute, open, high, low, close" in last_query or "live_candles_1m" in last_query:
                 return mock_candles
             return []
 
@@ -392,19 +394,19 @@ class TestPaperTradingEngine:
         
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
-            if "SELECT id, qty, entry_price FROM paper_positions" in last_query:
-                return None # No position open
             if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [10000.0, 10000.0]
-            if "SELECT price FROM live_prices" in last_query:
-                return [10.0]
+            if "live_prices" in last_query:
+                return [10.0, datetime.now(timezone.utc)]
             return None
 
         def mock_fetchall():
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, strategy_name, asset, timeframe" in last_query:
                 return [(1, "momentum_based_zigzag", "ZEAL.CO", "15m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
-            if "SELECT timestamp_minute, open, high, low, close" in last_query:
+            if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
+                return []
+            if "SELECT timestamp_minute, open, high, low, close" in last_query or "live_candles_1m" in last_query:
                 return mock_candles
             return []
 
@@ -463,19 +465,19 @@ class TestPaperTradingEngine:
         
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
-            if "SELECT id, qty, entry_price FROM paper_positions" in last_query:
-                return None # No position open
             if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [10000.0, 10000.0]
-            if "SELECT price FROM live_prices" in last_query:
-                return [10.0]
+            if "live_prices" in last_query:
+                return [10.0, datetime.now(timezone.utc)]
             return None
 
         def mock_fetchall():
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, strategy_name, asset, timeframe" in last_query:
                 return [(904, "cybernetic_hilbert", "ltcusdt", "45m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
-            if "SELECT timestamp_minute, open, high, low, close" in last_query:
+            if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
+                return []
+            if "SELECT timestamp_minute, open, high, low, close" in last_query or "live_candles_1m" in last_query:
                 return mock_candles
             return []
 
@@ -562,19 +564,21 @@ class TestPaperTradingEngine:
         
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
-            if "SELECT id, qty, entry_price FROM paper_positions" in last_query:
-                return (99, Decimal("10.0"), Decimal("100.0"))
-            if "SELECT price FROM live_prices" in last_query:
-                return [120.0]
+            if "live_prices" in last_query:
+                return [120.0, datetime.now(timezone.utc)]
             if "SELECT current_price FROM paper_positions WHERE id = %s" in last_query:
                 return [100.0]
+            if "DELETE FROM paper_positions" in last_query:
+                return (99,)
             return None
 
         def mock_fetchall():
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, strategy_name, asset, timeframe" in last_query:
                 return [(904, "cybernetic_hilbert", "ltcusdt", "45m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {"enable_take_profit": True, "take_profit_pct": 5.0})]
-            if "SELECT timestamp_minute, open, high, low, close" in last_query:
+            if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
+                return [(99, "ltcusdt", "cybernetic_hilbert", Decimal("10.0"), Decimal("100.0"))]
+            if "SELECT timestamp_minute, open, high, low, close" in last_query or "live_candles_1m" in last_query:
                 return mock_candles
             return []
 
@@ -623,5 +627,38 @@ class TestPaperTradingEngine:
         assert abs(cash_balance_added - Decimal('1001.0')) < Decimal('0.0001')
         assert abs(secured_balance_added - Decimal('179.818181')) < Decimal('0.0001')
         assert abs(allocated_balance_removed - Decimal('1000.0')) < Decimal('0.0001')
+
+
+def test_panic_close_suspension():
+    """
+    Given: An API request to /control/panic
+    When: panic_close_all() is executed
+    Then: It should suspension trading flag set to True
+    """
+    import asyncio
+    from backtest_engine.live.paper_trading.api import panic_close_all
+    from backtest_engine.live.kill_switch import is_trading_suspended, set_trading_suspended
+    
+    # Precondition: Set trading suspended to False
+    set_trading_suspended(False)
+    assert not is_trading_suspended()
+    
+    # Mock pool and connection
+    from unittest.mock import AsyncMock
+    mock_pool = MagicMock()
+    mock_conn = MagicMock()
+    # Mock pool acquire as a context manager
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+    mock_conn.transaction.return_value.__aenter__.return_value = MagicMock()
+    
+    # Mock postgres fetches for positions (empty list of positions to close)
+    mock_conn.fetch = AsyncMock(return_value=[])
+    
+    with patch("backtest_engine.live.paper_trading.api._get_pool", return_value=mock_pool):
+        # Run panic_close_all asynchronously
+        asyncio.run(panic_close_all())
+        
+        # Verify that trading suspension has been set to True
+        assert is_trading_suspended()
 
 

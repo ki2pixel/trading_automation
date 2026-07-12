@@ -10,52 +10,7 @@ from backtest_engine.live.utils import is_market_open
 logger = logging.getLogger("papertrader")
 
 
-def get_eurusd_rate(conn=None):
-    """
-    Retrieve the EUR/USD exchange rate (1 EUR = X USD).
-    Queries the live_prices table first. If unavailable, falls back to a public API
-    with a strict timeout, and finally to a static fallback (1.08).
-    """
-    import urllib.request
-    import urllib.error
-    import json
-    import psycopg2
-
-    # 1. Query the database first
-    if conn:
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT price FROM live_prices WHERE ticker = 'eurusd'")
-                row = cur.fetchone()
-                if row and row[0] is not None:
-                    return Decimal(str(row[0]))
-        except (psycopg2.Error, Exception) as e:
-            logger.exception("[PaperTrader] DB query for eurusd failed")
-            
-    # 2. Query public API with strict timeout
-    urls = [
-        "https://open.er-api.com/v6/latest/EUR",
-        "https://api.exchangerate-api.com/v4/latest/EUR"
-    ]
-    for url in urls:
-        try:
-            req = urllib.request.Request(
-                url,
-                headers={'User-Agent': 'AntigravityPaperTrader/1.0'}
-            )
-            with urllib.request.urlopen(req, timeout=1.5) as response:
-                if response.status == 200:
-                    data = json.loads(response.read().decode('utf-8'))
-                    rates = data.get("rates", {})
-                    usd_rate = rates.get("USD")
-                    if usd_rate is not None:
-                        return Decimal(str(usd_rate))
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ConnectionError, json.JSONDecodeError, UnicodeDecodeError, ValueError, Exception) as api_err:
-            logger.exception(f"[PaperTrader] Public API call to {url} failed")
-            
-    # 3. Static fallback
-    logger.info("[PaperTrader] Using static fallback (1.08) for EUR/USD rate.")
-    return Decimal("1.08")
+from backtest_engine.live.utils import get_eurusd_rate
 
 
 class PaperTradingEngine:

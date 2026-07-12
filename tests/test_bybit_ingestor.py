@@ -13,6 +13,10 @@ class TestBybitIngestor(unittest.TestCase):
         self.patcher = patch.dict("os.environ", {
             "BYBIT_API_KEY": "test_key",
             "BYBIT_API_SECRET": "test_secret",
+            "BYBIT_DEMO_API_KEY": "test_key",
+            "BYBIT_DEMO_API_SECRET": "test_secret",
+            "BYBIT_LIVE_API_KEY": "test_key",
+            "BYBIT_LIVE_API_SECRET": "test_secret",
             "BYBIT_ENV": "testnet",
             "BYBIT_PRICE_CACHE_PATH": "/tmp/test_bybit_prices.json"
         })
@@ -139,7 +143,13 @@ class TestBybitIngestor(unittest.TestCase):
         self.assertEqual(prices, {"ltcusdt": 102.5})
 
         # Check Redis cache call
-        mock_redis.set.assert_called_with("price:ltcusdt", "102.5")
+        mock_redis.set.assert_called_once()
+        call_args = mock_redis.set.call_args
+        self.assertEqual(call_args[0][0], "price:ltcusdt")
+        import json
+        payload = json.loads(call_args[0][1])
+        self.assertEqual(payload["price"], "102.5")
+        self.assertEqual(call_args[1].get("ex"), 180)
 
         # Check DB upsert for live_prices and live_candles_1m
         # 1. Update price
@@ -156,7 +166,14 @@ class TestBybitIngestor(unittest.TestCase):
 
     def test_public_only_mode(self):
         # Setup config and client without credentials
-        with patch.dict("os.environ", {"BYBIT_API_KEY": "", "BYBIT_API_SECRET": ""}):
+        with patch.dict("os.environ", {
+            "BYBIT_API_KEY": "",
+            "BYBIT_API_SECRET": "",
+            "BYBIT_DEMO_API_KEY": "",
+            "BYBIT_DEMO_API_SECRET": "",
+            "BYBIT_LIVE_API_KEY": "",
+            "BYBIT_LIVE_API_SECRET": ""
+        }):
             config = BybitConfig()
             client = BybitClient(config)
             

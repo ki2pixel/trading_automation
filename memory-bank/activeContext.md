@@ -1,15 +1,21 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Suivi en production de l'ensemble des remédiations.
+- Aucun (toutes les remédiations de l'audit backend et frontend sont validées avec succès).
 
 ## Prochaines Étapes
-- Suivre le comportement en direct, affiner les paramètres de risque si nécessaire.
+- Suivi en production du comportement de la plateforme.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-12 01:40:00] - Alignement et complétion de la Phase 3 (Validation & Tests) du plan de remédiation :
+  1. Alignement des mocks de base de données (configs, positions, candles) dans tests/test_signal_executor.py et tests/test_paper_trading_engine.py pour refléter les requêtes par lots.
+  2. Correction de la structure des tuples de retour des requêtes de prix en direct dans les tests pour inclure updated_at et éviter les IndexErrors.
+  3. Isolation de BybitConfig et Trading212Config vis-à-vis du fichier .env local via mocking dans Bybit et Trading 212 tests.
+  4. Installation et exécution complète du framework Playwright pour les tests d'intégration frontend (3/3 tests verts).
+  5. Réussite de 100% de la suite de tests (77/77 tests verts sur le périmètre de remédiation).
 - [2026-07-11 12:00:00] - Remédiation de l'audit frontend (FT-01 à FT-10) et couverture de test Playwright complétée :
   1. Intégrité financière (FT-01 Bybit Spot USDT, FT-02 alignement tables).
   2. Sécurisation anti-XSS via DOM node building (FT-05) et sérialisation du polling avec verrou (FT-06).

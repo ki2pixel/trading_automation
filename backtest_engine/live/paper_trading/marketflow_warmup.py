@@ -1,11 +1,13 @@
 import os
 import requests
 from datetime import datetime
+from decimal import Decimal
 import pytz
+import logging
+from typing import Optional
 
-API_KEY = os.getenv("RAPIDAPI_KEY")
-if not API_KEY:
-    raise ValueError("[WarmUp] RAPIDAPI_KEY not set. Cannot proceed.")
+logger = logging.getLogger("papertrader")
+
 API_HOST = "marketflow-all-in-one-market-finance-api.p.rapidapi.com"
 URL = f"https://{API_HOST}/v2/chart/price"
 
@@ -14,9 +16,14 @@ from backtest_engine.live.connection import get_db_connection
 
 
 def fetch_candles(mf_symbol, range_limit=1440):
+    api_key = os.getenv("RAPIDAPI_KEY")
+    if not api_key:
+        logger.error("[WarmUp] RAPIDAPI_KEY not set. Cannot proceed.")
+        raise ValueError("[WarmUp] RAPIDAPI_KEY not set. Cannot proceed.")
+
     querystring = {"symbol": mf_symbol, "timeframe": "1", "range": str(range_limit)}
     headers = {
-        "x-rapidapi-key": API_KEY,
+        "x-rapidapi-key": api_key,
         "x-rapidapi-host": API_HOST
     }
     
@@ -29,37 +36,37 @@ def fetch_candles(mf_symbol, range_limit=1440):
         if not candles and isinstance(data, list):
             candles = data
             
-        print(f"[WarmUp] Récupéré {len(candles)} bougies pour {mf_symbol}")
+        logger.info(f"[WarmUp] Récupéré {len(candles)} bougies pour {mf_symbol}")
         return candles
         
     except requests.exceptions.RequestException as e:
-        print(f"[WarmUp] Erreur API pour {mf_symbol} : {e}")
+        logger.error(f"[WarmUp] Erreur API pour {mf_symbol} : {e}")
         return []
 
-def get_t212_current_price(t212_ticker, conn):
+def get_t212_current_price(t212_ticker, conn) -> Optional[Decimal]:
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT price FROM live_prices WHERE LOWER(ticker) = LOWER(%s)", (t212_ticker,))
             row = cur.fetchone()
-            if row:
-                return float(row[0])
+            if row and row[0] is not None:
+                return Decimal(str(row[0]))
     except Exception as e:
-        print(f"[WarmUp] Erreur récupération prix live pour {t212_ticker}: {e}")
+        logger.error(f"[WarmUp] Erreur récupération prix live pour {t212_ticker}: {e}")
     return None
 
 def parse_and_insert(t212_ticker, candles, conn):
     live_price = get_t212_current_price(t212_ticker, conn)
-    ratio = 1.0
+    ratio = Decimal("1.0")
     
     if live_price and len(candles) > 0:
         for c in reversed(candles):
-            last_close = float(c.get("close", 0))
+            last_close = Decimal(str(c.get("close", 0)))
             if last_close > 0:
                 ratio = live_price / last_close
-                print(f"[WarmUp] Ratio d'ajustement de {ratio:.4f} appliqué pour {t212_ticker} (Live: {live_price}, API: {last_close})")
+                logger.info(f"[WarmUp] Ratio d'ajustement de {ratio:.4f} appliqué pour {t212_ticker} (Live: {live_price}, API: {last_close})")
                 break
     else:
-        print(f"[WarmUp] Aucun prix live trouvé dans la BDD pour {t212_ticker}, ratio 1.0 utilisé.")
+        logger.info(f"[WarmUp] Aucun prix live trouvé dans la BDD pour {t212_ticker}, ratio 1.0 utilisé.")
 
     with conn.cursor() as cur:
         inserted = 0
@@ -72,20 +79,20 @@ def parse_and_insert(t212_ticker, candles, conn):
                     
                 if isinstance(ts_val, (int, float)):
                     if ts_val > 1e11: # likely milliseconds
-                        dt = datetime.fromtimestamp(ts_val / 1000.0, tz=pytz.utc)
+                        dt_val = datetime.fromtimestamp(ts_val / 1000.0, tz=pytz.utc)
                     else:
-                        dt = datetime.fromtimestamp(ts_val, tz=pytz.utc)
+                        dt_val = datetime.fromtimestamp(ts_val, tz=pytz.utc)
                 elif isinstance(ts_val, str):
-                    dt = datetime.fromisoformat(ts_val.replace("Z", "+00:00"))
+                    dt_val = datetime.fromisoformat(ts_val.replace("Z", "+00:00"))
                 else:
                     continue
                 
-                open_val = float(candle.get("open", 0)) * ratio
-                high_val = float(candle.get("high", 0)) * ratio
-                low_val = float(candle.get("low", 0)) * ratio
-                close_val = float(candle.get("close", 0)) * ratio
+                open_val = Decimal(str(candle.get("open", 0))) * ratio
+                high_val = Decimal(str(candle.get("high", 0))) * ratio
+                low_val = Decimal(str(candle.get("low", 0))) * ratio
+                close_val = Decimal(str(candle.get("close", 0))) * ratio
                 
-                if open_val == 0:
+                if open_val == Decimal("0"):
                     continue
 
                 cur.execute("""
@@ -97,34 +104,38 @@ def parse_and_insert(t212_ticker, candles, conn):
                         high = EXCLUDED.high, 
                         low = EXCLUDED.low, 
                         close = EXCLUDED.close;
-                """, (t212_ticker, dt, open_val, high_val, low_val, close_val))
+                """, (t212_ticker, dt_val, open_val, high_val, low_val, close_val))
                 
                 inserted += 1
             except Exception as e:
-                # print(f"Erreur parsing bougie {candle}: {e}")
-                pass
+                logger.exception(f"[WarmUp] Erreur parsing bougie {candle} pour {t212_ticker}: {e}")
                 
         conn.commit()
-        print(f"[WarmUp] {inserted} bougies insérées pour {t212_ticker}")
+        logger.info(f"[WarmUp] {inserted} bougies insérées pour {t212_ticker}")
 
 def run_warmup():
-    print("========================================")
-    print("Démarrage du Warm-Up (MarketFlow API)")
-    print("========================================")
+    logger.info("========================================")
+    logger.info("Démarrage du Warm-Up (MarketFlow API)")
+    logger.info("========================================")
     
+    api_key = os.getenv("RAPIDAPI_KEY")
+    if not api_key:
+        logger.error("[WarmUp] RAPIDAPI_KEY not set. Cannot proceed.")
+        raise ValueError("[WarmUp] RAPIDAPI_KEY not set. Cannot proceed.")
+        
     try:
         with get_db_connection() as conn:
             for t212_ticker, mf_symbol in TICKER_MAPPING.items():
-                print(f"\nTraitement de {t212_ticker} (via {mf_symbol})...")
+                logger.info(f"Traitement de {t212_ticker} (via {mf_symbol})...")
                 candles = fetch_candles(mf_symbol, range_limit=1440)
                 
                 if candles:
                     parse_and_insert(t212_ticker, candles, conn)
     except Exception as e:
-        print(f"[WarmUp] Erreur durant le warm-up : {e}")
-        return
+        logger.exception(f"[WarmUp] Erreur durant le warm-up : {e}")
+        raise e
         
-    print("\n[WarmUp] Processus terminé.")
+    logger.info("[WarmUp] Processus terminé.")
 
 if __name__ == "__main__":
     run_warmup()

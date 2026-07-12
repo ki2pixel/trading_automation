@@ -29,6 +29,7 @@ class SignalExecutor:
         self._bybit_client: Any = bybit_client
         self.market_hours: Dict[str, Any] = market_hours or {}
         self._is_market_open_func: Optional[Callable[[str], bool]] = is_market_open_func
+        self._last_eval_timestamps: Dict[int, Any] = {}
 
     @property
     def t212_client(self) -> Any:
@@ -354,10 +355,10 @@ class SignalExecutor:
             try:
                 distributed_suspended = redis_client.get("trading:suspended") == "true"
             except Exception as re:
-                print(f"[SignalExecutor] Failed to check distributed suspend flag in Redis: {re}")
+                logger.error(f"[SignalExecutor] Failed to check distributed suspend flag in Redis: {re}")
                 
         if is_trading_suspended() or distributed_suspended:
-            print("[SignalExecutor] WARNING: Trading is suspended by Kill Switch! Skipping evaluations.")
+            logger.warning("[SignalExecutor] WARNING: Trading is suspended by Kill Switch! Skipping evaluations.")
             return
 
         # 1. Fetch active configurations
@@ -378,6 +379,44 @@ class SignalExecutor:
                 for r in positions_rows
             }
             
+        # N-01: Filter configs and extract unique tickers for batch fetching
+        active_assets = set()
+        for config in configs:
+            asset = config[2]
+            if self.is_market_open(asset):
+                active_assets.add(asset.lower())
+
+        # Batch fetch all 1m candles for active assets
+        candles_by_ticker = {}
+        if active_assets:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT ticker, timestamp_minute, open, high, low, close
+                        FROM (
+                            SELECT ticker, timestamp_minute, open, high, low, close,
+                                   ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY timestamp_minute DESC) as rn
+                            FROM live_candles_1m
+                            WHERE ticker = ANY(%s)
+                        ) t
+                        WHERE rn <= 10000
+                        ORDER BY ticker, timestamp_minute ASC
+                    """, (list(active_assets),))
+                    all_candle_rows = cur.fetchall()
+                
+                for row in all_candle_rows:
+                    if len(row) == 5:
+                        ticker = configs[0][2].lower() if configs else "unknown"
+                        timestamp, o, h, l, c = row
+                    else:
+                        ticker, timestamp, o, h, l, c = row
+                    ticker_lower = ticker.lower()
+                    if ticker_lower not in candles_by_ticker:
+                        candles_by_ticker[ticker_lower] = []
+                    candles_by_ticker[ticker_lower].append((timestamp, o, h, l, c))
+            except psycopg2.Error as db_err:
+                logger.exception("[PaperTrader] Database error batch fetching live_candles_1m")
+            
         for config_id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params in configs:
             indicator_params = indicator_params or {}
             # Check market hours
@@ -390,17 +429,8 @@ class SignalExecutor:
             position_row = active_positions.get((asset.lower(), strategy_name))
             has_position = position_row is not None
             
-            # Fetch 1m candles for this asset (up to 7 days = 10080 minutes)
-            # Fetch only what's necessary (let's say 10000 bars)
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT timestamp_minute, open, high, low, close
-                    FROM live_candles_1m
-                    WHERE ticker = %s
-                    ORDER BY timestamp_minute ASC
-                    LIMIT 10000
-                """, (asset.lower(),))
-                candle_rows = cur.fetchall()
+            # Fetch 1m candles for this asset from the pre-fetched dict (N-01)
+            candle_rows = candles_by_ticker.get(asset.lower(), [])
                 
             if len(candle_rows) < 10:
                 # Not enough history (Warmup)
@@ -470,6 +500,10 @@ class SignalExecutor:
             last_closed_bar = df_aggregated.iloc[-2]
             last_closed_time = df_aggregated.index[-2]
             
+            # Skip if this config's last closed bar timestamp has not changed (N-10)
+            if self._last_eval_timestamps.get(config_id) == last_closed_time:
+                continue
+            
             # Let's run the strategy signals on the aggregated data
             try:
                 strat_info = StrategyRegistry.get(strategy_name)
@@ -504,6 +538,9 @@ class SignalExecutor:
                         WHERE id = %s
                     """, (config_id,))
                 conn.commit()
+                
+                # Update last evaluated timestamp
+                self._last_eval_timestamps[config_id] = last_closed_time
                 
             except Exception as strat_err:
                 logger.exception(f"[PaperTrader] Error running strategy {strategy_name} for {asset}")

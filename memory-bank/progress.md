@@ -1,6 +1,11 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-12 01:40:00] - Alignement et validation complète de la Phase 3 (Validation & Tests) du plan de remédiation :
+  1. Alignement des mocks de base de données (configs, positions, candles) pour Bybit & Trading 212.
+  2. Résolution des IndexErrors dans la gestion des live prices via l'ajout de updated_at dans les mocks.
+  3. Isolation de BybitConfig et Trading212Config de tout fichier .env local durant les tests.
+  4. Installation du navigateur Playwright et validation à 100% des tests unitaires, d'intégration, et E2E (77/77 tests verts).
 - [x] [2026-07-11 12:00:00] - Remédiation de l'audit frontend (FT-01 à FT-10) et couverture de test Playwright complétée :
   1. Intégrité financière (FT-01 Bybit Spot USDT, FT-02 alignement tables).
   2. Sécurisation anti-XSS via DOM node building (FT-05) et sérialisation du polling avec verrou (FT-06).

@@ -1,7 +1,13 @@
 import os
 import json
+import time
+import threading
+import logging
+from decimal import Decimal
 from datetime import datetime
 import datetime as dt
+
+logger = logging.getLogger("papertrader")
 
 NETWORK_TIMEOUT_DEFAULT = 10.0
 
@@ -136,4 +142,79 @@ def is_market_open(asset: str, market_hours: dict = None, current_time: datetime
             
     current_time_str = local_time.strftime("%H:%M")
     return config["open"] <= current_time_str <= config["close"]
+
+
+_eurusd_cache_rate = None
+_eurusd_cache_expiry = 0.0
+_eurusd_cache_lock = threading.Lock()
+
+def get_eurusd_rate(conn=None):
+    """
+    Retrieve the EUR/USD exchange rate (1 EUR = X USD) with thread-safe memory caching.
+    Queries the live_prices table first. If unavailable, falls back to a public API
+    with a standard network timeout, and finally to a static fallback (1.08).
+    Cache TTL is set to 10 minutes (600s).
+    """
+    global _eurusd_cache_rate, _eurusd_cache_expiry
+    
+    current_time = time.time()
+    
+    # 0. Check cache first
+    with _eurusd_cache_lock:
+        if _eurusd_cache_rate is not None and current_time < _eurusd_cache_expiry:
+            return _eurusd_cache_rate
+
+    # If cache is expired or empty, fetch rate
+    rate = None
+
+    # 1. Query the database first
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT price FROM live_prices WHERE ticker = 'eurusd'")
+                row = cur.fetchone()
+                if row and row[0] is not None:
+                    rate = Decimal(str(row[0]))
+        except Exception as e:
+            logger.exception("[PaperTrader] DB query for eurusd failed")
+
+    # 2. Query public API with standard timeout
+    if rate is None:
+        import urllib.request
+        import urllib.error
+        import json
+        
+        urls = [
+            "https://open.er-api.com/v6/latest/EUR",
+            "https://api.exchangerate-api.com/v4/latest/EUR"
+        ]
+        for url in urls:
+            try:
+                req = urllib.request.Request(
+                    url,
+                    headers={'User-Agent': 'AntigravityPaperTrader/1.0'}
+                )
+                # Use standard network timeout (10s)
+                with urllib.request.urlopen(req, timeout=NETWORK_TIMEOUT_DEFAULT) as response:
+                    if response.status == 200:
+                        data = json.loads(response.read().decode('utf-8'))
+                        rates = data.get("rates", {})
+                        usd_rate = rates.get("USD")
+                        if usd_rate is not None:
+                            rate = Decimal(str(usd_rate))
+                            break
+            except Exception as api_err:
+                logger.exception(f"[PaperTrader] Public API call to {url} failed: {api_err}")
+
+    # 3. Static fallback
+    if rate is None:
+        logger.info("[PaperTrader] Using static fallback (1.08) for EUR/USD rate.")
+        rate = Decimal("1.08")
+
+    # Update cache
+    with _eurusd_cache_lock:
+        _eurusd_cache_rate = rate
+        _eurusd_cache_expiry = current_time + 600.0  # 10 minutes TTL
+
+    return rate
 

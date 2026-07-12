@@ -40,26 +40,6 @@ class BybitClient:
         headers = {"Content-Type": "application/json"}
         req_params = params.copy() if params else {}
 
-        if signed:
-            if not self.config.api_key or not self.config.api_secret:
-                raise ValueError("Missing Bybit credentials. Cannot perform signed requests.")
-            timestamp = str(int(time.time() * 1000))
-            if method == "GET":
-                # For GET, parameters are in the query string
-                query_str = urllib.parse.urlencode(req_params)
-                signature = self._sign(timestamp, query_str)
-            else:
-                # For POST/PUT etc, parameters are in JSON body
-                body_str = json.dumps(json_data) if json_data else ""
-                signature = self._sign(timestamp, body_str)
-            
-            headers.update({
-                "X-BAPI-API-KEY": self.config.api_key,
-                "X-BAPI-SIGN": signature,
-                "X-BAPI-TIMESTAMP": timestamp,
-                "X-BAPI-RECV-WINDOW": self.recv_window
-            })
-
         from tenacity import Retrying, stop_after_attempt, wait_random_exponential, retry_if_exception
         
         def is_temporary_error(exception: Exception) -> bool:

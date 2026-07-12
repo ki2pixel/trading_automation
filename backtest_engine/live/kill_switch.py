@@ -28,6 +28,7 @@ class KillSwitchListener:
     def __init__(self, engine: Any, redis_url: Optional[str] = None) -> None:
         self.engine = engine
         self.redis_url = redis_url or os.getenv("REDIS_URL")
+        self.redis_client: Optional[aioredis.Redis] = None
         self._listener_task: Optional[asyncio.Task] = None
         self._running = False
 
@@ -69,8 +70,8 @@ class KillSwitchListener:
                 if redis_password:
                     redis_kwargs["password"] = redis_password
                     
-                client = aioredis.from_url(self.redis_url, **redis_kwargs)
-                pubsub = client.pubsub()
+                self.redis_client = aioredis.from_url(self.redis_url, **redis_kwargs)
+                pubsub = self.redis_client.pubsub()
                 await pubsub.subscribe("URGENCY")
                 
                 logger.info("[KillSwitch] Subscribed to Redis channel 'URGENCY'.")
@@ -98,16 +99,18 @@ class KillSwitchListener:
         # 1. Suspend in memory and distributed
         set_trading_suspended(True)
         
-        # Share status via Redis for other workers/containers
+        # Share status via Redis for other workers/containers (N-13: Reuse client connection)
         try:
-            redis_user = os.getenv("REDIS_USER")
-            redis_password = os.getenv("REDIS_PASSWORD")
-            redis_kwargs = {}
-            if redis_user:
-                redis_kwargs["username"] = redis_user
-            if redis_password:
-                redis_kwargs["password"] = redis_password
-            client = aioredis.from_url(self.redis_url, **redis_kwargs)
+            client = self.redis_client
+            if client is None:
+                redis_user = os.getenv("REDIS_USER")
+                redis_password = os.getenv("REDIS_PASSWORD")
+                redis_kwargs = {}
+                if redis_user:
+                    redis_kwargs["username"] = redis_user
+                if redis_password:
+                    redis_kwargs["password"] = redis_password
+                client = aioredis.from_url(self.redis_url, **redis_kwargs)
             await client.set("trading:suspended", "true")
         except Exception as re:
             logger.exception(f"[KillSwitch] Failed to set distributed suspend flag in Redis: {re}")

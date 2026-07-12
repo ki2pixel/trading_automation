@@ -9,6 +9,11 @@ from backtest_engine.live.paper_trading.engine import get_eurusd_rate
 
 
 class TestGetEurUsdRate:
+    def setup_method(self):
+        import backtest_engine.live.utils as utils
+        utils._eurusd_cache_rate = None
+        utils._eurusd_cache_expiry = 0.0
+
     @patch('backtest_engine.live.paper_trading.engine.logger')
     def test_eurusd_rate_db_success(self, mock_logger):
         mock_conn = MagicMock()
@@ -42,6 +47,32 @@ class TestGetEurUsdRate:
 
         rate = get_eurusd_rate(mock_conn)
         assert rate == Decimal("1.08")
+
+    @patch('urllib.request.urlopen')
+    def test_eurusd_rate_caching(self, mock_urlopen):
+        # Given: Clear cache and mock DB error to trigger API fetch
+        mock_conn = MagicMock()
+        mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+        mock_cursor.fetchone.side_effect = Exception("DB error")
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.read.return_value = b'{"rates": {"USD": 1.12}}'
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+
+        # When: We call get_eurusd_rate first time
+        rate1 = get_eurusd_rate(mock_conn)
+        
+        # Then: It should fetch from API and return 1.12
+        assert rate1 == Decimal("1.12")
+        assert mock_urlopen.call_count == 1
+
+        # When: We call get_eurusd_rate again immediately
+        rate2 = get_eurusd_rate(mock_conn)
+
+        # Then: It should return cached value without calling API again
+        assert rate2 == Decimal("1.12")
+        assert mock_urlopen.call_count == 1  # Still 1
 
 
 class TestSignalExecutor:
@@ -147,7 +178,11 @@ class TestSignalExecutor:
         mock_get_rate.return_value = Decimal("1.08")
 
         mock_redis = MagicMock()
-        mock_redis.mget.return_value = ["32000.0", "160.0"] # new current prices
+        now_str = datetime.now(timezone.utc).isoformat()
+        mock_redis.mget.return_value = [
+            f'{{"price": "32000.0", "timestamp": "{now_str}"}}',
+            f'{{"price": "160.0", "timestamp": "{now_str}"}}'
+        ]
         mock_get_redis.return_value = mock_redis
 
         # Mock is_market_open to return True
@@ -190,8 +225,9 @@ class TestSignalExecutor:
         # Mock active configs: id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params
         mock_cursor.fetchall.side_effect = [
             [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)], # config query
+            [], # positions query (new batched positions query #2)
             [
-                (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
+                (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles (query #3)
                 (datetime.now(), 150.5, 152.0, 150.0, 151.0),
                 (datetime.now(), 151.0, 153.0, 151.0, 152.0),
                 (datetime.now(), 152.0, 154.0, 152.0, 153.0),
@@ -207,8 +243,7 @@ class TestSignalExecutor:
         
         # Mock live price and other queries
         mock_cursor.fetchone.side_effect = [
-            None, # Position row query (has_position = False)
-            (Decimal("160.0"),), # price query (first fallback to live_prices table)
+            (Decimal("160.0"), datetime.now(timezone.utc)), # price query (first fallback to live_prices table)
             (Decimal("100000"), Decimal("100000")), # Balance row query (cash_balance, total_nav)
         ]
 
@@ -278,8 +313,9 @@ class TestSignalExecutor:
         # Mock active configs
         mock_cursor.fetchall.side_effect = [
             [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)], # config query
+            [(401, "AAPL", "hma_crossover", Decimal("10.0"), Decimal("150.0"))], # positions query (new batched positions query #2)
             [
-                (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
+                (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles (query #3)
                 (datetime.now(), 150.5, 152.0, 150.0, 151.0),
                 (datetime.now(), 151.0, 153.0, 151.0, 152.0),
                 (datetime.now(), 152.0, 154.0, 152.0, 153.0),
@@ -295,8 +331,8 @@ class TestSignalExecutor:
         
         # Mock live price query
         mock_cursor.fetchone.side_effect = [
-            (401, Decimal("10.0"), Decimal("150.0")), # Position row query (has position)
-            (Decimal("165.0"),) # price from live_prices table
+            (Decimal("165.0"), datetime.now(timezone.utc)), # price from live_prices table
+            (101,) # DELETE RETURNING row
         ]
 
         # Mock strategy registry run results (long_exit is True)
@@ -361,8 +397,9 @@ class TestSignalExecutor:
         # Mock active configs
         mock_cursor.fetchall.side_effect = [
             [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)],
+            [(401, "AAPL", "hma_crossover", Decimal("10.0001"), Decimal("150.0"))], # positions query (new batched positions query #2)
             [
-                (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
+                (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles (query #3)
                 (datetime.now(), 150.5, 152.0, 150.0, 151.0),
                 (datetime.now(), 151.0, 153.0, 151.0, 152.0),
                 (datetime.now(), 152.0, 154.0, 152.0, 153.0),
@@ -378,8 +415,8 @@ class TestSignalExecutor:
         
         # Position row query (paper position of 10.0001 shares)
         mock_cursor.fetchone.side_effect = [
-            (401, Decimal("10.0001"), Decimal("150.0")), 
-            (Decimal("165.0"),) # price from live_prices table
+            (Decimal("165.0"), datetime.now(timezone.utc)), # price from live_prices table
+            (101,) # DELETE RETURNING row
         ]
 
         # Mock strategy registry run results (long_exit is True)
@@ -437,8 +474,103 @@ class TestSignalExecutor:
         # paper qty = 10.0001, real qty = 10.0001, micro_qty = 0.0001
         # max_sellable = 10.0001 - 0.0001 = 10.0
         # sell_qty = min(10.0001, max_sellable) = 10.0
+        # t212 order placed
         mock_t212_client.place_market_order.assert_called_once_with(ticker="AAPL_T212_TICKER", quantity=-10.0)
         
         # 3. Bootstrapper bootstrap was triggered right after exit commit
         mock_bootstrapper.bootstrap.assert_called_once()
+
+    @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
+    @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
+    def test_evaluate_and_execute_strategies_skip_idle(self, mock_registry_get, mock_get_redis):
+        # Given: Preconditions
+        # A SignalExecutor with a mocked DB connection returning one active config
+        mock_conn = MagicMock()
+        mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+
+        # First query (configs), second query (positions), third query (candles)
+        # Note: N-01 has changed fetching to batch.
+        # Inside evaluate_and_execute_strategies, it does:
+        # 1. SELECT config ...
+        # 2. SELECT position ...
+        # 3. SELECT batch candles ...
+        mock_cursor.fetchall.side_effect = [
+            [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)], # configs query
+            [], # positions query
+            [
+                ("AAPL", datetime.now(), 150.0, 151.0, 149.0, 150.5),
+                ("AAPL", datetime.now(), 150.5, 152.0, 150.0, 151.0),
+                ("AAPL", datetime.now(), 151.0, 153.0, 151.0, 152.0),
+                ("AAPL", datetime.now(), 152.0, 154.0, 152.0, 153.0),
+                ("AAPL", datetime.now(), 153.0, 155.0, 153.0, 154.0),
+                ("AAPL", datetime.now(), 154.0, 156.0, 154.0, 155.0),
+                ("AAPL", datetime.now(), 155.0, 157.0, 155.0, 156.0),
+                ("AAPL", datetime.now(), 156.0, 158.0, 156.0, 157.0),
+                ("AAPL", datetime.now(), 157.0, 159.0, 157.0, 158.0),
+                ("AAPL", datetime.now(), 158.0, 160.0, 158.0, 159.0),
+                ("AAPL", datetime.now(), 159.0, 161.0, 159.0, 160.0),
+            ]
+        ]
+        
+        # Mock live price query
+        mock_cursor.fetchone.side_effect = [
+            (Decimal("160.0"), datetime.now(timezone.utc)) # price from live_prices table
+        ]
+        
+        # Mock strategy registry run results
+        mock_run_result = MagicMock()
+        idx = pd.date_range("2023-10-04 12:00:00", periods=3, freq="5min", tz="UTC")
+        mock_run_result.bars = pd.DataFrame(
+            {"long_entry": [False, False, False], "long_exit": [False, False, False]},
+            index=idx
+        )
+        
+        mock_strat_info = MagicMock()
+        mock_strat_info.overrides_from_mapping_function.return_value = {}
+        mock_strat_info.run_function.return_value = mock_run_result
+        mock_registry_get.return_value = mock_strat_info
+
+        executor = SignalExecutor(is_market_open_func=lambda x: True)
+        
+        # We resample with a patch
+        with patch('pandas.DataFrame.resample') as mock_resample:
+            mock_resample.return_value.agg.return_value.dropna.return_value = pd.DataFrame(
+                {"open": [150.0, 155.0, 160.0], "high": [151.0, 156.0, 161.0], "low": [149.0, 154.0, 159.0], "close": [150.5, 155.5, 160.0]},
+                index=idx
+            )
+            
+            # When: We evaluate for the first time
+            executor.evaluate_and_execute_strategies(mock_conn)
+            
+            # Then: The strategy should run
+            assert mock_registry_get.call_count == 1
+            assert executor._last_eval_timestamps.get(101) == idx[-2]
+
+            # Given: We reset mock_registry_get to check subsequent call
+            mock_registry_get.reset_mock()
+            
+            # Reset fetchall side effect to return same configs, positions, candles
+            mock_cursor.fetchall.side_effect = [
+                [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)], # configs query
+                [], # positions query
+                [
+                    ("AAPL", datetime.now(), 150.0, 151.0, 149.0, 150.5),
+                    ("AAPL", datetime.now(), 150.5, 152.0, 150.0, 151.0),
+                    ("AAPL", datetime.now(), 151.0, 153.0, 151.0, 152.0),
+                    ("AAPL", datetime.now(), 152.0, 154.0, 152.0, 153.0),
+                    ("AAPL", datetime.now(), 153.0, 155.0, 153.0, 154.0),
+                    ("AAPL", datetime.now(), 154.0, 156.0, 154.0, 155.0),
+                    ("AAPL", datetime.now(), 155.0, 157.0, 155.0, 156.0),
+                    ("AAPL", datetime.now(), 156.0, 158.0, 156.0, 157.0),
+                    ("AAPL", datetime.now(), 157.0, 159.0, 157.0, 158.0),
+                    ("AAPL", datetime.now(), 158.0, 160.0, 158.0, 159.0),
+                    ("AAPL", datetime.now(), 159.0, 161.0, 159.0, 160.0),
+                ]
+            ]
+            
+            # When: We evaluate again with identical index / last closed time
+            executor.evaluate_and_execute_strategies(mock_conn)
+            
+            # Then: It should skip strategy evaluation
+            assert mock_registry_get.call_count == 0  # Skip!
 

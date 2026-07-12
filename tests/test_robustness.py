@@ -15,6 +15,12 @@ from backtest_engine.web import create_optimizer_app
 
 # --- Test suite for Robustness (Phase 4) ---
 
+@pytest.fixture(autouse=True)
+def reset_eurusd_cache():
+    import backtest_engine.live.utils as utils
+    utils._eurusd_cache_rate = None
+    utils._eurusd_cache_expiry = 0.0
+
 def test_custom_exceptions():
     """
     Given the custom paper trading exceptions
@@ -594,4 +600,69 @@ def test_stale_redis_price_resolution():
                 logged = True
                 break
         assert logged, "Expected WAITING_DATA evaluation log not found"
+
+
+def test_connection_singletons_thread_safety():
+    """
+    Given: Concurrent calls to get_db_pool() and get_redis_client()
+    When: Multiple threads attempt to initialize the pool/client concurrently
+    Then: ThreadedConnectionPool / FailoverRedisClient must be initialized exactly once
+    """
+    import threading
+    import os
+    from backtest_engine.live.connection import get_db_pool, get_redis_client
+    import backtest_engine.live.connection as connection
+    
+    # Reset singleton states
+    original_db_pool = connection._db_pool
+    original_redis_client = connection._redis_client
+    
+    connection._db_pool = None
+    connection._redis_client = None
+    
+    db_pool_inits = 0
+    redis_client_inits = 0
+    init_lock = threading.Lock()
+    
+    # Mock OS environment
+    with patch.dict(os.environ, {
+        "DATABASE_URL": "postgresql://localhost:5432/test",
+        "REDIS_URL": "redis://localhost:6379/0"
+    }):
+        # Mock ThreadedConnectionPool creation and redis.Redis.from_url / FailoverRedisClient
+        def mock_pool_init(*args, **kwargs):
+            nonlocal db_pool_inits
+            with init_lock:
+                db_pool_inits += 1
+            return MagicMock()
+            
+        def mock_redis_init(*args, **kwargs):
+            nonlocal redis_client_inits
+            with init_lock:
+                redis_client_inits += 1
+            mock_client = MagicMock()
+            mock_client.ping.return_value = True
+            return mock_client
+
+        with patch("psycopg2.pool.ThreadedConnectionPool", side_effect=mock_pool_init), \
+             patch("redis.Redis.from_url", side_effect=mock_redis_init):
+            
+            # Run get_db_pool and get_redis_client concurrently
+            threads = []
+            for _ in range(20):
+                t1 = threading.Thread(target=get_db_pool)
+                t2 = threading.Thread(target=get_redis_client)
+                threads.extend([t1, t2])
+                t1.start()
+                t2.start()
+                
+            for t in threads:
+                t.join()
+                
+            assert db_pool_inits == 1
+            assert redis_client_inits == 1
+            
+    # Restore original states
+    connection._db_pool = original_db_pool
+    connection._redis_client = original_redis_client
 

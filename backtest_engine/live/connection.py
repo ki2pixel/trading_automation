@@ -4,6 +4,7 @@ import psycopg2
 from psycopg2 import pool
 from contextlib import contextmanager
 import redis
+import threading
 from typing import Generator, Optional, Any, Union
 from urllib.parse import urlparse, parse_qs
 
@@ -117,18 +118,22 @@ async def close_async_pool() -> None:
         _async_pool = None
         print("[ConnectionManager] asyncpg Pool closed.")
 
+_db_pool_lock = threading.Lock()
+
 def get_db_pool() -> Optional[pool.ThreadedConnectionPool]:
     global _db_pool
     if _db_pool is None:
-        db_url = os.getenv("DATABASE_URL")
-        if db_url:
-            try:
-                min_conn = int(os.getenv("DB_POOL_MIN", "2"))
-                max_conn = int(os.getenv("DB_POOL_MAX", "5"))
-                _db_pool = pool.ThreadedConnectionPool(min_conn, max_conn, db_url)
-                print(f"[ConnectionManager] PostgreSQL ThreadedConnectionPool initialized (min={min_conn}, max={max_conn})")
-            except Exception as e:
-                print(f"[ConnectionManager] Failed to initialize PostgreSQL pool: {e}")
+        with _db_pool_lock:
+            if _db_pool is None:
+                db_url = os.getenv("DATABASE_URL")
+                if db_url:
+                    try:
+                        min_conn = int(os.getenv("DB_POOL_MIN", "2"))
+                        max_conn = int(os.getenv("DB_POOL_MAX", "5"))
+                        _db_pool = pool.ThreadedConnectionPool(min_conn, max_conn, db_url)
+                        print(f"[ConnectionManager] PostgreSQL ThreadedConnectionPool initialized (min={min_conn}, max={max_conn})")
+                    except Exception as e:
+                        print(f"[ConnectionManager] Failed to initialize PostgreSQL pool: {e}")
     return _db_pool
 
 @contextmanager
@@ -447,95 +452,99 @@ class FailoverRedisClient:
         return attr
 
 
+_redis_client_lock = threading.Lock()
+
 def get_redis_client() -> Optional[Union[redis.Redis, FailoverRedisClient]]:
     global _redis_client
     if _redis_client is None:
-        redis_url = os.getenv("REDIS_URL")
-        redis_url_2 = os.getenv("REDIS_URL_2")
+        with _redis_client_lock:
+            if _redis_client is None:
+                redis_url = os.getenv("REDIS_URL")
+                redis_url_2 = os.getenv("REDIS_URL_2")
 
-        if not redis_url:
-            return None
+                if not redis_url:
+                    return None
 
-        if redis_url_2:
-            # Load Upstash credentials
-            redis_api = os.getenv("REDIS_API")
-            redis_2_api = os.getenv("REDIS_2_API")
-            upstash_email = os.getenv("UPSTASH_EMAIL")
-            upstash_2_email = os.getenv("UPSTASH_2_EMAIL")
+                if redis_url_2:
+                    # Load Upstash credentials
+                    redis_api = os.getenv("REDIS_API")
+                    redis_2_api = os.getenv("REDIS_2_API")
+                    upstash_email = os.getenv("UPSTASH_EMAIL")
+                    upstash_2_email = os.getenv("UPSTASH_2_EMAIL")
 
-            # Default route
-            use_secondary = False
+                    # Default route
+                    use_secondary = False
 
-            if redis_api and upstash_email:
-                print("[ConnectionManager] Checking primary Redis database quota via Upstash API...")
-                if _is_upstash_quota_exhausted(redis_url, redis_api, upstash_email):
-                    print("[ConnectionManager] Primary Redis database quota exhausted or suspended. Routing directly to secondary.")
-                    use_secondary = True
-                else:
-                    print("[ConnectionManager] Primary Redis database quota is OK.")
-            else:
-                if redis_api:
-                    print("[ConnectionManager] Warning: REDIS_API is defined but UPSTASH_EMAIL is missing. Skipping quota check.")
+                    if redis_api and upstash_email:
+                        print("[ConnectionManager] Checking primary Redis database quota via Upstash API...")
+                        if _is_upstash_quota_exhausted(redis_url, redis_api, upstash_email):
+                            print("[ConnectionManager] Primary Redis database quota exhausted or suspended. Routing directly to secondary.")
+                            use_secondary = True
+                        else:
+                            print("[ConnectionManager] Primary Redis database quota is OK.")
+                    else:
+                        if redis_api:
+                            print("[ConnectionManager] Warning: REDIS_API is defined but UPSTASH_EMAIL is missing. Skipping quota check.")
 
-            try:
-                client = FailoverRedisClient(redis_url, redis_url_2)
-                if use_secondary:
-                    # Force failover immediately without checking primary
-                    client._active_client = client._secondary_client
-                    client._is_failed_over = True
-                    client.ping()
-                else:
-                    # Try pinging primary
                     try:
-                        client.ping()
-                        print("[ConnectionManager] Primary Redis client connected successfully.")
+                        client = FailoverRedisClient(redis_url, redis_url_2)
+                        if use_secondary:
+                            # Force failover immediately without checking primary
+                            client._active_client = client._secondary_client
+                            client._is_failed_over = True
+                            client.ping()
+                        else:
+                            # Try pinging primary
+                            try:
+                                client.ping()
+                                print("[ConnectionManager] Primary Redis client connected successfully.")
+                            except Exception as e:
+                                print(f"[ConnectionManager] Primary Redis client ping failed: {e}. Failing over to secondary.")
+                                client._failover(e)
+                        _redis_client = client
                     except Exception as e:
-                        print(f"[ConnectionManager] Primary Redis client ping failed: {e}. Failing over to secondary.")
-                        client._failover(e)
-                _redis_client = client
-            except Exception as e:
-                print(f"[ConnectionManager] Failed to initialize FailoverRedisClient: {e}")
-                _redis_client = None
-        else:
-            try:
-                pool_max = int(os.getenv("REDIS_POOL_MAX", "40"))
-                redis_user = os.getenv("REDIS_USER")
-                redis_password = os.getenv("REDIS_PASSWORD")
-                
-                # mTLS support
-                redis_ssl_cert = os.getenv("REDIS_SSL_CERT")
-                redis_ssl_key = os.getenv("REDIS_SSL_KEY")
-                redis_ssl_ca = os.getenv("REDIS_SSL_CA")
-                
-                redis_kwargs = {
-                    "decode_responses": True,
-                    "max_connections": pool_max,
-                    "socket_timeout": 5,
-                    "socket_connect_timeout": 5,
-                    "retry_on_timeout": True
-                }
-                if redis_user:
-                    redis_kwargs["username"] = redis_user
-                if redis_password:
-                    redis_kwargs["password"] = redis_password
-                    
-                if redis_url.startswith("rediss://"):
-                    if redis_ssl_cert and redis_ssl_key:
-                        redis_kwargs["ssl_certfile"] = redis_ssl_cert
-                        redis_kwargs["ssl_keyfile"] = redis_ssl_key
-                    if redis_ssl_ca:
-                        redis_kwargs["ssl_ca_certs"] = redis_ssl_ca
-                        redis_kwargs["ssl_cert_reqs"] = "required"
-                    
-                _redis_client = redis.Redis.from_url(
-                    redis_url,
-                    **redis_kwargs
-                )
-                _redis_client.ping()
-                print("[ConnectionManager] Redis client connected successfully.")
-            except Exception as e:
-                print(f"[ConnectionManager] Failed to connect to Redis: {e}")
-                _redis_client = None
+                        print(f"[ConnectionManager] Failed to initialize FailoverRedisClient: {e}")
+                        _redis_client = None
+                else:
+                    try:
+                        pool_max = int(os.getenv("REDIS_POOL_MAX", "40"))
+                        redis_user = os.getenv("REDIS_USER")
+                        redis_password = os.getenv("REDIS_PASSWORD")
+                        
+                        # mTLS support
+                        redis_ssl_cert = os.getenv("REDIS_SSL_CERT")
+                        redis_ssl_key = os.getenv("REDIS_SSL_KEY")
+                        redis_ssl_ca = os.getenv("REDIS_SSL_CA")
+                        
+                        redis_kwargs = {
+                            "decode_responses": True,
+                            "max_connections": pool_max,
+                            "socket_timeout": 5,
+                            "socket_connect_timeout": 5,
+                            "retry_on_timeout": True
+                        }
+                        if redis_user:
+                            redis_kwargs["username"] = redis_user
+                        if redis_password:
+                            redis_kwargs["password"] = redis_password
+                            
+                        if redis_url.startswith("rediss://"):
+                            if redis_ssl_cert and redis_ssl_key:
+                                redis_kwargs["ssl_certfile"] = redis_ssl_cert
+                                redis_kwargs["ssl_keyfile"] = redis_ssl_key
+                            if redis_ssl_ca:
+                                redis_kwargs["ssl_ca_certs"] = redis_ssl_ca
+                                redis_kwargs["ssl_cert_reqs"] = "required"
+                            
+                        _redis_client = redis.Redis.from_url(
+                            redis_url,
+                            **redis_kwargs
+                        )
+                        _redis_client.ping()
+                        print("[ConnectionManager] Redis client connected successfully.")
+                    except Exception as e:
+                        print(f"[ConnectionManager] Failed to connect to Redis: {e}")
+                        _redis_client = None
     return _redis_client
 
 get_sync_connection = get_db_connection

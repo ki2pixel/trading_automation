@@ -670,9 +670,7 @@ def init_db():
                 # Seed the strategy configs
                 for config in SEED_CONFIGS:
                     params_json = json.dumps(config.get('indicator_params', {}))
-                    # Uniform Kelly weight (e.g. 0.1) for stocks, but keep original for crypto
-                    is_crypto = is_crypto_asset(config['asset'])
-                    kelly_weight = config.get('kelly_weight', 0.1) if is_crypto else 0.1
+                    kelly_weight = config.get('kelly_weight', 0.1)
                     cur.execute("""
                         INSERT INTO paper_strategy_configs (strategy_name, asset, timeframe, kelly_weight, indicator_params)
                         VALUES (%s, %s, %s, %s, %s)
