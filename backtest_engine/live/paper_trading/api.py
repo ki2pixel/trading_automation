@@ -354,9 +354,26 @@ async def update_config(config_id: int, payload: ConfigUpdate):
 
 @router.get("/candles")
 async def get_candles(ticker: str, limit: int = 1000):
+    from backtest_engine.live.connection import get_redis_client
+    redis_client = None
+    try:
+        redis_client = get_redis_client()
+    except Exception:
+        pass
+        
+    limit = min(max(1, limit), 10000)
+    cache_key = f"candles:{ticker.lower()}:{limit}"
+    
+    if redis_client:
+        try:
+            cached = redis_client.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
+
     pool = await _get_pool()
     try:
-        limit = min(max(1, limit), 10000)
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT timestamp_minute, open, high, low, close "
@@ -366,7 +383,7 @@ async def get_candles(ticker: str, limit: int = 1000):
                 "LIMIT $2",
                 ticker, limit,
             )
-            return [
+            result = [
                 {
                     "time": int(r["timestamp_minute"].replace(tzinfo=timezone.utc).timestamp()),
                     "open": float(r["open"]),
@@ -375,6 +392,14 @@ async def get_candles(ticker: str, limit: int = 1000):
                     "close": float(r["close"]),
                 } for r in reversed(rows)
             ]
+            
+            if redis_client and result:
+                try:
+                    redis_client.setex(cache_key, 20, json.dumps(result))
+                except Exception:
+                    pass
+                    
+            return result
     except HTTPException:
         raise
     except asyncpg.PostgresError as e:
@@ -696,7 +721,7 @@ async def get_performance_metrics(ticker: str):
         )
         
         # 3. Populate cache
-        if redis_client and result.get("total_trades", 0) > 0:
+        if redis_client:
             try:
                 redis_client.setex(f"perf_metrics:{ticker.lower()}", 300, json.dumps(result))
             except Exception:

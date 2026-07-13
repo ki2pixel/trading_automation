@@ -10,6 +10,12 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-13 10:01:00] - Résolution de la régression OOM en production (Render OOM > 512MB) :
+  1. Optimisation et mise en cache Redis d'actifs avec 0 transaction dans `/api/performance/metrics`.
+  2. Résolution du Case Mismatch de suppression de cache dans `signal_executor.py`.
+  3. Réduction de la limite de bougies chargées en SQL par lot (de 10 000 à 5 000).
+  4. Ajout d'un cache temporaire de 20s pour l'endpoint `/api/candles`.
+  5. Ajout de tests unitaires et validation complète sans régression.
 - [2026-07-12 09:37:00] - Clôture des remédiations de l'audit Paper Trading (Phase 2 à Phase 4) :
   1. Validation de l'idempotence et des pre-trade controls de la Phase 2 (34/34 tests verts).
   2. Optimisation asynchrone non-bloquante FIFO/drawdown de l'API /performance/metrics avec cache-through Redis (Phase 3).

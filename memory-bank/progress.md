@@ -1,6 +1,7 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-13 10:01:00] - Correction de la régression OOM en production (Render OOM > 512MB) sur l'ouverture de marché via l'optimisation des bougies chargées, la correction du cache d'invalidation, et la mise en cache Redis des endpoints `/api/candles` et `/api/performance/metrics` (même pour les actifs avec 0 trade).
 - [x] [2026-07-12 09:37:00] - Clôture des remédiations de l'audit Paper Trading (Phase 2 à Phase 4) :
   * Phase 2 validée par tests (idempotence T212, pre-trade controls, anti-N+1).
   * Phase 3 asynchrone et cache-through pour metrics validée par tests.

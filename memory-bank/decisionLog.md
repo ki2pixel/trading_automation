@@ -1,5 +1,13 @@
 # Journal des Décisions
 
+## [2026-07-13 10:01:00] - Optimisation de la performance (Render OOM > 512MB) sur l'ouverture de marché
+- **Décision** :
+  1. Activer le cache Redis sur `/api/performance/metrics` même pour les actifs ayant 0 trade (qui causent sinon un calcul lourd et répété de 5000 bougies à chaque intervalle de polling).
+  2. Corriger le bug de casse (case mismatch) sur la suppression de clé Redis de cache (`perf_metrics:{asset.lower()}`) dans `signal_executor.py` lors des ordres BUY/SELL.
+  3. Réduire la limite de chargement des bougies 1m de 10 000 à 5 000 en SQL dans le moteur d'exécution (SignalExecutor) afin de soulager la RAM psycopg2/Pandas.
+  4. Ajouter une mise en cache temporaire de 20 secondes sur l'endpoint `/api/candles` pour réduire les requêtes en base de données répétées.
+- **Justification** : Le polling du dashboard toutes les 10 secondes couplé à l'absence de transactions fermées (trades == 0) forçait le recalcul constant de courbes à chaque requête de l'utilisateur, ce qui saturait la CPU et provoquait des fuites de mémoire/OOM (crashs répétés toutes les 4-5 minutes).
+
 ## [2026-07-04 00:38:00] - Phase 5 Hygiène & Dette Technique Backend validée (Dépendances, Docker, Nettoyage)
 - **Décision** : Partitionnement des dépendances Python du projet en 3 fichiers (`requirements-base.txt`, `requirements-backtest.txt`, `requirements-live.txt`), suppression de `requirements-backtest-engine.txt`, et build Docker de production allégé en copiant et installant uniquement le live. Nettoyage de la dette technique via la suppression automatisée de 332 imports inutilisés, l'audit du nommage (snake_case), et l'enrichissement des annotations de types statiques sur `connection.py` et `signal_executor.py` (API publique déclarée via `__all__`).
 - **Justification** : Réduire le poids de l'image Docker de production sur Render, clarifier la structure des dépendances par environnement pour les développeurs, accélérer les phases de build/CI, améliorer la maintenabilité du code par le typage statique strict et éliminer le code mort (imports inutilisés).

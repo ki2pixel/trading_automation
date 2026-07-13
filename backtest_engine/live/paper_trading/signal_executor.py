@@ -408,7 +408,7 @@ class SignalExecutor:
                             FROM live_candles_1m
                             WHERE ticker = ANY(%s)
                         ) t
-                        WHERE rn <= 10000
+                        WHERE rn <= 5000
                         ORDER BY ticker, timestamp_minute ASC
                     """, (list(active_assets),))
                     all_candle_rows = cur.fetchall()
@@ -812,7 +812,7 @@ class SignalExecutor:
                         conn.commit()
                         if redis_client:
                             try:
-                                redis_client.delete(f"perf_metrics:{asset}")
+                                redis_client.delete(f"perf_metrics:{asset.lower()}")
                             except Exception as re_err:
                                 logger.warning(f"[PaperTrader] Failed to clear metrics cache for {asset} on BUY: {re_err}")
                         logger.info(f"[PaperTrader] Executed virtual BUY for {asset} ({strategy_name}): {qty} units @ {current_price} € (Cost: {actual_cost} €, Fee: {buy_fee} €, Total: {total_buy_cost} €)")
@@ -1098,7 +1098,7 @@ class SignalExecutor:
                         conn.commit()
                         if redis_client:
                             try:
-                                redis_client.delete(f"perf_metrics:{asset}")
+                                redis_client.delete(f"perf_metrics:{asset.lower()}")
                             except Exception as re_err:
                                 logger.warning(f"[PaperTrader] Failed to clear metrics cache for {asset} on SELL: {re_err}")
                         logger.info(f"[PaperTrader] Executed virtual SELL for {asset} ({strategy_name}) [Reason: {exit_reason}]: {qty} units @ {current_price} € (PnL: {pnl} €, Fee: {sell_fee} €, Net Revenue: {net_revenue} €)")
