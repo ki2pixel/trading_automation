@@ -1,6 +1,12 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-15 18:44:30] - Stabilisation du Kill Switch distribué du Paper Trader :
+  1. État Redis JSON canonique, persistant et isolé par environnement ; compatibilité fail-closed avec la clé historique `trading:suspended`.
+  2. Synchronisation des transitions `KILL`, `SUSPEND` et `RESUME`, avec annulation des ordres et confirmations Redis namespacées.
+  3. Contrôle distribué par `SignalExecutor`, API de statut et de reprise avec refus `503` lorsque Redis ne confirme pas la transition.
+  4. Dashboard enrichi d'un indicateur d'état, d'une reprise confirmée après réconciliation et d'un rafraîchissement périodique.
+  5. Tests ciblés complétés : 10/10 passés ; compilation Python, syntaxe JavaScript, diagnostics IDE et `git diff --check` validés.
 - [x] [2026-07-15 18:08:00] - Clôture définitive de la Phase 3, versioning et audit non destructif des migrations PostgreSQL (VV-07, VV-08, VV-10, VV-13, VV-14) :
   1. Retrait de la clé unique historique `UNIQUE (asset, strategy_name)` pour isoler correctement les timeframes sur `paper_positions` (VV-07).
   2. Déplacement du backfill de `timeframe` après la création et le seeding de la table `paper_strategy_configs` (VV-08).

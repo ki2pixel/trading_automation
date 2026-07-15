@@ -349,17 +349,15 @@ class SignalExecutor:
         from backtest_engine.live.connection import get_redis_client
         redis_client = get_redis_client()
         
-        # Check Kill Switch status (ESMA RTS 6 compliance)
-        from backtest_engine.live.kill_switch import is_trading_suspended
-        distributed_suspended = False
-        if redis_client:
-            try:
-                distributed_suspended = redis_client.get("trading:suspended") == "true"
-            except Exception as re:
-                logger.error(f"[SignalExecutor] Failed to check distributed suspend flag in Redis: {re}")
-                
-        if is_trading_suspended() or distributed_suspended:
-            logger.warning("[SignalExecutor] WARNING: Trading is suspended by Kill Switch! Skipping evaluations.")
+        from backtest_engine.live.kill_switch import get_kill_switch_status
+
+        kill_switch_status = get_kill_switch_status(redis_client)
+        if kill_switch_status.suspended:
+            logger.warning(
+                "[SignalExecutor] Trading is suspended by Kill Switch. source=%s reason=%s",
+                kill_switch_status.source,
+                kill_switch_status.reason,
+            )
             return
 
         # 1. Fetch active configurations

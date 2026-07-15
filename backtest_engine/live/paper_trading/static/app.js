@@ -7,7 +7,9 @@ import {
     getTransactions, 
     getEvaluations, 
     getHeartbeat, 
-    executePanic 
+    getKillSwitchStatus,
+    executePanic,
+    resumeTrading
 } from './js/api.js';
 
 import { 
@@ -743,6 +745,109 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const renderKillSwitchStatus = (data) => {
+        const container = document.getElementById('kill-switch-status');
+        const label = document.getElementById('kill-switch-status-text');
+        const resumeBtn = document.getElementById('resume-btn');
+        if (!container || !label || !resumeBtn) return;
+
+        const suspended = data.status === 'suspended';
+        const healthy = data.healthy === true;
+        const reason = data.reason || 'No reason supplied';
+
+        container.classList.toggle('suspended', suspended);
+        container.classList.toggle('degraded', !healthy);
+        resumeBtn.disabled = !suspended || !healthy;
+
+        if (!healthy) {
+            label.textContent = `Trading Suspended — ${reason}`;
+            container.title = 'Kill Switch state cannot be safely synchronized.';
+            return;
+        }
+
+        if (suspended) {
+            label.textContent = 'Trading Suspended';
+            container.title = reason;
+            return;
+        }
+
+        label.textContent = 'Trading Active';
+        container.title = 'Kill Switch state is active.';
+    };
+
+    const fetchKillSwitchStatus = async () => {
+        try {
+            const data = await getKillSwitchStatus();
+            renderKillSwitchStatus(data);
+            return data;
+        } catch (err) {
+            renderKillSwitchStatus({
+                status: 'suspended',
+                healthy: false,
+                reason: 'Status unavailable'
+            });
+            console.error('Error fetching Kill Switch status', err);
+            return null;
+        }
+    };
+
+    const initResumeButton = () => {
+        const resumeBtn = document.getElementById('resume-btn');
+        const resumeModal = document.getElementById('resume-modal');
+        const cancelBtn = document.getElementById('cancel-resume-btn');
+        const executeBtn = document.getElementById('execute-resume-btn');
+        const confirm = document.getElementById('resume-confirm');
+        if (!resumeBtn || !resumeModal || !cancelBtn || !executeBtn || !confirm) return;
+
+        setupModalAccessibility(resumeModal, '.close-modal, #cancel-resume-btn', '#cancel-resume-btn');
+
+        const closeModal = () => {
+            resumeModal.style.display = 'none';
+            if (resumeModal.triggerElement) {
+                resumeModal.triggerElement.focus();
+            }
+        };
+
+        const updateConfirmation = () => {
+            executeBtn.disabled = !confirm.checked;
+        };
+
+        resumeBtn.addEventListener('click', () => {
+            resumeModal.triggerElement = resumeBtn;
+            resumeModal.style.display = 'flex';
+            confirm.checked = false;
+            updateConfirmation();
+            setTimeout(() => {
+                cancelBtn.focus();
+            }, 50);
+        });
+
+        confirm.addEventListener('change', updateConfirmation);
+
+        executeBtn.addEventListener('click', async () => {
+            setButtonLoading(executeBtn, true, 'RESUMING...');
+
+            try {
+                const res = await resumeTrading();
+                if (!res.ok) {
+                    const error = await res.json().catch(() => ({}));
+                    showError('Trading could not be resumed.', error.detail || `Status code: ${res.status}`);
+                    return;
+                }
+
+                await res.json();
+                closeModal();
+                await fetchKillSwitchStatus();
+                showToast('Trading resumed after Kill Switch reconciliation.', 'success');
+            } catch (err) {
+                showError('An error occurred while resuming trading.', err);
+            } finally {
+                setButtonLoading(executeBtn, false);
+                updateConfirmation();
+            }
+        });
+    };
+
     // Panic liquidation close modal
     const initPanicButton = () => {
         const panicBtn = document.getElementById('panic-btn');
@@ -804,6 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (selector && selector.value) {
                         loadChart(selector.value);
                     }
+                    await fetchKillSwitchStatus();
                 } else {
                     showError('Échec de la liquidation d\'urgence.', `Status code: ${res.status}`);
                 }
@@ -903,10 +1009,12 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchTransactions();
         fetchEvaluations();
         fetchHeartbeat();
+        fetchKillSwitchStatus();
         
         // Connect SSE and Panic buttons
         initLogsSSE();
         initPanicButton();
+        initResumeButton();
         
         // Dropdown Asset Selection event
         const selector = document.getElementById('asset-selector');
@@ -958,6 +1066,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isLoading = true;
         try {
             const changed = await fetchHeartbeat();
+            await fetchKillSwitchStatus();
             
             // Refresh configs if configs view is active
             const configsTab = document.getElementById('configs');

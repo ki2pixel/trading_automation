@@ -220,6 +220,76 @@ h1, h2, h3, h4 {
     transform: translateY(0);
 }
 
+.btn-resume {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+    padding: 0.6rem 1rem;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.btn-resume:hover:not(:disabled) {
+    background: rgba(16, 185, 129, 0.25);
+    border-color: rgba(16, 185, 129, 0.5);
+    color: #ecfdf5;
+    transform: translateY(-1px);
+}
+
+.btn-resume:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.kill-switch-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 12px;
+    color: var(--success);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.kill-switch-status.suspended {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #fca5a5;
+}
+
+.kill-switch-status.degraded {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.35);
+    color: #fcd34d;
+}
+
+.kill-switch-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+}
+
+.kill-switch-status.suspended .kill-switch-indicator {
+    background: var(--danger);
+    box-shadow: 0 0 8px var(--danger);
+}
+
+.kill-switch-status.degraded .kill-switch-indicator {
+    background: var(--warning);
+    box-shadow: 0 0 8px var(--warning);
+}
+
 .system-status {
     display: flex;
     align-items: center;
@@ -822,6 +892,28 @@ input:checked + .slider:before {
 }
 
 .btn-confirm-danger:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-confirm-resume {
+    background: var(--success);
+    color: #052e16;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.btn-confirm-resume:hover:not(:disabled) {
+    background: #34d399;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+
+.btn-confirm-resume:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }

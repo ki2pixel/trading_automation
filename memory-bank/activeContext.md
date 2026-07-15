@@ -10,6 +10,7 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-15 18:44:30] - Stabilisation du Kill Switch distribué du Paper Trader : état Redis JSON canonique et namespacé par environnement, compatibilité fail-closed avec `trading:suspended`, commandes Pub/Sub `KILL`/`SUSPEND`/`RESUME`, contrôle distribué dans `SignalExecutor`, endpoints de statut et de reprise sécurisée, et interface dashboard de reprise avec confirmation de réconciliation. Validation : 10 tests ciblés passés, compilation Python, vérification syntaxique JavaScript, diagnostics IDE et `git diff --check` sans erreur. Aucune tâche active.
 - [2026-07-15 18:05:00] - Clôture définitive de la Phase 3, versioning et audit non destructif des migrations PostgreSQL (VV-07, VV-08, VV-10, VV-13, VV-14) :
   1. Correction VV-07 (Isolation Timeframe) : Retrait de la réintroduction de la clé unique historique `UNIQUE (asset, strategy_name)` sur `paper_positions` pour garantir l'isolation par timeframe.
   2. Correction VV-08 (Init Database Vierge) : Déplacement du backfill de `timeframe` après la création et le seeding de la table `paper_strategy_configs`.

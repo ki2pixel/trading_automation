@@ -25,11 +25,14 @@ def clean_env():
     os.environ["T212_API_KEY_ID"] = "test_key"
 
     from unittest.mock import patch
-    redis_patch = patch('backtest_engine.live.connection.get_async_redis_client', return_value=None)
-    redis_patch.start()
+    async_redis_patch = patch('backtest_engine.live.connection.get_async_redis_client', return_value=None)
+    sync_redis_patch = patch('backtest_engine.live.connection.get_redis_client', return_value=None)
+    async_redis_patch.start()
+    sync_redis_patch.start()
 
     yield
-    redis_patch.stop()
+    async_redis_patch.stop()
+    sync_redis_patch.stop()
     # Restore the original environment after each test
     os.environ.clear()
     os.environ.update(real_env)

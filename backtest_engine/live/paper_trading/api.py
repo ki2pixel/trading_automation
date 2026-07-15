@@ -482,11 +482,30 @@ async def get_heartbeat():
     except asyncpg.PostgresError as e:
         logger.exception("[API] Database error fetching heartbeat")
         raise
+@router.get("/status/kill-switch")
+async def get_kill_switch_state():
+    from backtest_engine.live.kill_switch import get_kill_switch_status_async
+
+    status = await get_kill_switch_status_async()
+    return status.as_dict()
+
+
 @router.post("/control/panic")
 async def panic_close_all():
-    from backtest_engine.live.kill_switch import set_trading_suspended
-    set_trading_suspended(True)
-    
+    from backtest_engine.live.kill_switch import KillSwitchStateError, suspend_trading
+
+    try:
+        kill_switch_status = await suspend_trading(
+            "Dashboard panic liquidation",
+            "dashboard",
+        )
+    except KillSwitchStateError as exc:
+        logger.exception("[API] Failed to synchronize panic suspension")
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to synchronize the Kill Switch state. Trading remains suspended.",
+        ) from exc
+
     pool = await _get_pool()
     try:
         async with pool.acquire() as conn:
@@ -574,7 +593,11 @@ async def panic_close_all():
                     logger.warning(f"[PaperTrader] PANIC CLOSE: Sold {qty} units of {asset} @ {live_price} € (PnL: {pnl} €)")
                     closed_count += 1
 
-            return {"status": "success", "closed_positions_count": closed_count}
+            return {
+                "status": "success",
+                "closed_positions_count": closed_count,
+                "kill_switch": kill_switch_status.as_dict(),
+            }
     except HTTPException:
         raise
     except asyncpg.PostgresError as e:
@@ -851,16 +874,19 @@ def _compute_performance_metrics_sync(initial_capital: float, candles: list, txs
 
 @router.post("/control/resume")
 async def resume_trading():
-    from backtest_engine.live.kill_switch import set_trading_suspended
-    set_trading_suspended(False)
-    
-    # Also clear Redis flag
-    from backtest_engine.live.connection import get_async_redis_client
-    redis_client = get_async_redis_client()
-    if redis_client:
-        try:
-            await asyncio.wait_for(redis_client.delete("trading:suspended"), timeout=2.0)
-        except Exception as e:
-            logger.error(f"[API] Failed to delete suspend flag in Redis: {e}")
-            
-    return {"status": "success", "message": "Trading resumed"}
+    from backtest_engine.live.kill_switch import KillSwitchStateError, resume_trading as resume_kill_switch
+
+    try:
+        kill_switch_status = await resume_kill_switch("dashboard")
+    except KillSwitchStateError as exc:
+        logger.exception("[API] Failed to synchronize Kill Switch resume")
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to synchronize the Kill Switch state. Trading remains suspended.",
+        ) from exc
+
+    return {
+        "status": "success",
+        "message": "Trading resumed",
+        "kill_switch": kill_switch_status.as_dict(),
+    }

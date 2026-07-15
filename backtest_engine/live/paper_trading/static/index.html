@@ -61,7 +61,15 @@
                         </div>
                     </div>
                     
-                    <!-- Panic close button -->
+                    <div class="kill-switch-status" id="kill-switch-status" role="status" aria-live="polite">
+                        <div class="kill-switch-indicator" id="kill-switch-indicator"></div>
+                        <span id="kill-switch-status-text">Trading status unavailable</span>
+                    </div>
+
+                    <button class="btn-resume" id="resume-btn" type="button" disabled>
+                        Resume Trading
+                    </button>
+
                     <button class="btn-panic" id="panic-btn" title="Liquidate all active positions immediately">
                         <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
                         Close All Positions
@@ -381,6 +389,23 @@
             <div class="modal-buttons mt-3">
                 <button class="btn-cancel" id="cancel-panic-btn">Cancel</button>
                 <button class="btn-confirm-danger" id="execute-panic-btn" disabled>EXECUTE LIQUIDATION</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="resume-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="resume-modal-title">
+        <div class="modal-content glass-panel confirmation-panel resume-confirmation-panel">
+            <span class="close-modal" id="close-resume-modal">&times;</span>
+            <h3 id="resume-modal-title">Resume Trading?</h3>
+            <p class="modal-warning-text" id="resume-modal-message">Confirm that open orders and positions have been reconciled before resuming strategy evaluations.</p>
+            <div class="double-confirm-container">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="resume-confirm"> I confirm that reconciliation is complete and trading may resume.
+                </label>
+            </div>
+            <div class="modal-buttons mt-3">
+                <button class="btn-cancel" id="cancel-resume-btn" type="button">Cancel</button>
+                <button class="btn-confirm-resume" id="execute-resume-btn" type="button" disabled>RESUME TRADING</button>
             </div>
         </div>
     </div>

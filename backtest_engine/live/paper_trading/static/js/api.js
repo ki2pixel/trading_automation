@@ -100,8 +100,20 @@ export async function getHeartbeat() {
     return await res.json();
 }
 
+export async function getKillSwitchStatus() {
+    const res = await fetch('/api/status/kill-switch');
+    return await res.json();
+}
+
 export async function executePanic() {
     return await fetch('/api/control/panic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+export async function resumeTrading() {
+    return await fetch('/api/control/resume', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
     });
