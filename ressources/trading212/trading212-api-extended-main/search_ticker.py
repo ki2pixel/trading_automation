@@ -4,7 +4,7 @@ Recherche de tickers dans la liste des instruments T212.
 Usage:
     export T212_API_KEY_ID="ton_id"
     export T212_API_SECRET="ta_secret"
-    
+
     python search_ticker.py --name "SAP"        # recherche par nom
     python search_ticker.py --isin "DE0007164600"  # recherche par ISIN
     python search_ticker.py --country "DE"      # tickers allemands

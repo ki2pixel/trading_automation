@@ -215,10 +215,10 @@ def run_adaptive_volatility_trend(
         metrics = {"closed_trades": len(trades)}
         if fast_score_metric:
             score = compute_fast_score(
-                trades, 
-                fast_score_metric, 
-                state=state, 
-                initial_capital=initial_capital, 
+                trades,
+                fast_score_metric,
+                state=state,
+                initial_capital=initial_capital,
                 timeframe_minutes=timeframe_minutes,
                 bars=bars,
             )

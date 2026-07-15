@@ -42,7 +42,7 @@ class MomentumBasedZigZagConfigOverrides:
     enable_trailing_stop: bool | None = None
     trail_profit_pct: float | None = None
     trail_loss_pct: float | None = None
-    
+
     max_entry_price: float | None = None
     max_capital_bucket: float | None = None
     initial_capital_bucket: float | None = None
@@ -133,7 +133,7 @@ def run_momentum_based_zigzag(
     config = BaseBrokerStrategyRunner._apply_overrides(config, overrides)
 
     bars = BaseBrokerStrategyRunner._to_strategy_ohlcv(data)
-    
+
     # Vectorized execution
     raw_state, _ = module.run_momentum_based_zigzag_strategy(bars, config)
 
@@ -376,7 +376,7 @@ def _process_prescan_batch(args):
         short_exits=short_exits,
         freq=f"{prescan_timeframe}min",
     )
-    
+
     ret_series = pf.total_return()
     if not isinstance(ret_series, pd.Series):
         if hasattr(long_entries, 'columns'):
@@ -386,7 +386,7 @@ def _process_prescan_batch(args):
         else:
             idx = pd.Index([batch_combos[0]])
         ret_series = pd.Series([ret_series], index=idx)
-        
+
     del mbzz
     del long_entries
     del short_entries
@@ -407,7 +407,7 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
-    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres
     de Momentum-based ZigZag avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
@@ -653,7 +653,7 @@ def vectorbt_prescan(
                         min_v = max(float(s.values[0]), float(min_v) - margin)
                         max_v = min(float(s.values[-1]), float(max_v) + margin)
                         new_vals = tuple(v for v in s.values if min_v <= float(v) <= max_v)
-                    
+
                     filtered_res = new_vals or s.values
                     new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=filtered_res))
                     report_params[s.name] = {

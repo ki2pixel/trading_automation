@@ -11,17 +11,24 @@ app = FastAPI()
 app.include_router(router)
 client = TestClient(app)
 
+import pytest
+
 class TestPaperTradingEngine:
-    
+
+    @pytest.fixture(autouse=True)
+    def mock_t212_client(self):
+        with patch('backtest_engine.live.trading212.client.Trading212Client') as mock:
+            yield mock
+
     @patch('backtest_engine.live.paper_trading.engine.datetime')
     def test_market_hours_open(self, mock_datetime):
         # Mocking time to be Wednesday 12:00 UTC
         from datetime import datetime
         import pytz
-        
+
         mock_now = datetime(2023, 10, 4, 12, 0, tzinfo=pytz.utc) # Wed
         mock_datetime.now.return_value = mock_now
-        
+
         engine = PaperTradingEngine(db_url="sqlite:///:memory:")
         # Provide dummy market hours for test
         engine.market_hours = {
@@ -31,7 +38,7 @@ class TestPaperTradingEngine:
                 "tz_offset": "+01:00"
             }
         }
-        
+
         # UTC 12:00 -> +01:00 is 13:00, which is between 09:00 and 17:30
         assert engine.is_market_open("TEST.ASSET") == True
 
@@ -39,11 +46,11 @@ class TestPaperTradingEngine:
     def test_market_hours_closed_weekend(self, mock_datetime):
         from datetime import datetime
         import pytz
-        
+
         # Mocking time to be Saturday 12:00 UTC
         mock_now = datetime(2023, 10, 7, 12, 0, tzinfo=pytz.utc) # Sat
         mock_datetime.now.return_value = mock_now
-        
+
         engine = PaperTradingEngine(db_url="sqlite:///:memory:")
         engine.market_hours = {
             "TEST.ASSET": {
@@ -52,7 +59,7 @@ class TestPaperTradingEngine:
                 "tz_offset": "+01:00"
             }
         }
-        
+
         # Weekend should be false
         assert engine.is_market_open("TEST.ASSET") == False
 
@@ -60,11 +67,11 @@ class TestPaperTradingEngine:
     def test_market_hours_closed_time(self, mock_datetime):
         from datetime import datetime
         import pytz
-        
+
         # Mocking time to be Wed 20:00 UTC -> 21:00 local (+1)
         mock_now = datetime(2023, 10, 4, 20, 0, tzinfo=pytz.utc) # Wed
         mock_datetime.now.return_value = mock_now
-        
+
         engine = PaperTradingEngine(db_url="sqlite:///:memory:")
         engine.market_hours = {
             "TEST.ASSET": {
@@ -73,7 +80,7 @@ class TestPaperTradingEngine:
                 "tz_offset": "+01:00"
             }
         }
-        
+
         assert engine.is_market_open("TEST.ASSET") == False
 
     @patch('backtest_engine.live.paper_trading.api._get_pool')
@@ -87,7 +94,7 @@ class TestPaperTradingEngine:
         mock_pool = AsyncMock()
         mock_pool.acquire = MagicMock(return_value=mock_conn)
         mock_get_pool.return_value = mock_pool
-        
+
         payload = {
             "initial_capital": 2000,
             "initial_capital_bucket": 500,
@@ -95,11 +102,11 @@ class TestPaperTradingEngine:
             "max_entry_price": 50,
             "is_active": False
         }
-        
+
         response = client.put("/api/configs/1", json=payload)
         assert response.status_code == 200
         assert response.json() == {"status": "success", "message": "Configuration updated"}
-        
+
         # Check if execute was called properly
         mock_conn.execute.assert_called_once()
         call_args = mock_conn.execute.call_args
@@ -117,16 +124,16 @@ class TestPaperTradingEngine:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        
+
         queries = {}
         def mock_execute(query, params=None):
             queries[query] = params
-            
+
         mock_cursor.execute = MagicMock(side_effect=mock_execute)
-        
+
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
-            if "SELECT cash_balance" in last_query:
+            if "SELECT paper_cash_balance" in last_query:
                 return [4995.58]
             if "SELECT current_price" in last_query:
                 return [150.0]
@@ -141,7 +148,7 @@ class TestPaperTradingEngine:
             if "SELECT ticker, price, updated_at FROM live_prices" in last_query:
                 return [("aapl", 150.0, None)]
             return []
-            
+
         mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
         mock_cursor.fetchall = MagicMock(side_effect=mock_fetchall)
 
@@ -160,19 +167,19 @@ class TestPaperTradingEngine:
         # THEN:
         # 1. Trading 212 Client summary should be requested
         engine.t212_client.get_account_summary.assert_called_once()
-        
-        # 2. Local DB cash_balance should be updated with API's availableToTrade
+
+        # 2. Local DB paper_cash_balance should be updated with API's availableToTrade
         update_calls = [
-            call[0] for call in mock_cursor.execute.call_args_list 
-            if "UPDATE paper_portfolio_balance SET cash_balance" in call[0][0]
+            call[0] for call in mock_cursor.execute.call_args_list
+            if "UPDATE paper_portfolio_balance SET paper_cash_balance" in call[0][0]
         ]
         assert len(update_calls) == 1
         from decimal import Decimal
         assert update_calls[0][1] == (Decimal('4872.03'),)
 
-        # 3. Total NAV should be updated in DB (cash_balance 4872.03 + position value 10 * 150.0 = 6372.03)
+        # 3. Total NAV should be updated in DB (paper_cash_balance 4872.03 + position value 10 * 150.0 = 6372.03)
         nav_update_calls = [
-            call[0] for call in mock_cursor.execute.call_args_list 
+            call[0] for call in mock_cursor.execute.call_args_list
             if "UPDATE paper_portfolio_balance SET total_nav" in call[0][0]
         ]
         assert len(nav_update_calls) == 2
@@ -184,16 +191,16 @@ class TestPaperTradingEngine:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        
+
         queries = {}
         def mock_execute(query, params=None):
             queries[query] = params
-            
+
         mock_cursor.execute = MagicMock(side_effect=mock_execute)
-        
+
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
-            if "SELECT cash_balance" in last_query:
+            if "SELECT paper_cash_balance" in last_query:
                 return [100000.00]
             if "SELECT current_price" in last_query:
                 return [150.0]
@@ -208,7 +215,7 @@ class TestPaperTradingEngine:
             if "SELECT ticker, price, updated_at FROM live_prices" in last_query:
                 return [("aapl", 150.0, None)]
             return []
-            
+
         mock_cursor.fetchone = MagicMock(side_effect=mock_fetchone)
         mock_cursor.fetchall = MagicMock(side_effect=mock_fetchall)
 
@@ -221,16 +228,16 @@ class TestPaperTradingEngine:
             engine._update_portfolio_nav(mock_conn)
 
         # THEN:
-        # 1. No query to UPDATE cash_balance should be performed
+        # 1. No query to UPDATE paper_cash_balance should be performed
         update_calls = [
-            call[0] for call in mock_cursor.execute.call_args_list 
-            if "UPDATE paper_portfolio_balance SET cash_balance" in call[0][0]
+            call[0] for call in mock_cursor.execute.call_args_list
+            if "UPDATE paper_portfolio_balance SET paper_cash_balance" in call[0][0]
         ]
         assert len(update_calls) == 0
 
-        # 2. Total NAV should be updated in DB using the local cash balance (cash_balance 100000.00 + position value 10 * 150.0 = 101500.0)
+        # 2. Total NAV should be updated in DB using the local cash balance (paper_cash_balance 100000.00 + position value 10 * 150.0 = 101500.0)
         nav_update_calls = [
-            call[0] for call in mock_cursor.execute.call_args_list 
+            call[0] for call in mock_cursor.execute.call_args_list
             if "UPDATE paper_portfolio_balance SET total_nav" in call[0][0]
         ]
         assert len(nav_update_calls) == 2
@@ -244,15 +251,15 @@ class TestPaperTradingEngine:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        
+
         # Mock database responses for configurations, positions, candles, balance
         from datetime import datetime, timezone
         from decimal import Decimal
         import pandas as pd
-        
+
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
-            if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+            if "SELECT paper_cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [10000.0, 10000.0] # 10k cash and nav
             if "SELECT price, updated_at FROM live_prices" in last_query:
                 return (Decimal("10.0"), datetime.now(timezone.utc))
@@ -271,7 +278,7 @@ class TestPaperTradingEngine:
                 return [(1, "momentum_based_zigzag", "ZEAL.CO", "15m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
             if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
                 return [] # No active positions (batched query)
-            if "SELECT source, cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+            if "SELECT source, paper_cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [("trading212", 10000.0, 10000.0)]
             if "live_candles_1m" in last_query:
                 return mock_candles
@@ -285,19 +292,19 @@ class TestPaperTradingEngine:
         # Mock StrategyRegistry run_function to return a Buy signal
         mock_strat_info = MagicMock()
         mock_strat_registry_get.return_value = mock_strat_info
-        
+
         # We need run_result.bars to contain a long_entry at the last closed time
         # Let's align the times
         df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
         df_1m.set_index("timestamp_minute", inplace=True)
         df_aggregated = df_1m.resample("15min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
-        
+
         last_closed_time = df_aggregated.index[-2]
-        
+
         result_bars = df_aggregated.copy()
         result_bars["long_entry"] = False
         result_bars.loc[last_closed_time, "long_entry"] = True # Set Buy signal
-        
+
         mock_run_result = MagicMock()
         mock_run_result.bars = result_bars
         mock_strat_info.run_function.return_value = mock_run_result
@@ -313,7 +320,7 @@ class TestPaperTradingEngine:
         # THEN:
         # 1. The strategy registry should be queried for "momentum_based_zigzag"
         mock_strat_registry_get.assert_called_once_with("momentum_based_zigzag")
-        
+
         # 2. A buy order should be written to the database (10% Kelly of 10k NAV = 1000 EUR allocated, 100 units @ 10.0 EUR)
         buy_calls = [
             call[0] for call in mock_cursor.execute.call_args_list
@@ -321,8 +328,8 @@ class TestPaperTradingEngine:
         ]
         assert len(buy_calls) == 1
         assert "ZEAL.CO" in buy_calls[0][1]
-        assert buy_calls[0][1][2] == 100.0 # qty
-        assert buy_calls[0][1][3] == Decimal('10.0') # entry_price
+        assert buy_calls[0][1][3] == 100.0 # qty
+        assert buy_calls[0][1][4] == Decimal('10.0') # entry_price
 
         # 3. Cash balance should be deducted
         cash_deduct_calls = [
@@ -339,15 +346,15 @@ class TestPaperTradingEngine:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        
+
         from datetime import datetime, timezone
-        
+
         # Return mock configs, positions, candles
         mock_candles = [
             (datetime(2023, 10, 4, 12, i, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
             for i in range(30)
         ]
-        
+
         def mock_fetchall():
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, strategy_name, asset, timeframe" in last_query:
@@ -394,21 +401,21 @@ class TestPaperTradingEngine:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        
+
         from datetime import datetime, timezone
         import pandas as pd
-        
+
         # Return mock configs, positions, candles
         mock_candles = [
             (datetime(2023, 10, 4, 12, i, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
             for i in range(30)
         ]
-        
+
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, qty, entry_price FROM paper_positions" in last_query:
                 return None # No position open
-            if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+            if "SELECT paper_cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [10000.0, 10000.0]
             if "SELECT price, updated_at FROM live_prices" in last_query:
                 return (Decimal("10.0"), datetime.now(timezone.utc))
@@ -430,16 +437,16 @@ class TestPaperTradingEngine:
         # Mock StrategyRegistry run_function to return a dummy result without entry signals
         mock_strat_info = MagicMock()
         mock_strat_registry_get.return_value = mock_strat_info
-        
+
         df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
         df_1m.set_index("timestamp_minute", inplace=True)
         df_aggregated = df_1m.resample("15min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
-        
+
         last_closed_time = df_aggregated.index[-2]
         result_bars = df_aggregated.copy()
         result_bars["long_entry"] = False
         result_bars["long_exit"] = False
-        
+
         mock_run_result = MagicMock()
         mock_run_result.bars = result_bars
         mock_strat_info.run_function.return_value = mock_run_result
@@ -467,19 +474,19 @@ class TestPaperTradingEngine:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        
+
         from datetime import datetime, timezone
         from decimal import Decimal
         import pandas as pd
-        
+
         mock_candles = [
             (datetime(2023, 10, 4, 12 + i // 60, i % 60, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
             for i in range(120)
         ]
-        
+
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
-            if "SELECT cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+            if "SELECT paper_cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [10000.0, 10000.0]
             if "SELECT price, updated_at FROM live_prices" in last_query:
                 return (Decimal("10.0"), datetime.now(timezone.utc))
@@ -491,7 +498,7 @@ class TestPaperTradingEngine:
                 return [(904, "cybernetic_hilbert", "ltcusdt", "45m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {})]
             if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
                 return [] # No active positions (batched query)
-            if "SELECT source, cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+            if "SELECT source, paper_cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [("bybit", 10000.0, 10000.0)]
             if "live_candles_1m" in last_query:
                 return mock_candles
@@ -505,17 +512,17 @@ class TestPaperTradingEngine:
         # Mock StrategyRegistry to trigger a BUY signal
         mock_strat_info = MagicMock()
         mock_strat_registry_get.return_value = mock_strat_info
-        
+
         df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
         df_1m.set_index("timestamp_minute", inplace=True)
         df_aggregated = df_1m.resample("45min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
-        
+
         last_closed_time = df_aggregated.index[-2]
         result_bars = df_aggregated.copy()
         result_bars["long_entry"] = False
         result_bars["long_exit"] = False
         result_bars.loc[last_closed_time, "long_entry"] = True # Buy signal
-        
+
         mock_run_result = MagicMock()
         mock_run_result.bars = result_bars
         mock_strat_info.run_function.return_value = mock_run_result
@@ -535,17 +542,17 @@ class TestPaperTradingEngine:
         # Total buy cost = 1001.0000032032
         balance_update_calls = [
             call for call in mock_cursor.execute.call_args_list
-            if "UPDATE paper_portfolio_balance" in call[0][0] and "cash_balance = cash_balance -" in call[0][0]
+            if "UPDATE paper_portfolio_balance" in call[0][0] and "paper_cash_balance = paper_cash_balance -" in call[0][0]
         ]
         assert len(balance_update_calls) == 1
         total_cost_arg = balance_update_calls[0][0][1][0]
         allocated_arg = balance_update_calls[0][0][1][1]
         source_arg = balance_update_calls[0][0][1][2]
-        
+
         # Verify that total deducted cost is higher than allocated value by exactly 0.1%
         assert source_arg == 'bybit'
         assert abs(total_cost_arg - allocated_arg * Decimal('1.001')) < Decimal('0.00001')
-        
+
         # Verify transaction log records total cost including fee
         tx_calls = [
             call for call in mock_cursor.execute.call_args_list
@@ -564,14 +571,14 @@ class TestPaperTradingEngine:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        
+
         from datetime import datetime, timezone
         from decimal import Decimal
         import pandas as pd
-        
+
         mock_get_eurusd_rate.return_value = Decimal('1.10')
         mock_get_redis_client.return_value = None
-        
+
         # Candles for historical reference
         from datetime import timedelta
         start_time = datetime(2023, 10, 4, 12, 0, tzinfo=timezone.utc)
@@ -579,7 +586,7 @@ class TestPaperTradingEngine:
             (start_time + timedelta(minutes=i), 100.0, 100.0, 100.0, 100.0)
             for i in range(2500)
         ]
-        
+
         def mock_fetchone():
             last_query = mock_cursor.execute.call_args[0][0]
             if "DELETE FROM paper_positions WHERE id = %s RETURNING id" in last_query:
@@ -592,9 +599,9 @@ class TestPaperTradingEngine:
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, strategy_name, asset, timeframe" in last_query:
                 return [(904, "cybernetic_hilbert", "ltcusdt", "45m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {"enable_take_profit": True, "take_profit_pct": 5.0})]
-            if "SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions" in last_query:
-                return [(99, "ltcusdt", "cybernetic_hilbert", Decimal("10.0"), Decimal("100.0"))]
-            if "SELECT source, cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
+            if "SELECT id, asset, strategy_name, qty, entry_price, timeframe FROM paper_positions" in last_query:
+                return [(99, "ltcusdt", "cybernetic_hilbert", Decimal("10.0"), Decimal("100.0"), "45m")]
+            if "SELECT source, paper_cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [("bybit", 15000.0, 15000.0)]
             if "live_candles_1m" in last_query:
                 return mock_candles
@@ -608,15 +615,15 @@ class TestPaperTradingEngine:
         # Mock StrategyRegistry to return a result
         mock_strat_info = MagicMock()
         mock_strat_registry_get.return_value = mock_strat_info
-        
+
         df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
         df_1m.set_index("timestamp_minute", inplace=True)
         df_aggregated = df_1m.resample("45min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
-        
+
         result_bars = df_aggregated.copy()
         result_bars["long_entry"] = False
         result_bars["long_exit"] = False
-        
+
         mock_run_result = MagicMock()
         mock_run_result.bars = result_bars
         mock_strat_info.run_function.return_value = mock_run_result
@@ -636,13 +643,13 @@ class TestPaperTradingEngine:
         assert len(portfolio_update_calls) == 1
         query, params = portfolio_update_calls[0][0]
         assert "secured_balance = secured_balance +" in query
-        assert "cash_balance = cash_balance +" in query
-        
+        assert "paper_cash_balance = paper_cash_balance +" in query
+ 
         cash_balance_added = params[0]
         secured_balance_added = params[1]
         allocated_balance_removed = params[2]
         source_arg = params[3]
-        
+
         assert source_arg == 'bybit'
         assert abs(cash_balance_added - Decimal('1001.0')) < Decimal('0.0001')
         assert abs(secured_balance_added - Decimal('179.818181')) < Decimal('0.0001')

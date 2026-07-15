@@ -19,8 +19,8 @@ VALIDATED_SETUPS = {
     },
     "noise_boundary_intraday": {"AMS.MC": ["60m", "120m"], "FPE.DE": ["120m"], "GMAB": ["30m"]},
     "momentum_based_zigzag": {
-        "NVO": ["45m"], "ZEAL.CO": ["1m"], "AMS.MC": ["10m"], "GMAB": ["1m"], 
-        "EVD.DE": ["45m"], "SAP": ["30m"], "SHL.DE": ["45m"], "LOGI": ["120m"], 
+        "NVO": ["45m"], "ZEAL.CO": ["1m"], "AMS.MC": ["10m"], "GMAB": ["1m"],
+        "EVD.DE": ["45m"], "SAP": ["30m"], "SHL.DE": ["45m"], "LOGI": ["120m"],
         "NVS": ["5m"], "FPE.DE": ["20m"],
         "belgbeeur": ["10m"], "daideeur": ["15m"], "cafreur": ["15m"], "cpriteur": ["10m"],
         "vnadeeur": ["10m"], "randnleur": ["10m"], "akzanleur": ["30m"], "vpknleur": ["15m"],
@@ -36,14 +36,14 @@ VALIDATED_SETUPS = {
     "pmax_explorer": {"GMAB": ["15m", "30m"]},
     "range_filter": {"GMAB": ["20m", "30m"], "FPE.DE": ["45m", "240m"]},
     "msl_trend": {
-        "NVO": ["10m", "15m", "20m", "30m", "45m", "60m", "120m", "240m"], 
-        "AMS.MC": ["10m", "15m", "20m", "30m", "45m", "60m", "120m"], 
+        "NVO": ["10m", "15m", "20m", "30m", "45m", "60m", "120m", "240m"],
+        "AMS.MC": ["10m", "15m", "20m", "30m", "45m", "60m", "120m"],
         "NVS": ["10m", "60m", "120m", "240m"]
     },
     "smart_trader_geometric": {"ZEAL.CO": ["5m", "10m"], "LOGI": ["5m"]},
     "hma_crossover": {"FPE.DE": ["30m"], "NVS": ["120m"], "GMAB": ["45m"]},
     "trend_type": {
-        "NVO": ["10m", "15m", "20m", "30m", "45m", "60m", "120m"], 
+        "NVO": ["10m", "15m", "20m", "30m", "45m", "60m", "120m"],
         "NVS": ["15m", "20m", "30m", "45m", "60m", "120m"]
     },
     "adaptive_volatility_trend": {
@@ -52,9 +52,9 @@ VALIDATED_SETUPS = {
         "ergiteur": ["30m"]
     },
     "3commas_bot": {
-        "GMAB": ["15m", "20m", "30m", "60m"], 
-        "FPE.DE": ["5m", "20m", "30m", "45m"], 
-        "LOGI": ["5m", "10m", "45m", "120m"], 
+        "GMAB": ["15m", "20m", "30m", "60m"],
+        "FPE.DE": ["5m", "20m", "30m", "45m"],
+        "LOGI": ["5m", "10m", "45m", "120m"],
         "EVD.DE": ["5m", "20m", "30m"],
         "teniteur": ["30m"]
     },
@@ -79,25 +79,25 @@ def calc_recovery_time(equity_df):
     if "drawdown_pct" not in equity_df.columns:
         return 0
     df = equity_df.copy()
-    
+
     in_dd = False
     start_dd = None
     recovery_times = []
-    
+
     for idx, row in df.iterrows():
         dd = row["drawdown_pct"]
         # Handle index or column
         ts = idx if isinstance(idx, pd.Timestamp) else (row["timestamp"] if "timestamp" in df.columns else None)
         if ts is None:
             continue
-            
+
         if dd < 0 and not in_dd:
             in_dd = True
             start_dd = ts
         elif dd == 0 and in_dd:
             in_dd = False
             recovery_times.append((ts - start_dd).total_seconds())
-            
+
     if len(recovery_times) == 0:
         return 0
     return np.mean(recovery_times) / (3600 * 24)  # in days
@@ -106,7 +106,7 @@ def calc_periodic_returns(equity_df):
     if "equity" not in equity_df.columns:
         return {}
     df = equity_df.copy()
-    
+
     # Ensure index is datetime
     if not isinstance(df.index, pd.DatetimeIndex):
         if "timestamp" in df.columns:
@@ -114,7 +114,7 @@ def calc_periodic_returns(equity_df):
             df.set_index("timestamp", inplace=True)
         else:
             return {}
-            
+
     res = {}
     try:
         monthly = df["equity"].resample("ME").last()
@@ -122,15 +122,15 @@ def calc_periodic_returns(equity_df):
         res["monthly_mean"] = monthly_pct.mean()
         res["monthly_std"] = monthly_pct.std()
         res["monthly_mean_currency"] = monthly.diff().dropna().mean()
-        
+
         quarterly = df["equity"].resample("QE").last()
         res["quarterly_mean"] = quarterly.pct_change().dropna().mean()
         res["quarterly_mean_currency"] = quarterly.diff().dropna().mean()
-        
+
         semi_annual = df["equity"].resample("6ME").last()
         res["semi_annual_mean"] = semi_annual.pct_change().dropna().mean()
         res["semi_annual_mean_currency"] = semi_annual.diff().dropna().mean()
-        
+
         yearly = df["equity"].resample("YE").last()
         res["yearly_mean"] = yearly.pct_change().dropna().mean()
         res["yearly_mean_currency"] = yearly.diff().dropna().mean()
@@ -141,7 +141,7 @@ def calc_periodic_returns(equity_df):
 def analyze_all_runs():
     results = []
     series_for_corr = {} # { "strategy_symbol_tf": series of binary positions }
-    
+
     for strategy, symbols in VALIDATED_SETUPS.items():
         if strategy == "adaptive_trend_classification":
             for sym, tfs in symbols.items():
@@ -165,29 +165,29 @@ def analyze_all_runs():
                         base_dir = os.path.join(reports_dir, strategy, symbol.upper())
                         if not os.path.isdir(base_dir):
                             continue
-                    
+
                 for run_dir in os.listdir(base_dir):
                     run_path = os.path.join(base_dir, run_dir)
                     if not os.path.isdir(run_path):
                         continue
-                    
+
                     config_path = os.path.join(run_path, "optimization_config.json")
                     if not os.path.exists(config_path):
                         continue
-                    
+
                     try:
                         with open(config_path, "r") as f:
                             config = json.load(f)
                     except:
                         continue
-                        
+
                     tf_mins = config.get("timeframe_minutes")
                     if not tf_mins:
                         continue
                     tf_str = f"{tf_mins}m"
                     if tf_str not in tfs:
                         continue
-                    
+
                     # We found a matching config! Now get best_run parquets
                     best_run_base = os.path.join(run_path, "best_run", strategy, symbol)
                     if not os.path.exists(best_run_base):
@@ -196,27 +196,27 @@ def analyze_all_runs():
                             best_run_base = os.path.join(run_path, "best_run", strategy, symbol.upper())
                             if not os.path.exists(best_run_base):
                                 continue
-                    
+
                     best_runs = os.listdir(best_run_base)
                     if not best_runs:
                         continue
-                
+
                     best_run_ts = best_runs[0] # Pick the first one
                     trades_file = os.path.join(best_run_base, best_run_ts, "trades.parquet")
                     equity_file = os.path.join(best_run_base, best_run_ts, "equity_curve.parquet")
-                    
+
                     if not os.path.exists(trades_file) or not os.path.exists(equity_file):
                         continue
-                    
+
                     trades = safe_read_parquet(trades_file)
                     equity = safe_read_parquet(equity_file)
-                    
+
                     if trades is None or equity is None or len(trades) == 0:
                         continue
-                    
+
                     # Calc metrics
                     n_trades = len(trades)
-                    
+
                     # Safe trade return calculation
                     if "qty" in trades.columns and "entry_price" in trades.columns:
                         base_val = trades["entry_price"] * trades["qty"]
@@ -224,36 +224,36 @@ def analyze_all_runs():
                         trades["trade_return"] = np.where(base_val != 0, trades["net_pnl"] / base_val, 0)
                     else:
                         trades["trade_return"] = trades["net_pnl"]
-                    
+
                     wins = trades[trades["net_pnl"] > 0]
                     losses = trades[trades["net_pnl"] <= 0]
-                    
+
                     win_rate = len(wins) / n_trades if n_trades > 0 else 0
                     gross_profit = wins["net_pnl"].sum()
                     gross_loss = abs(losses["net_pnl"].sum())
                     profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
-                    
+
                     mean_return = trades["trade_return"].mean()
                     max_win = trades["trade_return"].max()
                     max_loss = trades["trade_return"].min()
-                    
+
                     # Equity metrics
                     max_drawdown_pct = equity["drawdown_pct"].min() if "drawdown_pct" in equity.columns else 0
                     max_drawdown_currency = equity["drawdown"].min() if "drawdown" in equity.columns else 0
                     net_pnl_currency = trades["net_pnl"].sum()
-                    
+
                     # Time analysis
                     if "entry_index" in trades.columns and "exit_index" in trades.columns:
                         duration_days = (trades["exit_index"].max() - trades["entry_index"].min()).days
                     else:
                         duration_days = 0
-                    
+
                     duration_years = duration_days / 365.25 if duration_days > 0 else 0
                     trades_per_month = (n_trades / duration_days * 30.4) if duration_days > 0 else 0
                     trades_per_year = (n_trades / duration_years) if duration_years > 0 else 0
-                    
+
                     rec_time = calc_recovery_time(equity)
-                    
+
                     # Approximation of Sharpe/Sortino
                     # using monthly returns if possible
                     periodic = calc_periodic_returns(equity)
@@ -261,30 +261,30 @@ def analyze_all_runs():
                     monthly_std = periodic.get("monthly_std", 0.0001)
                     if monthly_std == 0: monthly_std = 0.0001
                     sharpe = (monthly_mean * 12) / (monthly_std * np.sqrt(12))
-                    
+
                     # Estimated returns
                     return_monthly = periodic.get("monthly_mean", 0)
                     return_quarterly = periodic.get("quarterly_mean", 0)
                     return_semi = periodic.get("semi_annual_mean", 0)
                     return_yearly = periodic.get("yearly_mean", 0)
-                    
+
                     return_monthly_currency = periodic.get("monthly_mean_currency", 0)
                     return_quarterly_currency = periodic.get("quarterly_mean_currency", 0)
                     return_semi_currency = periodic.get("semi_annual_mean_currency", 0)
                     return_yearly_currency = periodic.get("yearly_mean_currency", 0)
-                    
+
                     # Time-weighted return (rough approx)
                     total_hours = trades["bars_held"].sum() * (tf_mins / 60.0) if "bars_held" in trades.columns else 0
                     twr_hourly = trades["trade_return"].sum() / total_hours if total_hours > 0 else 0
-                    
+
                     # Kelly Criterion = W - ((1 - W) / R)
                     mean_win = wins["trade_return"].mean() if len(wins) > 0 else 0
                     mean_loss = abs(losses["trade_return"].mean()) if len(losses) > 0 else 1
                     r_ratio = mean_win / mean_loss if mean_loss > 0 else 1
                     kelly = win_rate - ((1 - win_rate) / r_ratio) if r_ratio > 0 else 0
-                    
+
                     sortino = sharpe * 1.2  # Default approximation
-                    
+
                     # Try to get exact metrics from summary.json if available
                     summary_path = os.path.join(run_path, "summary.json")
                     if os.path.exists(summary_path):
@@ -293,22 +293,22 @@ def analyze_all_runs():
                                 summary_data = json.load(f)
                             best_row = summary_data.get("best_row") or {}
                             best_metrics = best_row.get("metrics") or {}
-                            
+
                             s_val = best_metrics.get("sharpe_ratio")
                             if s_val is not None:
                                 sharpe = s_val
-                                
+
                             sort_val = best_metrics.get("sortino_ratio")
                             if sort_val is not None:
                                 sortino = sort_val
-                                
+
                             pf_val = best_metrics.get("profit_factor")
                             if pf_val is not None:
                                 profit_factor = pf_val
                             elif best_metrics.get("winning_trades", 0) > 0 and best_metrics.get("losing_trades", 0) == 0:
                                 # 100% win rate has infinite profit factor
                                 profit_factor = float("inf")
-                                
+
                             wr_val = best_metrics.get("win_rate_pct")
                             if wr_val is not None:
                                 win_rate = wr_val / 100.0
@@ -316,7 +316,7 @@ def analyze_all_runs():
                                 kelly = win_rate - ((1 - win_rate) / r_ratio) if r_ratio > 0 else 0
                         except Exception as e:
                             print(f"Error reading exact metrics from summary.json: {e}")
-                    
+
                     results.append({
                         "strategy": strategy,
                         "symbol": symbol,
@@ -348,7 +348,7 @@ def analyze_all_runs():
                         "twr_hourly": twr_hourly,
                         "kelly": max(0, kelly)
                     })
-                    
+
                     # For correlation (Daily resample of in-market state)
                     # We create a date range
                     try:
@@ -374,17 +374,17 @@ def generate_portfolio_report(df, output_path):
         (df["kelly"] > 0) &
         (df["return_monthly_currency"] > 0)
     ].copy()
-    
+
     # Sort by kelly_weight descending
     portfolio_df = portfolio_df.sort_values("kelly_weight", ascending=False)
-    
+
     # Create Shortlist (best monthly return per strategy/symbol combination)
     shortlist_df = portfolio_df.sort_values("return_monthly_currency", ascending=False).drop_duplicates(subset=["strategy", "symbol"])
     shortlist_df = shortlist_df.sort_values("return_monthly_currency", ascending=False)
-    
+
     num_setups = len(portfolio_df)
     num_shortlist = len(shortlist_df)
-    
+
     lines = []
     lines.append("# Portfolio de Déploiement Immédiat\n")
     lines.append(f"Ce document consigne la liste exacte des **{num_setups} setups** identifiés pour un déploiement en production ou en paper-trading actif, suite à la campagne globale d'optimisation et d'arbitrage.\n")
@@ -394,14 +394,14 @@ def generate_portfolio_report(df, output_path):
     lines.append("- **Sharpe Ratio** > 1.0")
     lines.append("- **Kelly Criterion** > 0 (pour garantir un avantage mathématique à l'allocation)")
     lines.append("- **Rendement Mensuel Moyen (€)** > 0 (Générateur de profit brut justifiant le risque)\n")
-    
+
     lines.append("### Remarques Analytiques")
     lines.append("- **`3commas_bot`** domine le portefeuille avec une excellente fréquence et de solides performances en euros.")
     lines.append("- **`cybernetic_hilbert`** ressort extrêmement fort sur `ZEAL.CO` (nécessite une petite surveillance manuelle initiale pour écarter tout overfitting résiduel).")
     lines.append("- **`momentum_based_zigzag`** et **`lorentzian_classification`** offrent d'excellents Profit Factors et des allocations Kelly élevées, parfaits pour la stabilité.\n")
-    
+
     lines.append(f"## Les {num_setups} Setups Validés (Triés par Poids Kelly décroissant)\n")
-    
+
     def df_to_markdown_table(temp_df):
         table_lines = []
         table_lines.append("| Stratégie | Actif | Timeframe | Profit Factor | Sharpe | Kelly Weight | Rendement Mensuel (€) |")
@@ -410,27 +410,27 @@ def generate_portfolio_report(df, output_path):
             strat = f"`{row['strategy']}`"
             sym = f"**{row['symbol']}**"
             tf = row['timeframe']
-            
+
             pf_val = row['profit_factor']
             if pd.isnull(pf_val) or pf_val == float('inf'):
                 pf = "Inf"
             else:
                 pf = f"{pf_val:.2f}"
-                
+
             sr = f"{row['sharpe']:.2f}"
             kw = f"**{row['kelly_weight']:.2%}**"
             ret = f"{row['return_monthly_currency']:.2f} €"
             table_lines.append(f"| {strat} | {sym} | {tf} | {pf} | {sr} | {kw} | {ret} |")
         return "\n".join(table_lines)
-        
+
     lines.append(df_to_markdown_table(portfolio_df))
     lines.append("\n")
-    
+
     lines.append(f"## Shortlist Ciblée ({num_shortlist} Configurations)\n")
     lines.append("Extraction par meilleur Rendement Mensuel (€) absolu par combinaison Stratégie/Actif, pour un Paper-Trading concentré :\n")
     lines.append(df_to_markdown_table(shortlist_df))
     lines.append("")
-    
+
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     print(f"Rapport de portefeuille sauvegardé dans {output_path}")
@@ -438,40 +438,40 @@ def generate_portfolio_report(df, output_path):
 def generate_html_report(df, output_path):
     # Prepare HTML dataframe with formatted columns
     cols = [
-        "strategy", "symbol", "timeframe", "trades", "win_rate", "profit_factor", 
+        "strategy", "symbol", "timeframe", "trades", "win_rate", "profit_factor",
         "mean_return", "max_drawdown", "max_dd_currency", "net_pnl_currency",
         "sharpe", "duration_years", "trades_per_month", "trades_per_year",
         "return_monthly", "return_quarterly", "return_semi", "return_yearly",
         "return_monthly_currency", "return_quarterly_currency", "return_semi_currency", "return_yearly_currency",
         "risk_parity_weight", "kelly_weight"
     ]
-    
+
     # Ensure columns exist, though they should
     existing_cols = [c for c in cols if c in df.columns]
     html_df = df[existing_cols].copy()
-    
+
     # Format percentages
     pct_cols = ["win_rate", "mean_return", "max_drawdown", "return_monthly", "return_quarterly", "return_semi", "return_yearly", "risk_parity_weight", "kelly_weight"]
     for c in pct_cols:
         if c in html_df.columns:
             html_df[c] = html_df[c].apply(lambda x: "{:.2%}".format(x) if pd.notnull(x) else "")
-        
+
     # Format currencies
     cur_cols = ["max_dd_currency", "net_pnl_currency", "return_monthly_currency", "return_quarterly_currency", "return_semi_currency", "return_yearly_currency"]
     for c in cur_cols:
         if c in html_df.columns:
             html_df[c] = html_df[c].apply(lambda x: "{:.2f} €".format(x) if pd.notnull(x) else "")
-        
+
     # Format floats
     float_cols = ["profit_factor", "sharpe", "duration_years", "trades_per_month", "trades_per_year"]
     for c in float_cols:
         if c in html_df.columns:
             html_df[c] = html_df[c].apply(lambda x: "{:.2f}".format(x) if pd.notnull(x) else "")
-        
+
     # Format ints
     if "trades" in html_df.columns:
         html_df["trades"] = html_df["trades"].fillna(0).astype(int).astype(str)
-        
+
     # Custom column names for headers
     header_mapping = {
         "strategy": "STRATEGY",
@@ -499,14 +499,14 @@ def generate_html_report(df, output_path):
         "risk_parity_weight": "RISK_PARITY_W",
         "kelly_weight": "KELLY_W"
     }
-    
+
     html_df.rename(columns=header_mapping, inplace=True)
-    
+
     columns_json = json.dumps(list(html_df.columns), ensure_ascii=False)
     rows_json = json.dumps(html_df.to_dict(orient="records"), ensure_ascii=False)
     header_html = "".join(f'<th tabindex="0">{c}</th>' for c in html_df.columns)
     total_rows = len(html_df)
-    
+
     html = f"""<!doctype html>
 <html lang="fr">
 <head>
@@ -676,17 +676,17 @@ def load_backup_data(backup_html_path):
     if not os.path.exists(backup_html_path):
         print(f"Warning: Backup HTML not found at {backup_html_path}")
         return pd.DataFrame()
-    
+
     try:
         with open(backup_html_path, "r", encoding="utf-8") as f:
             content = f.read()
-        
+
         # Trouver la variable allRows dans le script HTML
         match = re.search(r"const\s+allRows\s*=\s*(\[.*?\]);", content, re.DOTALL)
         if not match:
             print("Warning: const allRows not found in backup HTML")
             return pd.DataFrame()
-        
+
         raw_rows = json.loads(match.group(1))
         results = []
         for r in raw_rows:
@@ -694,21 +694,21 @@ def load_backup_data(backup_html_path):
             strategy = r.get("STRATEGY")
             symbol = r.get("SYMBOL")
             timeframe = r.get("TIMEFRAME")
-            
+
             def parse_pct(val):
                 if not val: return 0.0
                 try:
                     return float(val.replace("%", "").strip()) / 100.0
                 except:
                     return 0.0
-            
+
             def parse_curr(val):
                 if not val: return 0.0
                 try:
                     return float(val.replace("€", "").replace(" ", "").strip())
                 except:
                     return 0.0
-            
+
             def parse_float(val):
                 if not val: return 0.0
                 if val.lower() == "inf":
@@ -717,7 +717,7 @@ def load_backup_data(backup_html_path):
                     return float(val)
                 except:
                     return 0.0
-            
+
             trades = int(r.get("TRADES", "0"))
             win_rate = parse_pct(r.get("WIN_RATE"))
             profit_factor = parse_float(r.get("PROFIT_FACTOR"))
@@ -729,17 +729,17 @@ def load_backup_data(backup_html_path):
             duration_years = parse_float(r.get("DURATION_YEARS"))
             trades_per_month = parse_float(r.get("TRADES/MO"))
             trades_per_year = parse_float(r.get("TRADES/YR"))
-            
+
             return_monthly = parse_pct(r.get("RET_1M"))
             return_quarterly = parse_pct(r.get("RET_3M"))
             return_semi = parse_pct(r.get("RET_6M"))
             return_yearly = parse_pct(r.get("RET_1Y"))
-            
+
             return_monthly_currency = parse_curr(r.get("RET_1M (€)"))
             return_quarterly_currency = parse_curr(r.get("RET_3M (€)"))
             return_semi_currency = parse_curr(r.get("RET_6M (€)"))
             return_yearly_currency = parse_curr(r.get("RET_1Y (€)"))
-            
+
             # Recalculer le critère de Kelly
             # Formula: Kelly = win_rate * (1 - 1 / profit_factor)
             if profit_factor == float("inf"):
@@ -748,9 +748,9 @@ def load_backup_data(backup_html_path):
                 kelly = win_rate * (1.0 - 1.0 / profit_factor)
             else:
                 kelly = 0.0
-            
+
             kelly = max(0.0, kelly)
-            
+
             results.append({
                 "strategy": strategy,
                 "symbol": symbol,
@@ -780,7 +780,7 @@ def load_backup_data(backup_html_path):
                 "twr_hourly": 0.0,
                 "kelly": kelly
             })
-        
+
         return pd.DataFrame(results)
     except Exception as e:
         print(f"Error parsing backup HTML: {e}")
@@ -789,12 +789,12 @@ def load_backup_data(backup_html_path):
 def main():
     print("Démarrage de l'analyse des meilleures performances...")
     df, corr_series = analyze_all_runs()
-    
+
     # Fusion avec les données de backup
     backup_html_path = "docs/backup/arbitrage_optimisations.html"
     print(f"Chargement des données de backup depuis {backup_html_path}...")
     backup_df = load_backup_data(backup_html_path)
-    
+
     if len(backup_df) > 0:
         if len(df) == 0:
             df = backup_df
@@ -808,7 +808,7 @@ def main():
                 key = (row["strategy"], row["symbol"], row["timeframe"])
                 if key not in df_keys:
                     missing_rows.append(row)
-            
+
             if missing_rows:
                 missing_df = pd.DataFrame(missing_rows)
                 df = pd.concat([df, missing_df], ignore_index=True)
@@ -817,16 +817,16 @@ def main():
                 print("Aucune configuration manquante à restaurer depuis le backup.")
     else:
         print("Aucune donnée de backup chargée ou backup introuvable.")
-        
+
     if len(df) == 0:
         print("Aucun run valide trouvé. Vérifiez les chemins.")
         return
-        
+
     print(f"Analyse terminée. {len(df)} setups valides au total après fusion.")
-    
+
     # Remove duplicates if multiple runs exist for the same setup, keeping the one with best Profit Factor
     df = df.sort_values("profit_factor", ascending=False).drop_duplicates(subset=["strategy", "symbol", "timeframe"])
-    
+
     # 1. Matrice des performances
     # 2. Risk-Parity Allocation
     # Inverse of absolute max drawdown
@@ -834,12 +834,12 @@ def main():
     safe_dd = df["max_drawdown"].apply(lambda x: abs(x) if x < 0 else 0.01)
     inv_dd = 1.0 / safe_dd
     df["risk_parity_weight"] = inv_dd / inv_dd.sum()
-    
+
     # 3. Kelly Allocation (Half-Kelly normalized)
     half_kelly = df["kelly"] / 2.0
     sum_hk = half_kelly.sum()
     df["kelly_weight"] = half_kelly / sum_hk if sum_hk > 0 else 0
-    
+
     # 4. Corrélation
     corr_matrix = pd.DataFrame()
     if corr_series:
@@ -851,18 +851,18 @@ def main():
         if final_corr_series:
             corr_df = pd.DataFrame(final_corr_series).fillna(0)
             corr_matrix = corr_df.corr()
-    
+
     # Génération du rapport Markdown
     print("Génération du rapport markdown...")
     with open(DOCS_DIR, "w") as f:
         f.write("# Rapport d'Arbitrage et d'Optimisation des Stratégies\n\n")
         f.write("Ce rapport consolide les résultats d'optimisation et propose une modélisation d'allocation de capital.\n\n")
-        
+
         f.write("## 1. Matrice Globale des Performances\n\n")
         # Exclude adaptive_trend_classification for the main table as requested
         main_df = df[df["strategy"] != "adaptive_trend_classification"]
         cols = ["strategy", "symbol", "timeframe", "trades", "win_rate", "profit_factor", "mean_return", "max_drawdown", "sharpe"]
-        
+
         formatters = {
             "win_rate": "{:.2%}".format,
             "mean_return": "{:.2%}".format,
@@ -874,15 +874,15 @@ def main():
         }
         f.write(main_df[cols].to_markdown(index=False, floatfmt=".2f"))
         f.write("\n\n")
-        
+
         f.write("## 2. Performances Absolues et Fréquence de Trading\n\n")
         cols_abs = ["strategy", "symbol", "timeframe", "duration_years", "net_pnl_currency", "max_dd_currency", "trades_per_month", "trades_per_year"]
         f.write(main_df[cols_abs].to_markdown(index=False, floatfmt=".2f"))
         f.write("\n\n")
-        
+
         f.write("## 3. Estimations de Rendement Périodique (Moyenne)\n\n")
         cols_ret = ["strategy", "symbol", "timeframe", "return_monthly", "return_quarterly", "return_semi", "return_yearly", "return_monthly_currency", "return_quarterly_currency", "return_semi_currency", "return_yearly_currency"]
-        
+
         # We need a custom formatting to mix percentages and currencies in the same table, or we just format everything as dataframe
         # Since floatfmt=".2%" applies to the whole table, we should pre-format the columns
         disp_df = main_df[cols_ret].copy()
@@ -890,22 +890,22 @@ def main():
         disp_df["return_quarterly"] = disp_df["return_quarterly"].apply("{:.2%}".format)
         disp_df["return_semi"] = disp_df["return_semi"].apply("{:.2%}".format)
         disp_df["return_yearly"] = disp_df["return_yearly"].apply("{:.2%}".format)
-        
+
         disp_df["return_monthly_currency"] = disp_df["return_monthly_currency"].apply("{:.2f} €".format)
         disp_df["return_quarterly_currency"] = disp_df["return_quarterly_currency"].apply("{:.2f} €".format)
         disp_df["return_semi_currency"] = disp_df["return_semi_currency"].apply("{:.2f} €".format)
         disp_df["return_yearly_currency"] = disp_df["return_yearly_currency"].apply("{:.2f} €".format)
-        
+
         # Rename columns for clarity in markdown
         disp_df.columns = [
             "strategy", "symbol", "timeframe",
             "monthly (%)", "quarterly (%)", "semi (%)", "yearly (%)",
             "monthly (€)", "quarterly (€)", "semi (€)", "yearly (€)"
         ]
-        
+
         f.write(disp_df.to_markdown(index=False))
         f.write("\n\n")
-        
+
         f.write("## 4. Adaptive Trend Classification (Données Isolées)\n\n")
         f.write("> **Note** : Ces résultats sont isolés car ils ont été récupérés depuis la documentation. Ils devront être réintégrés au tableau principal ultérieurement lorsque de nouveaux artefacts Parquet seront disponibles.\n\n")
         adapt_df = df[df["strategy"] == "adaptive_trend_classification"]
@@ -914,11 +914,11 @@ def main():
         else:
             f.write("*Aucune donnée disponible pour le moment.*")
         f.write("\n\n")
-        
+
         f.write("## 5. Analyse des Flexibilités\n\n")
         f.write("- **Stratégies passe-partout** : `momentum_based_zigzag` et `msl_trend` s'illustrent par leur robustesse sur un grand nombre d'actifs et de timeframes.\n")
         f.write("- **Stratégies spécialisées** : `pmax_explorer` et `range_filter` montrent des edges très concentrés (ex: GMAB et FPE.DE).\n\n")
-        
+
         f.write("## 6. Matrice de Corrélations des Positions\n\n")
         f.write("Calculée sur le chevauchement journalier des positions ouvertes.\n\n")
         if not corr_matrix.empty:
@@ -926,28 +926,28 @@ def main():
         else:
             f.write("*Données insuffisantes pour la corrélation.*")
         f.write("\n\n")
-        
+
         f.write("## 7. Modélisation de l'Allocation Optimale\n\n")
         f.write("Comparatif entre la méthode **Risk-Parity** (Défensive) et **Kelly Criterion** (Offensive).\n\n")
         alloc_cols = ["strategy", "symbol", "timeframe", "risk_parity_weight", "kelly_weight"]
         main_alloc = main_df[alloc_cols].copy()
         main_alloc["risk_parity_weight"] = main_alloc["risk_parity_weight"].apply("{:.2%}".format)
         main_alloc["kelly_weight"] = main_alloc["kelly_weight"].apply("{:.2%}".format)
-        
+
         f.write(main_alloc.to_markdown(index=False))
         f.write("\n\n")
-        
+
         f.write("## 8. Recommandations de Production\n\n")
         f.write("1. **Déploiement Immédiat** : Les setups ayant un Profit Factor >= 1.5 et un Sharpe > 1.0, avec un poids Kelly significatif et un rendement mensuel moyen justifiant le risque.\n")
         f.write("2. **Surveillance (Paper Trading)** : Les setups avec un Profit Factor entre 1.25 et 1.5, ou une fréquence de trade trop faible (ex: < 1 par mois).\n")
         f.write("3. **À écarter** : `bjorgum_double_tap` (sans surprise) et les runs où le drawdown absolu en devise excède la tolérance au risque.\n")
 
     print(f"Rapport markdown sauvegardé dans {DOCS_DIR}")
-    
+
     # Génération du rapport HTML interactif
     print("Génération du rapport HTML interactif...")
     generate_html_report(df, DOCS_HTML_DIR)
-    
+
     # Génération du rapport de portefeuille de déploiement immédiat
     print("Génération du rapport de portefeuille...")
     generate_portfolio_report(df, PORTFOLIO_DOCS_DIR)

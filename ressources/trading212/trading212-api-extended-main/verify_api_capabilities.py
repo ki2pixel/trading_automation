@@ -59,23 +59,23 @@ class Trading212Verifier:
         try:
             response = self._request("GET", "/equity/metadata/instruments")
             print(f"Statut HTTP : {response.status_code}")
-            
+
             # Afficher les en-têtes de limitation de taux
             self.print_rate_limits(response)
-            
+
             instruments: List[Dict[str, Any]] = response.json()
             print(f"Nombre total d'instruments renvoyés : {len(instruments)}")
-            
+
             if not instruments:
                 print("Aucun instrument disponible.")
                 return
-                
+
             # Analyser le premier instrument pour voir si des champs de prix existent
             first_inst = instruments[0]
             print(f"Structure d'un instrument exemple ({first_inst.get('ticker')}) :")
             for key, val in first_inst.items():
                 print(f"  - {key} : {val} ({type(val).__name__})")
-                
+
             # Vérifier explicitement la présence de mots clés liés aux prix
             price_keys = ["price", "currentPrice", "lastPrice", "ask", "bid", "quote"]
             found_keys = [k for k in price_keys if k in first_inst]
@@ -83,7 +83,7 @@ class Trading212Verifier:
                 print(f"⚠️ CHAMPS DE PRIX TROUVÉS : {found_keys}")
             else:
                 print("✅ Aucun champ de prix/cotation trouvé dans les métadonnées (uniquement des données de structure).")
-                
+
         except Exception as e:
             print(f"Erreur lors de l'appel : {e}")
 
@@ -96,10 +96,10 @@ class Trading212Verifier:
             "/equity/ticker",
             "/equity/metadata/prices"
         ]
-        
+
         # On teste avec un ticker connu (SAP SE sur Xetra)
         params = {"ticker": "SAP_GY_EQ"}
-        
+
         for endpoint in endpoints_to_test:
             print(f"Appel de {endpoint} ...")
             try:
@@ -122,13 +122,13 @@ class Trading212Verifier:
             response = self._request("GET", f"/equity/positions?ticker={ticker}")
             print(f"Statut HTTP : {response.status_code}")
             self.print_rate_limits(response)
-            
+
             try:
                 data = response.json()
                 print(f"Réponse JSON reçue : {data}")
             except ValueError:
                 print(f"Réponse brute (non-JSON) : {response.text}")
-                
+
         except requests.exceptions.HTTPError as e:
             print(f"Erreur HTTP : {e}")
         except Exception as e:
@@ -173,9 +173,9 @@ def main() -> None:
     print("==========================================================")
     print("VÉRIFICATION DES CAPACITÉS DE COTATION DIRECTE - TRADING 212")
     print("==========================================================")
-    
+
     verifier = Trading212Verifier(api_key_id=api_key_id, api_secret=api_secret)
-    
+
     verifier.check_instruments_metadata()
     verifier.check_undocumented_price_endpoints()
     verifier.check_position_without_owning()

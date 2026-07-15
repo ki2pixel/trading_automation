@@ -57,7 +57,7 @@ class TestConvergenceStatus(unittest.TestCase):
         )
 
         self.assertGreater(len(received_progresses), 0)
-        
+
         for progress in received_progresses:
             self.assertIsNotNone(progress.convergence_status)
             self.assertIn("iterations_since_improvement", progress.convergence_status)
@@ -67,7 +67,7 @@ class TestConvergenceStatus(unittest.TestCase):
             self.assertEqual(progress.convergence_status["patience"], 10)
             self.assertIn("best_score", progress.convergence_status)
             self.assertIn("current_window_size", progress.convergence_status)
-            
+
             # Print for confirmation
             print(f"Iteration {progress.current_iteration}: convergenceStatus = {progress.convergence_status}")
 

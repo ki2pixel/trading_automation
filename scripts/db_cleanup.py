@@ -9,11 +9,11 @@ from backtest_engine.live.paper_trading.db_setup import SEED_CONFIGS
 
 def clean_database():
     print("Starting database cleanup...")
-    
+
     # 0. Get authorized tickers from db_setup and normalize to lowercase
     authorized_tickers = list(set(config["asset"].lower() for config in SEED_CONFIGS))
     print(f"Authorized tickers (total {len(authorized_tickers)}): {sorted(authorized_tickers)}")
-    
+
     # 1. PostgreSQL Cleanup
     tickers_to_clean = []
     try:
@@ -22,16 +22,16 @@ def clean_database():
                 # Find tickers in database
                 cur.execute("SELECT DISTINCT ticker FROM live_prices;")
                 db_tickers = [row[0].lower() for row in cur.fetchall()]
-                
+
                 cur.execute("SELECT DISTINCT ticker FROM live_candles_1m;")
                 candle_tickers = [row[0].lower() for row in cur.fetchall()]
-                
+
                 all_db_tickers = list(set(db_tickers + candle_tickers))
                 print(f"Tickers currently in PostgreSQL: {all_db_tickers}")
-                
+
                 tickers_to_clean = [t for t in all_db_tickers if t not in authorized_tickers]
                 print(f"Obsolete tickers to clean in PostgreSQL: {tickers_to_clean}")
-                
+
                 if tickers_to_clean:
                     # Delete from live_prices
                     cur.execute(
@@ -39,14 +39,14 @@ def clean_database():
                         (tickers_to_clean,)
                     )
                     prices_deleted = cur.rowcount
-                    
+
                     # Delete from live_candles_1m
                     cur.execute(
                         "DELETE FROM live_candles_1m WHERE LOWER(ticker) = ANY(%s);",
                         (tickers_to_clean,)
                     )
                     candles_deleted = cur.rowcount
-                    
+
                     conn.commit()
                     print(f"[PostgreSQL] Successfully deleted {prices_deleted} rows from live_prices.")
                     print(f"[PostgreSQL] Successfully deleted {candles_deleted} rows from live_candles_1m.")
@@ -63,7 +63,7 @@ def clean_database():
             # Fetch all price keys
             redis_keys = redis_client.keys("price:*")
             print(f"Price keys currently in Redis: {redis_keys}")
-            
+
             deleted_keys_count = 0
             for k in redis_keys:
                 k_str = k.decode("utf-8") if isinstance(k, bytes) else k
@@ -85,13 +85,13 @@ def clean_database():
             with conn.cursor() as cur:
                 cur.execute("SELECT ticker FROM live_prices ORDER BY ticker;")
                 remaining_prices = [row[0].lower() for row in cur.fetchall()]
-                
+
                 cur.execute("SELECT DISTINCT ticker FROM live_candles_1m ORDER BY ticker;")
                 remaining_candles = [row[0].lower() for row in cur.fetchall()]
-                
+
                 print(f"Remaining tickers in live_prices (total {len(remaining_prices)}): {remaining_prices}")
                 print(f"Remaining tickers in live_candles_1m (total {len(remaining_candles)}): {remaining_candles}")
-                
+
                 # Check for any remaining unauthorized tickers
                 unauthorized_remaining = [t for t in (remaining_prices + remaining_candles) if t not in authorized_tickers]
                 if not unauthorized_remaining:

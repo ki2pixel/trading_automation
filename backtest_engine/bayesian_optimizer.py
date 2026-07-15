@@ -678,7 +678,7 @@ def _suggest_parameters(
                     step_dec = Decimal(str(step))
                     n_steps = int((high_dec - low_dec) / step_dec)
                     high = float(low_dec + n_steps * step_dec)
-                
+
                 if strategy == "noise_boundary_intraday":
                     if name == "volatility_multiplier_exit" and "volatility_multiplier_enter" in params:
                         enter_val = float(params["volatility_multiplier_enter"])
@@ -1021,14 +1021,14 @@ def run_bayesian_optimization(
     else:
         sampler_obj = optuna.samplers.TPESampler(seed=seed, multivariate=True, constant_liar=True)
     logger.info(f"Optuna sampler: {effective_sampler} ({type(sampler_obj).__name__})")
-    
+
     # Remove obsolete storage file if it exists from previous runs
     storage_path = output_root / "bayes_opt_journal.log"
     if storage_path.exists():
         storage_path.unlink()
-        
+
     study_name = f"{strategy}_{symbol}_{minutes}m_{score_metric}"
-    
+
     study = optuna.create_study(
         study_name=study_name,
         storage=None,
@@ -1109,7 +1109,7 @@ def run_bayesian_optimization(
     try:
         # Drop symbol column to avoid object serialization overhead in shared memory
         data = data.drop(columns=["symbol"], errors="ignore")
-        
+
         # Pre-allocate historical data in POSIX zero-copy memory
         shm_metadata, data_shm_objs = share_dataframe(data)
         shm_objects.extend(data_shm_objs)
@@ -1154,16 +1154,16 @@ def run_bayesian_optimization(
                 )
                 handle_row(row, is_eligible, is_skipped, iteration)
                 score = row.get("score")
-                
+
                 if secondary_score_metric:
                     sec_score = row.get("metrics", {}).get(secondary_score_metric)
-                    optuna_val = (float(score) if score is not None else _ineligible_sentinel[0], 
+                    optuna_val = (float(score) if score is not None else _ineligible_sentinel[0],
                                   float(sec_score) if sec_score is not None else _ineligible_sentinel[1])
                 else:
                     optuna_val = float(score) if score is not None else _ineligible_sentinel
- 
+
                 study.tell(trial, optuna_val)
- 
+
                 # Check convergence for early stopping
                 if convergence_tracker is not None:
                     should_stop, stop_reason = convergence_tracker.update(score)
@@ -1229,7 +1229,7 @@ def run_bayesian_optimization(
                         break
 
                     done, _ = wait(futures_map.keys(), return_when=FIRST_COMPLETED)
-                    
+
                     for future in done:
                         trial = futures_map.pop(future)
                         completed_count += 1
@@ -1240,7 +1240,7 @@ def run_bayesian_optimization(
 
                             if secondary_score_metric:
                                 sec_score = row.get("metrics", {}).get(secondary_score_metric)
-                                optuna_val = (float(score) if score is not None else _ineligible_sentinel[0], 
+                                optuna_val = (float(score) if score is not None else _ineligible_sentinel[0],
                                               float(sec_score) if sec_score is not None else _ineligible_sentinel[1])
                             else:
                                 optuna_val = float(score) if score is not None else _ineligible_sentinel
@@ -1282,7 +1282,7 @@ def run_bayesian_optimization(
                 shm_obj.unlink()
             except Exception:  # NOSONAR
                 pass
-        
+
         # Reset local parent context
         from .shm_allocators import reset_shared_memory_for_strategy
         reset_shared_memory_for_strategy(strategy)
@@ -1318,7 +1318,7 @@ def run_bayesian_optimization(
             best_run_dir = write_backtest_outputs(best_result, output_dir / "best_run")
             best_row["best_backtest_dir"] = str(best_run_dir)
             _json_dump(output_dir / "best.json", best_row)
-            
+
     if secondary_score_metric:
         try:
             pareto_trials = study.best_trials

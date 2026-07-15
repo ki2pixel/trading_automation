@@ -11,35 +11,35 @@ class TestNoiseBoundary(unittest.TestCase):
         for d in dates:
             for h in range(9, 16):
                 intraday_indices.append(d + pd.Timedelta(hours=h))
-        
+
         df = pd.DataFrame(index=intraday_indices)
         df["close"] = 100 * np.power(1.01, (df.index.day - 1))
         df["open"] = df["close"] * 0.99 # Mock open
-        
+
         # Lookback 5 days
         lookback = 5
         multiplier_enter = 2.0
         multiplier_exit = 1.0
-        
+
         results = compute_noise_boundary(df, lookback, multiplier_enter, multiplier_exit)
-        
+
         # Check that results has same index
         self.assertEqual(len(results), len(df))
         self.assertTrue(results.index.equals(df.index))
-        
+
         # Check that we have NaN for the first few days (lookback_days - 1 + 1 for shift)
         # Since we use sigma_open with min_periods = lookback_days - 1 (4), and shift by 1,
         # the first 4 days are NaN.
         # 7 bars per day. First 4 days = 28 bars should have NaNs in daily_volatility
         nan_bars = 4 * 7
         self.assertTrue(results["daily_volatility"].iloc[:nan_bars].isna().all())
-        
+
         # Check that daily_open is correct (anchored to first bar of day)
         sample_day = dates[10].date()
         day_results = results[results.index.date == sample_day]
         self.assertEqual(len(day_results["daily_open"].unique()), 1)
         self.assertEqual(day_results["daily_open"].iloc[0], df[df.index.date == sample_day]["open"].iloc[0])
-        
+
         # Check bands calculation
         vol = day_results["daily_volatility"].iloc[0]
         opened = day_results["daily_open"].iloc[0]
@@ -63,13 +63,13 @@ class TestNoiseBoundary(unittest.TestCase):
         df = pd.DataFrame(index=indices)
         df["open"] = 100.0
         df["close"] = 100.0 + np.tile(np.arange(10), 10)
-        
+
         results = compute_noise_boundary(df, lookback_days=3, multiplier_enter=2.0, multiplier_exit=1.0)
-        
+
         # Take a day that is fully calculated (e.g. Day 6)
         day_results = results[results.index.date == dates[5].date()]
         vols = day_results["daily_volatility"]
-        
+
         # Verify vols is strictly increasing during the day
         self.assertTrue((vols.diff().dropna() > 0).all())
         # First minute volatility should be 0 because close_0 == open_0
@@ -89,14 +89,14 @@ class TestNoiseBoundary(unittest.TestCase):
         df = pd.DataFrame(index=indices)
         df["open"] = 100.0
         df["close"] = 100.0
-        
+
         # Set Day 4 to have an open of 110
         day4_indices = df.index.date == dates[3].date()
         df.loc[day4_indices, "open"] = 110.0
         df.loc[day4_indices, "close"] = 110.0
-        
+
         results = compute_noise_boundary(df, lookback_days=2, multiplier_enter=1.0, multiplier_exit=0.5)
-        
+
         # Check Day 4 results
         day4_results = results[results.index.date == dates[3].date()]
         # prev_day_close should be 100.0 (Day 3 close)
@@ -110,7 +110,7 @@ class TestNoiseBoundary(unittest.TestCase):
 
     def test_vwap_entry_filter(self):
         from backtest_engine.strategies.noise_boundary_intraday import run_noise_boundary_intraday, NoiseBoundaryConfigOverrides
-        
+
         # Create a 10 day dataset to have valid volatilities
         dates = pd.date_range("2026-05-01", periods=10, freq="D")
         indices = []
@@ -123,25 +123,25 @@ class TestNoiseBoundary(unittest.TestCase):
         df["low"] = 99.9
         df["close"] = 100.0
         df["volume"] = 1000.0
-        
+
         # On the last day:
         # Bar 0 (09:30): open=110, high=110, low=110, close=110, volume=1000000
         # Bar 1 (09:31): open=100, high=105, low=100, close=105, volume=1
         last_day_indices = df.index.date == dates[-1].date()
         last_day_locs = np.where(last_day_indices)[0]
-        
+
         df.iloc[last_day_locs[0], df.columns.get_loc("open")] = 110.0
         df.iloc[last_day_locs[0], df.columns.get_loc("high")] = 110.0
         df.iloc[last_day_locs[0], df.columns.get_loc("low")] = 110.0
         df.iloc[last_day_locs[0], df.columns.get_loc("close")] = 110.0
         df.iloc[last_day_locs[0], df.columns.get_loc("volume")] = 1000000.0
-        
+
         df.iloc[last_day_locs[1], df.columns.get_loc("open")] = 100.0
         df.iloc[last_day_locs[1], df.columns.get_loc("high")] = 105.0
         df.iloc[last_day_locs[1], df.columns.get_loc("low")] = 100.0
         df.iloc[last_day_locs[1], df.columns.get_loc("close")] = 105.0
         df.iloc[last_day_locs[1], df.columns.get_loc("volume")] = 1.0
-        
+
         overrides = NoiseBoundaryConfigOverrides(
             lookback_days=5,
             target_daily_volatility=0.01,
@@ -149,7 +149,7 @@ class TestNoiseBoundary(unittest.TestCase):
             start_trade_after_open_minutes=0,
             exit_trades_before_close_minutes=0,
         )
-        
+
         res = run_noise_boundary_intraday(df, "MOCK", overrides, initial_capital=1000.0)
         # Price (105) is above upper_enter (around 100), but below VWAP (around 110)
         # So no long order should be entered!

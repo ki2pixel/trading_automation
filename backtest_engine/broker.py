@@ -192,24 +192,24 @@ class LadderExitRule(ExitRule):
         if position.is_flat:
             self.executed_steps.clear()
             return None
-        
+
         avg_price = position.average_price
         if pd.isna(avg_price) or avg_price == 0:
             return None
-        
+
         price = bar.get("close", 0.0)
         side_mult = 1.0 if position.signed_quantity > 0 else -1.0
         pct_change = (price - avg_price) / avg_price * side_mult
-        
+
         for i, (threshold, qty_pct) in enumerate(self.steps):
             if i in self.executed_steps:
                 continue
-            
+
             if (threshold < 0 and pct_change <= threshold) or (threshold > 0 and pct_change >= threshold):
                 self.executed_steps.add(i)
                 qty = abs(position.signed_quantity) * qty_pct
                 return ExitAction("partial", qty, f"Ladder Step {i+1}", "LadderExitRule")
-                
+
         return None
 
 class SequentialLadderExitRule(ExitRule):
@@ -225,15 +225,15 @@ class SequentialLadderExitRule(ExitRule):
         if position.is_flat:
             self.current_step = 0
             return None
-        
+
         avg_price = position.average_price
         if pd.isna(avg_price) or avg_price == 0:
             return None
-        
+
         price = bar.get("close", 0.0)
         side_mult = 1.0 if position.signed_quantity > 0 else -1.0
         pct_change = (price - avg_price) / avg_price * side_mult
-        
+
         if self.current_step == 0:
             if pct_change <= self.stoploss_step0:
                 return ExitAction("close", 0.0, "Ladder SL Step 0", "SequentialLadderExitRule")
@@ -246,7 +246,7 @@ class SequentialLadderExitRule(ExitRule):
                 return ExitAction("close", 0.0, "Ladder SL Step 1", "SequentialLadderExitRule")
             if self.takeprofit_step1 is not None and pct_change >= self.takeprofit_step1:
                 return ExitAction("close", 0.0, "Ladder TP Step 1", "SequentialLadderExitRule")
-                
+
         return None
 
 class NetBracketExitRule(ExitRule):
@@ -258,39 +258,39 @@ class NetBracketExitRule(ExitRule):
     def evaluate(self, bar: dict, position: Position) -> ExitAction | None:
         if position.is_flat:
             return None
-        
+
         avg_price = position.average_price
         if pd.isna(avg_price) or avg_price == 0:
             return None
-            
+
         qty = abs(position.signed_quantity)
         entry_position_value = avg_price * qty * self.broker.config.point_value
-        
+
         # Calculate dynamic exit commission
         exit_comm = self.broker.commission_for(qty, bar["close"], cost_side=position.side)
-        
+
         # Retrieve entry commission from the current trade
         entry_comm = self.broker._open_entry.remaining_commission if self.broker._open_entry else 0.0
-        
+
         # Calculate gross PnL in account currency
         fx_rate = self.broker.fx_rate(bar.get("timestamp"))
         price_account = bar.get("close", 0.0) * fx_rate
         side_mult = 1.0 if position.signed_quantity > 0 else -1.0
         gross_pnl = (price_account - avg_price) * qty * side_mult * self.broker.config.point_value
-        
+
         # Calculate net PnL (net of all commissions & slippage)
         net_pnl = gross_pnl - entry_comm - exit_comm
-        
+
         if self.tp_pct is not None and self.tp_pct > 0:
             tp_threshold = entry_position_value * self.tp_pct / 100.0
             if net_pnl >= tp_threshold:
                 return ExitAction("close", 0.0, f"Net TP reached ({self.tp_pct}%)", "NetBracketExitRule")
-                
+
         if self.sl_pct is not None and self.sl_pct > 0:
             sl_threshold = entry_position_value * self.sl_pct / 100.0
             if net_pnl <= -sl_threshold:
                 return ExitAction("close", 0.0, f"Net SL reached ({self.sl_pct}%)", "NetBracketExitRule")
-                
+
         return None
 
 class TrailingStopExitRule(ExitRule):
@@ -299,34 +299,34 @@ class TrailingStopExitRule(ExitRule):
         self.trail_profit_pct = trail_profit_pct
         self.trail_loss_pct = trail_loss_pct
         self.high_water_mark = None
-        
+
     def evaluate(self, bar: dict, position: Position) -> ExitAction | None:
         if position.is_flat:
             self.high_water_mark = None
             return None
-            
+
         avg_price = position.average_price
         if pd.isna(avg_price) or avg_price == 0:
             return None
-            
+
         price = bar.get("close", 0.0)
         side_mult = 1.0 if position.signed_quantity > 0 else -1.0
-        
+
         # Calculate current gross profit pct (simplified, ignoring commissions for trailing logic to be fast)
         current_profit_pct = (price - avg_price) / avg_price * side_mult * 100.0
-        
+
         if self.high_water_mark is None:
             if current_profit_pct >= self.trail_profit_pct:
                 self.high_water_mark = current_profit_pct
         else:
             if current_profit_pct > self.high_water_mark:
                 self.high_water_mark = current_profit_pct
-                
+
         if self.high_water_mark is not None:
             drawdown_from_peak = self.high_water_mark - current_profit_pct
             if drawdown_from_peak >= self.trail_loss_pct:
                 return ExitAction("close", 0.0, f"Trailing SL hit (DD={self.trail_loss_pct}%)", "TrailingStopExitRule")
-                
+
         return None
 
 class SafetyStopExitRule(ExitRule):
@@ -353,11 +353,11 @@ class SafetyStopExitRule(ExitRule):
         if position.is_flat:
             self.bars_in_trade = 0
             return None
-        
+
         # Check if the safety stop applies to this position direction
         is_long = position.signed_quantity > 0
         is_short = position.signed_quantity < 0
-        
+
         safety_direction_allowed = (
             self.applies_to == "Both"
             or (self.applies_to == "Long only" and is_long)
@@ -365,43 +365,43 @@ class SafetyStopExitRule(ExitRule):
         )
         if not safety_direction_allowed:
             return None
-            
+
         # Increment bars in trade count
         self.bars_in_trade += 1
-        
+
         avg_price = position.average_price
         if pd.isna(avg_price) or avg_price == 0:
             return None
-            
+
         qty = abs(position.signed_quantity)
-        
+
         # Calculate loss trigger
         safety_loss_triggered = False
         if self.mode in ("Net loss only", "Net loss OR max bars", "Net loss AND max bars"):
             entry_position_value = avg_price * qty * self.broker.config.point_value
             exit_comm = self.broker.commission_for(qty, bar["close"], cost_side=position.side)
             entry_comm = self.broker._open_entry.remaining_commission if self.broker._open_entry else 0.0
-            
+
             fx_rate = self.broker.fx_rate(bar.get("timestamp"))
             price_account = bar.get("close", 0.0) * fx_rate
             side_mult = 1.0 if position.signed_quantity > 0 else -1.0
             gross_pnl = (price_account - avg_price) * qty * side_mult * self.broker.config.point_value
             net_pnl = gross_pnl - entry_comm - exit_comm
-            
+
             if self.max_loss_mode == "Cash amount":
                 threshold = float(self.max_loss_cash) if self.max_loss_cash is not None else 0.0
             else:
                 threshold = entry_position_value * (self.max_loss_pct if self.max_loss_pct is not None else 0.0) / 100.0
-                
+
             if threshold > 0 and net_pnl <= -threshold:
                 safety_loss_triggered = True
-                
+
         # Check bars trigger
         safety_bars_triggered = False
         if self.mode in ("Max bars only", "Net loss OR max bars", "Net loss AND max bars"):
             if self.max_bars > 0 and self.bars_in_trade >= self.max_bars:
                 safety_bars_triggered = True
-                
+
         # Combine triggers based on mode
         safety_stop_triggered = False
         if self.mode == "Net loss only":
@@ -412,10 +412,10 @@ class SafetyStopExitRule(ExitRule):
             safety_stop_triggered = safety_loss_triggered or safety_bars_triggered
         elif self.mode == "Net loss AND max bars":
             safety_stop_triggered = safety_loss_triggered and safety_bars_triggered
-            
+
         if safety_stop_triggered:
             return ExitAction("close", 0.0, f"Safety Stop triggered ({self.mode})", "SafetyStopExitRule")
-            
+
         return None
 
 class ExitOrchestrator:
@@ -430,11 +430,11 @@ class ExitOrchestrator:
                 actions.append(action)
         if not actions:
             return None
-        
+
         close_actions = [a for a in actions if a.type == "close"]
         if close_actions:
             return close_actions[0]
-        
+
         actions.sort(key=lambda a: a.quantity, reverse=True)
         return actions[0]
 
@@ -495,19 +495,19 @@ class BrokerSimulator:
             else:
                 if bars_for_vol is None or len(bars_for_vol) < 2:
                     return 1.0
-                
+
                 # Optimization: avoid computing pct_change on the entire history.
                 # We only need the tail of size (lookback + 2) to get the tail returns.
                 lookback = self.config.volatility_lookback_days
                 tail_bars = bars_for_vol['close'].iloc[-(lookback + 2):]
                 returns = tail_bars.pct_change().dropna()
-                
+
                 if len(returns) < 2:
                     return 1.0
                 vol = returns.tail(lookback).std()
                 if vol == 0 or pd.isna(vol):
                     return 1.0
-            
+
             size = (equity * self.config.target_daily_volatility) / (price * vol)
         else:
             size = 1.0
@@ -605,7 +605,7 @@ class BrokerSimulator:
         closing_fill_ratio = closing_qty / max(fill.quantity, 1e-12)
         allocated_exit_commission = fill.commission * closing_fill_ratio
         total_commission = allocated_entry_commission + allocated_exit_commission
-        
+
         is_partial = (previous_qty * new_qty > 0) and (abs(new_qty) < abs(previous_qty))
         self.closed_trades.append(
             ClosedTrade(

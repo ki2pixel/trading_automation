@@ -312,18 +312,18 @@ def interpret_optimization_results(
     tolerance = max(abs(best_effective) * max(0.0, float(score_tolerance_pct)), score_span * max(0.0, float(score_tolerance_pct)) * 0.25)
     tolerance_cutoff = best_effective - tolerance
     cutoff = min(quantile_cutoff, tolerance_cutoff)
-    
+
     selection_rule = "rows in top quantile or within score tolerance of best"
     candidates = completed[completed["effective_score"] >= cutoff].copy()
     if candidates.empty:
         candidates = completed.nlargest(max(1, min(10, len(completed))), "effective_score").copy()
         selection_rule = "fallback top candidates (empty standard cutoff)"
-        
+
     min_candidates = max(50, int(len(completed) * 0.05))
     if len(candidates) < min_candidates:
         candidates = completed.nlargest(min_candidates, "effective_score").copy()
         selection_rule = "minimum candidates absolute floor triggered"
-        
+
     weights = _build_weights(candidates)
 
     best_parameters = dict(best_row.get("parameters") or {})

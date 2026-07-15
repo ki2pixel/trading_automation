@@ -16,7 +16,7 @@ def test_calculate_hurst_exponent():
     random_walk = np.cumsum(np.random.normal(0, 1, 1000))
     h_rw = calculate_hurst_exponent(pd.Series(random_walk))
     assert 0.35 <= h_rw <= 0.65
-    
+
     # 2. Série fortement retour à la moyenne (Hurst < 0.5)
     # Processus autoregressif AR(1) avec coefficient négatif fort
     ar_series = [0]
@@ -24,7 +24,7 @@ def test_calculate_hurst_exponent():
         ar_series.append(-0.8 * ar_series[-1] + np.random.normal(0, 1))
     h_ar = calculate_hurst_exponent(pd.Series(ar_series))
     assert h_ar < 0.5
-    
+
     # 3. Série à tendance forte (Hurst > 0.5)
     # Cumulative sum de bruit fortement auto-corrélé positivement
     ar_series_pos = [0]
@@ -40,7 +40,7 @@ def test_calculate_adf_statistic():
     stationary = np.random.normal(0, 1, 500)
     res_stat = calculate_adf_statistic(pd.Series(stationary))
     assert res_stat["p_value"] < 0.05
-    
+
     # Série non stationnaire (marche aléatoire -> p_value élevée)
     non_stationary = np.cumsum(np.random.normal(0, 1, 500))
     res_non_stat = calculate_adf_statistic(pd.Series(non_stationary))
@@ -56,10 +56,10 @@ def test_calculate_half_life():
         prev = series[-1]
         dy = -0.3 * (prev - 100.0) + np.random.normal(0, 1)
         series.append(prev + dy)
-        
+
     half_life = calculate_half_life(pd.Series(series))
     assert 1.5 <= half_life <= 3.5
-    
+
     # Série divergente (pente positive) -> pas de retour à la moyenne
     divergent = np.cumsum(np.random.normal(1, 1, 100))
     hl_div = calculate_half_life(pd.Series(divergent))
@@ -69,7 +69,7 @@ def test_get_mahalanobis_distance():
     u = np.array([1.0, 2.0, 3.0])
     v = np.array([1.2, 1.9, 3.1])
     cov = np.eye(3) * 0.5  # Variance de 0.5 sur chaque axe
-    
+
     d_m = get_mahalanobis_distance(u, v, cov)
     assert d_m > 0
     # La distance de Mahalanobis avec une matrice de covariance diagonale d'identité mise à l'échelle
@@ -86,7 +86,7 @@ def test_calculate_adv_currency():
         "volume": [1000, 2000, 1500, 3000, 2500],
         "symbol": ["TEST"] * 5
     })
-    
+
     # Valeurs échangées quotidiennes :
     # D1 : 10.0 * 1000 = 10 000
     # D2 : 11.0 * 2000 = 22 000
@@ -104,7 +104,7 @@ def test_calculate_realized_volatility():
     for _ in range(252):
         ret = np.random.normal(0, 0.01) # Écart-type journalier de 1%
         daily_prices.append(daily_prices[-1] * np.exp(ret))
-        
+
     vol = calculate_realized_volatility(pd.Series(daily_prices))
     # Volatilité annualisée ~ 1% * sqrt(252) ~ 15.8%
     assert 0.10 <= vol <= 0.22

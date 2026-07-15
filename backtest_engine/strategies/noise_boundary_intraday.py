@@ -91,14 +91,14 @@ def compute_vwap_intraday(bars: pd.DataFrame) -> pd.Series:
     """
     if bars.empty or "volume" not in bars.columns:
         return pd.Series(index=bars.index, dtype=float)
-        
+
     typical_price = (bars["high"] + bars["low"] + bars["close"]) / 3
     pv = typical_price * bars["volume"]
-    
+
     normalized_index = bars.index.normalize()
     cum_pv = pv.groupby(normalized_index).cumsum()
     cum_vol = bars.groupby(normalized_index)["volume"].cumsum()
-    
+
     return cum_pv / cum_vol
 
 
@@ -112,19 +112,19 @@ def _get_time_features(data: pd.DataFrame) -> dict:
     key = (id(data), len(data), data.index[0] if len(data) > 0 else 0)
     if key in _TIME_CACHE:
         return _TIME_CACHE[key]
-    
+
     normalized_index = data.index.normalize()
     ts_series = pd.Series(data.index, index=data.index)
     sod_series = ts_series.groupby(normalized_index).transform("first")
     eod_series = ts_series.groupby(normalized_index).transform("last")
-    
+
     minutes_since_open_arr = ((data.index - sod_series).dt.total_seconds() / 60.0).values
     bars_since_open_arr = data.groupby(normalized_index).cumcount().values
     minutes_until_close_arr = ((eod_series - data.index).dt.total_seconds() / 60.0).values
-    
+
     vwap_series = compute_vwap_intraday(data)
     vwap_values = vwap_series.values
-    
+
     res = {
         "minutes_since_open_arr": minutes_since_open_arr,
         "bars_since_open_arr": bars_since_open_arr,
@@ -139,20 +139,20 @@ def _get_time_features(data: pd.DataFrame) -> dict:
 _NB_VOL_CACHE: dict = {}
 
 def compute_noise_boundary(
-    bars: pd.DataFrame, 
-    lookback_days: int, 
-    multiplier_enter: float, 
+    bars: pd.DataFrame,
+    lookback_days: int,
+    multiplier_enter: float,
     multiplier_exit: float,
     dividends_series: pd.Series | None = None
 ) -> pd.DataFrame:
     """
     Compute noise boundary bands based on intraday volatility curve (sigma_open)
     and anchored to daily open and previous day's close.
-    
+
     Formula:
     UB = max(Open, prev_close) * (1 + Multiplier * sigma_open)
     LB = min(Open, prev_close) * (1 - Multiplier * sigma_open)
-    
+
     sigma_open at time t is the simple rolling average over lookback_days of
     abs(close_t / Open_jour - 1) at the same time t of previous days, shifted by 1 day.
     """
@@ -162,10 +162,10 @@ def compute_noise_boundary(
     # 1. Identify Daily Open
     normalized_index = bars.index.normalize()
     daily_open = bars.groupby(normalized_index)["open"].transform("first")
-    
+
     global _SHARED_NB_VOL_GRID, _SHARED_NB_VOL_KEYS
     lookback_key = int(lookback_days)
-    
+
     # Try SHM cache
     if _SHARED_NB_VOL_GRID is not None and _SHARED_NB_VOL_KEYS is not None and lookback_key in _SHARED_NB_VOL_KEYS:
         idx = _SHARED_NB_VOL_KEYS[lookback_key]
@@ -178,30 +178,30 @@ def compute_noise_boundary(
         else:
             # 2. Compute move_open for each intraday bar
             move_open = (bars["close"] / daily_open - 1).abs()
-            
+
             # 3. Pivot move_open to align by date and time of day
             pivoted_df = pd.DataFrame({"move_open": move_open}, index=bars.index)
             pivoted_df["date"] = normalized_index
             pivoted_df["time"] = bars.index.time
-            
+
             # Pivot to have Date as Index and Time as Columns
             pivoted_matrix = pivoted_df.pivot(index="date", columns="time", values="move_open")
-            
+
             # Compute rolling mean over lookback_days along the date axis
             # Shift by 1 day to avoid look-ahead bias
             rolling_matrix = pivoted_matrix.rolling(window=lookback_days, min_periods=lookback_days - 1).mean().shift(1)
-            
+
             # Map back to intraday bars index using MultiIndex
             stacked = rolling_matrix.stack(dropna=False)
             multi_index = pd.MultiIndex.from_arrays([normalized_index, bars.index.time], names=["date", "time"])
             mapped_vol = stacked.reindex(multi_index).values
-            
+
             _NB_VOL_CACHE[cache_key] = mapped_vol
 
     # 4. Get Previous Day's Close (Overnight Gap Anchor)
     daily_close_series = bars["close"].resample("D").last().dropna()
     prev_day_close_series = daily_close_series.shift(1)
-    
+
     # Adjust for dividends if present
     if dividends_series is not None and not dividends_series.empty:
         divs_norm = dividends_series.copy()
@@ -210,10 +210,10 @@ def compute_noise_boundary(
         prev_day_close_series = prev_day_close_series - prev_day_div
 
     prev_day_close = prev_day_close_series.reindex(normalized_index).values
-    
+
     # Handle first day where prev_close is NaN by falling back to daily_open
     prev_close_filled = np.where(np.isnan(prev_day_close), daily_open, prev_day_close)
-    
+
     anchor_up = np.maximum(daily_open, prev_close_filled)
     anchor_down = np.minimum(daily_open, prev_close_filled)
 
@@ -222,12 +222,12 @@ def compute_noise_boundary(
     results["daily_volatility"] = mapped_vol
     results["daily_open"] = daily_open
     results["prev_day_close"] = prev_day_close
-    
+
     results["upper_enter"] = anchor_up * (1 + multiplier_enter * mapped_vol)
     results["lower_enter"] = anchor_down * (1 - multiplier_enter * mapped_vol)
     results["upper_exit"] = anchor_up * (1 + multiplier_exit * mapped_vol)
     results["lower_exit"] = anchor_down * (1 - multiplier_exit * mapped_vol)
-    
+
     return results
 
 
@@ -248,18 +248,18 @@ def run_noise_boundary_intraday(
     """
     overrides = overrides or NoiseBoundaryConfigOverrides()
     drawdown_limit = overrides.early_stop_drawdown_pct if overrides.early_stop_drawdown_pct is not None else early_stop_drawdown_pct
-    
+
     # 1. Indicator Calculation
     lookback = overrides.lookback_days if overrides.lookback_days is not None else 20
     m_enter = overrides.volatility_multiplier_enter if overrides.volatility_multiplier_enter is not None else 2.0
     m_exit = overrides.volatility_multiplier_exit if overrides.volatility_multiplier_exit is not None else 1.0
-    
+
     div_series = dividends_series
     if div_series is None:
         div_series = overrides.dividends_series
 
     bands = compute_noise_boundary(data, lookback, m_enter, m_exit, dividends_series=div_series)
-    
+
     # 2. Simulation Setup
     fx_rate_provider = overrides.fx_rate_provider
     asset_currency = overrides.asset_currency
@@ -295,7 +295,7 @@ def run_noise_boundary_intraday(
         max_leverage=overrides.max_leverage if overrides.max_leverage is not None else 3.0,
     )
     broker = BrokerSimulator(broker_config)
-    
+
     # 3. Strategy Parameters & Exits
     start_min = overrides.start_trade_after_open_minutes if overrides.start_trade_after_open_minutes is not None else 15
     exit_before_min = overrides.exit_trades_before_close_minutes if overrides.exit_trades_before_close_minutes is not None else 15
@@ -303,31 +303,31 @@ def run_noise_boundary_intraday(
     exit_mode = overrides.exit_mode or "time_only"
     allow_overnight = overrides.allow_overnight if overrides.allow_overnight is not None else False
     use_vwap_filter = overrides.use_vwap_filter if overrides.use_vwap_filter is not None else True
-    
+
     # Get cached time features (VWAP, minutes_since_open, etc.)
     time_features = _get_time_features(data)
     vwap_values = time_features["vwap_values"]
     minutes_since_open_arr = time_features["minutes_since_open_arr"]
     bars_since_open_arr = time_features["bars_since_open_arr"]
     minutes_until_close_arr = time_features["minutes_until_close_arr"]
-    
+
     from .noise_boundary_kernel import run_noise_boundary_kernel
-    
+
     # Parse Numba config
     direction_mode = 1 if direction == "Long & Short" else (2 if direction == "Long only" else 3)
     exit_mode_vwap = exit_mode in ("vwap", "combined") or "vwap" in exit_mode
     exit_mode_boundary = exit_mode in ("boundary", "boundary_exit", "different_exit", "combined") or "boundary" in exit_mode
     exit_mode_ladder = exit_mode in ("ladder", "combined") or "ladder" in exit_mode
-    
+
     seq_ladder = overrides.use_sequential_ladder if overrides.use_sequential_ladder is not None else True
     stoploss_step0 = overrides.stoploss_ladder_step0 if overrides.stoploss_ladder_step0 is not None else -0.008
     takeprofit_ratio0 = overrides.stoploss_ladder_ratio0 if overrides.stoploss_ladder_ratio0 is not None else 0.5
     stoploss_step1 = overrides.stoploss_ladder_step1 if overrides.stoploss_ladder_step1 is not None else -0.015
     takeprofit_step0 = overrides.takeprofit_ladder_step0 if overrides.takeprofit_ladder_step0 is not None else 0.012
     takeprofit_step1 = overrides.takeprofit_ladder_step1 if overrides.takeprofit_ladder_step1 is not None else np.nan
-    
+
     drawdown_limit = overrides.early_stop_drawdown_pct if overrides.early_stop_drawdown_pct is not None else np.nan
-    
+
     # Sizing config
     sizing_mode_str = broker_config.sizing_mode
     sizing_mode_int = 0 if sizing_mode_str == "fixed" else (1 if sizing_mode_str == "percent_of_equity" else 2)
@@ -336,7 +336,7 @@ def run_noise_boundary_intraday(
     point_value = broker_config.point_value
     quantity_precision = broker_config.quantity_precision if broker_config.quantity_precision is not None else -1
     allow_fractional_quantity = broker_config.allow_fractional_quantity
-    
+
     # Commission config
     commission_fixed = broker_config.commission_fixed
     commission_rate = broker_config.commission_rate
@@ -346,9 +346,9 @@ def run_noise_boundary_intraday(
     comm_fixed_short = broker_config.commission_fixed_short if broker_config.commission_fixed_short is not None else -1.0
     slippage_short = broker_config.slippage_per_side_short
     comm_min_short = broker_config.commission_min_short if broker_config.commission_min_short is not None else -1.0
-    
+
     # (Exit rules logic handled by kernel)
-    
+
     _dvol_cache: dict = getattr(run_noise_boundary_intraday, "_dvol_cache", {})
     if not hasattr(run_noise_boundary_intraday, "_dvol_cache"):
         run_noise_boundary_intraday._dvol_cache = _dvol_cache
@@ -375,7 +375,7 @@ def run_noise_boundary_intraday(
         spy_dvol = None
 
     # State tracking
-    
+
     # Pre-extract NumPy arrays for direct indexing (avoids to_dict("records") overhead)
     timestamps = data.index
     _open_arr = data["open"].values
@@ -385,24 +385,24 @@ def run_noise_boundary_intraday(
     _volume_arr = data["volume"].values if "volume" in data.columns else np.zeros(len(data))
     _exec_col = broker.config.execution_price_col
     _exec_arr = data[_exec_col].values if _exec_col in data.columns else _open_arr
-    
+
     _band_upper_enter = bands["upper_enter"].values
     _band_lower_enter = bands["lower_enter"].values
     _band_upper_exit = bands["upper_exit"].values
     _band_lower_exit = bands["lower_exit"].values
     _band_daily_vol = bands["daily_volatility"].values
-    
+
     # Fallback missing arrays
     if spy_dvol is None:
         spy_dvol = np.full(len(data), _band_daily_vol[0] if len(_band_daily_vol) > 0 else 0.0)
-    
+
     vol_for_sizing_arr = spy_dvol if overrides.sizing_volatility_type == "daily" else _band_daily_vol
-    
+
     trade_freq_bars = float(overrides.trade_frequency_bars if overrides.trade_frequency_bars is not None else -1)
     trade_freq_min = float(overrides.trade_frequency_minutes if overrides.trade_frequency_minutes is not None else -1)
     timing_mode_end = bool((overrides.entry_timing_mode or "evaluate_at_period_start") == "evaluate_at_period_end")
     entry_on_high_low = bool(overrides.entry_on_high_low if overrides.entry_on_high_low is not None else False)
-    
+
     # 4. Core Numba Kernel Execution
     trades_arr, state_arr = run_noise_boundary_kernel(
         # Arrays
@@ -423,16 +423,16 @@ def run_noise_boundary_intraday(
         sizing_mode_int, float(target_daily_volatility), float(max_leverage), float(point_value), 1.0, # fx_rate passed as 1.0 for simplicity unless we map a full series
         quantity_precision, allow_fractional_quantity, drawdown_limit,
         # Scalars (Commissions)
-        commission_fixed, commission_rate, 
+        commission_fixed, commission_rate,
         comm_fixed_long, slippage_long, comm_min_long,
         comm_fixed_short, slippage_short, comm_min_short
     )
-    
+
     # 5. Reconstruct outputs for metric generator
     from ..broker import ClosedTrade
     for i in range(len(trades_arr)):
         t = trades_arr[i]
-        
+
         # map exit type back to string
         comment = ""
         type_id = t["exit_type"]
@@ -446,11 +446,11 @@ def run_noise_boundary_intraday(
         elif type_id == 8: comment = "Ladder SL Step 1"
         elif type_id == 9: comment = "Ladder TP Step 1"
         elif type_id == 10: comment = f"Early Stop Drawdown Capped at limit"
-        
+
         entry_ts = timestamps[t["entry_bar"]]
         exit_ts = timestamps[t["exit_bar"]]
         side_str = "long" if t["side"] == 1 else "short"
-        
+
         trade = ClosedTrade(
             entry_time=entry_ts,
             exit_time=exit_ts,
@@ -472,8 +472,8 @@ def run_noise_boundary_intraday(
     state_df = pd.DataFrame(state_arr, index=timestamps)
     # The dataframe uses specific column names that metrics.py relies on
     state_df.index.name = "timestamp"
-    
-    trades_df = broker.closed_trades_frame()    
+
+    trades_df = broker.closed_trades_frame()
     # Calculate bars_held for each trade
     if not trades_df.empty:
         # Map entry_time and exit_time to indices
@@ -481,7 +481,7 @@ def run_noise_boundary_intraday(
         trades_df["entry_bar_idx"] = trades_df["entry_time"].map(bar_indices)
         trades_df["exit_bar_idx"] = trades_df["exit_time"].map(bar_indices)
         trades_df["bars_held"] = trades_df["exit_bar_idx"] - trades_df["entry_bar_idx"]
-    
+
     # 5. Metrics & Results
     if compute_full_metrics:
         metrics, equity_curve = compute_metrics(
@@ -500,10 +500,10 @@ def run_noise_boundary_intraday(
         metrics = {"closed_trades": len(trades_df)}
         if fast_score_metric:
             score = compute_fast_score(
-                trades_df, 
-                fast_score_metric, 
-                state=state_df, 
-                initial_capital=initial_capital, 
+                trades_df,
+                fast_score_metric,
+                state=state_df,
+                initial_capital=initial_capital,
                 timeframe_minutes=timeframe_minutes,
                 bars=data,
             )
@@ -612,8 +612,8 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
-    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
-    de bandes (lookback_days, volatility_multiplier_enter, volatility_multiplier_exit) 
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres
+    de bandes (lookback_days, volatility_multiplier_enter, volatility_multiplier_exit)
     avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
@@ -686,12 +686,12 @@ def vectorbt_prescan(
         # Precompute overnight gap anchors anchor_up & anchor_down (constant across all parameters)
         normalized_index = data.index.normalize()
         daily_open = data.groupby(normalized_index)["open"].transform("first")
-        
+
         daily_close_series = data["close"].resample("D").last().dropna()
         prev_day_close_series = daily_close_series.shift(1)
         prev_day_close = prev_day_close_series.reindex(normalized_index).values
         prev_close_filled = np.where(np.isnan(prev_day_close), daily_open, prev_day_close)
-        
+
         anchor_up = np.maximum(daily_open, prev_close_filled).values if hasattr(np.maximum(daily_open, prev_close_filled), "values") else np.maximum(daily_open, prev_close_filled)
         anchor_down = np.minimum(daily_open, prev_close_filled).values if hasattr(np.minimum(daily_open, prev_close_filled), "values") else np.minimum(daily_open, prev_close_filled)
 

@@ -49,11 +49,11 @@ def main() -> None:
     # Enregistrer les jobs
     print("Enregistrement des jobs de Passe 2 dans la file d'attente...")
     queued_count = 0
-    
+
     for symbol, params in targets.items():
         tf_str = str(params["timeframe"])
         tf_min = timeframe_to_minutes(tf_str)
-        
+
         # Grille de paramètres dynamique par actif (Passe 2)
         parameters_payload = [
             {"name": "hilbert_smooth_period", "kind": "choice", "values": [params["hilbert_smooth_period"]]},
@@ -75,10 +75,10 @@ def main() -> None:
             optimization_mode="grid"
         )
         canonical_iterations = grid_validation["canonical_iterations"]
-        
+
         # Fidélité aux archives de la Passe 2 : n_trials = 1000 même pour une petite grille
-        bayesian_max_iterations = 1000 
-        
+        bayesian_max_iterations = 1000
+
         request_payload = {
             "strategy": "cybernetic_hilbert",
             "symbol": symbol,
@@ -116,7 +116,7 @@ def main() -> None:
                 "rawIterations": raw_iterations
             }
         )
-        
+
         store.add(job)
         queued_count += 1
         print(f"File d'attente -> {symbol} {tf_str} (Grid Size: {canonical_iterations})")

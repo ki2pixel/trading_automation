@@ -157,7 +157,7 @@ class TestPrescan:
     """Verify VectorBT prescan registration."""
 
     STRATEGIES_WITH_PRESCAN = ["hma_crossover", "pmax_explorer", "adaptive_volatility_trend",
-                                "range_filter", "3commas_bot", "bjorgum_double_tap", "noise_boundary_intraday", 
+                                "range_filter", "3commas_bot", "bjorgum_double_tap", "noise_boundary_intraday",
                                 "cybernetic_hilbert", "smart_trader_geometric", "trend_type", "msl_trend",
                                 "adaptive_trend_classification", "pivot_retest", "momentum_based_zigzag",
                                 "hmm_regime_filter", "lorentzian_classification"]

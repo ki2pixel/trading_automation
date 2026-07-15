@@ -161,12 +161,12 @@ def run_bjorgum_double_tap(
 
     bars = _to_strategy_ohlcv(data)
     state, trades = module.run_bjorgum_double_tap_strategy(
-        bars, 
+        bars,
         config,
         early_stop_drawdown_pct=overrides.early_stop_drawdown_pct if overrides else None,
         compute_full_metrics=compute_full_metrics,
     )
-    
+
     if compute_full_metrics:
         metrics, equity_curve = compute_metrics(
             MetricsInput(
@@ -184,10 +184,10 @@ def run_bjorgum_double_tap(
         metrics = {"closed_trades": len(trades)}
         if fast_score_metric:
             score = compute_fast_score(
-                trades, 
-                fast_score_metric, 
-                state=state, 
-                initial_capital=initial_capital, 
+                trades,
+                fast_score_metric,
+                state=state,
+                initial_capital=initial_capital,
                 timeframe_minutes=timeframe_minutes,
                 bars=bars,
             )

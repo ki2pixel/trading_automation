@@ -42,7 +42,7 @@ def calculate_bayesian_iterations(canonical_iterations: int) -> int:
 
 def main() -> None:
     print(f"Initialisation de la Passe 2 (Filtres) d'Adaptive Volatility Trend pour les 5 configurations qualifiées...")
-    
+
     # Définition des paramètres de filtres à optimiser (Passe 2)
     parameters_payload = [
         {"name": "use_rsi_filter", "kind": "choice", "values": [True, False]},
@@ -79,7 +79,7 @@ def main() -> None:
     queued_count = 0
     for symbol, tf_str, length, atr_len, atr_mult in TARGET_CONFIGS:
         tf_min = timeframe_to_minutes(tf_str)
-        
+
         # Paramètres bloqués de Passe 1 spécifiques à cet actif
         fixed_overrides = {
             "use_safety_stop": False,
@@ -87,7 +87,7 @@ def main() -> None:
             "atr_len": int(atr_len),
             "atr_mult": float(atr_mult)
         }
-        
+
         # Payload de requête
         request_payload = {
             "strategy": "adaptive_volatility_trend",
@@ -126,7 +126,7 @@ def main() -> None:
                 "rawIterations": raw_iterations
             }
         )
-        
+
         store.add(job)
         queued_count += 1
         print(f"  -> Job enfilé pour {symbol} {tf_str} (Core bloqué: length={length}, atr_len={atr_len}, atr_mult={atr_mult})")

@@ -60,10 +60,10 @@ class Trading212PriceIngestor(BasePriceIngestor):
         except Exception as e:
             print(f"[PriceIngestor] Error fetching positions: {e}")
             return self.read_cache()
-            
+
         # Translation map: Internal T212 API tickers -> User's frontend/warmup tickers
         TICKER_TRANSLATION = {v: k for k, v in T212_STATIC_MAPPING.items()}
-            
+
         prices: Dict[str, float] = {}
         for pos in positions:
             raw_ticker = pos.get("instrument", {}).get("ticker")
@@ -71,25 +71,25 @@ class Trading212PriceIngestor(BasePriceIngestor):
                 print(f"[PriceIngestor] Ignoring unauthorized raw ticker: {raw_ticker}")
                 continue
             ticker = TICKER_TRANSLATION[raw_ticker]
-            
+
             # Extract price. API can return currentPrice or price depending on schema.
             # Fallback values from position schema: currentPrice, averagePricePaid, etc.
             price = pos.get("currentPrice")
             if price is None:
                 price = pos.get("price")
-                
+
             if price is not None:
                 try:
                     prices[ticker] = float(price)
                 except (ValueError, TypeError):
                     pass
-                    
+
         if prices:
             self._write_cache(prices)
             print(f"[PriceIngestor] Successfully ingested and cached {len(prices)} prices.")
         else:
             print("[PriceIngestor] No pricing data found in positions.")
-            
+
         return prices
 
     def _write_cache(self, prices: Dict[str, float]) -> None:
@@ -135,21 +135,21 @@ class Trading212PriceIngestor(BasePriceIngestor):
                                 ON CONFLICT (ticker)
                                 DO UPDATE SET price = EXCLUDED.price, source = 'trading212', updated_at = CURRENT_TIMESTAMP;
                             """, (normalized_ticker, price))
-                            
+
                             # UPSERT for 1m continuous pseudo-candles
                             cur.execute("""
                                 INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
                                 VALUES (%s, date_trunc('minute', CURRENT_TIMESTAMP), %s, %s, %s, %s)
                                 ON CONFLICT (ticker, timestamp_minute)
-                                DO UPDATE SET 
+                                DO UPDATE SET
                                     high = GREATEST(live_candles_1m.high, EXCLUDED.high),
                                     low = LEAST(live_candles_1m.low, EXCLUDED.low),
                                     close = EXCLUDED.close;
                             """, (normalized_ticker, price, price, price, price))
-                            
+
                         # Auto-cleanup: keep only last 7 days
                         cur.execute("DELETE FROM live_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '7 days'")
-                        
+
                         conn.commit()
                     print(f"[PriceIngestor] Successfully updated {len(prices)} prices and 1m candles in PostgreSQL.")
             except RuntimeError as re:
@@ -194,7 +194,7 @@ class Trading212PriceIngestor(BasePriceIngestor):
                 self.poll_and_cache()
             except Exception as e:
                 print(f"[PriceIngestor] Unexpected error in polling loop: {e}")
-            
+
             # Sleep in 1-second increments to respond to signals quickly
             for _ in range(interval_seconds):
                 if not self._running:
@@ -213,7 +213,7 @@ class Trading212PriceIngestor(BasePriceIngestor):
                 await asyncio.to_thread(self.poll_and_cache)
             except Exception as e:
                 print(f"[PriceIngestor] Unexpected error in async polling loop: {e}")
-            
+
             for _ in range(interval_seconds):
                 if not self._running:
                     break
@@ -224,10 +224,10 @@ class Trading212PriceIngestor(BasePriceIngestor):
 if __name__ == "__main__":
     # Executable entry point for manual validation
     from backtest_engine.live.trading212.config import Trading212Config
-    
+
     config = Trading212Config()
     client = Trading212Client(config)
     ingestor = Trading212PriceIngestor(client)
-    
+
     # Run a single poll or start loop based on arguments/default
     ingestor.poll_and_cache()

@@ -26,21 +26,21 @@ def main():
     for symbol in os.listdir(base_dir):
         sym_dir = os.path.join(base_dir, symbol)
         if not os.path.isdir(sym_dir): continue
-        
+
         results[symbol] = []
-        
+
         for run in os.listdir(sym_dir):
             run_dir = os.path.join(sym_dir, run)
             if not os.path.isdir(run_dir): continue
-            
+
             summary_path = os.path.join(run_dir, "summary.json")
             config_path = os.path.join(run_dir, "optimization_config.json")
             rec_path = os.path.join(run_dir, "recommendations.json")
-            
+
             eligible = 0
             tf = "Unknown"
             best_score = None
-            
+
             # Read summary for eligible iterations
             if os.path.exists(summary_path):
                 try:
@@ -49,7 +49,7 @@ def main():
                         eligible = data.get("eligible_iterations", 0)
                 except Exception:
                     pass
-                    
+
             # Read config for timeframe
             if os.path.exists(config_path):
                 try:
@@ -61,7 +61,7 @@ def main():
                             tf = ",".join(cdata["timeframes"])
                 except Exception:
                     pass
-                    
+
             # Read recommendations for best score if eligible > 0
             if eligible > 0 and os.path.exists(rec_path):
                 try:
@@ -84,7 +84,7 @@ def main():
     print(f"Analyse des rapports dans : {base_dir}")
     print("\nSymbol     | Timeframe | Eligible Iterations | Best Score")
     print("-" * 65)
-    
+
     total_eligible = 0
     for sym, runs in sorted(results.items()):
         # Sort runs by timeframe string
@@ -92,7 +92,7 @@ def main():
             score_str = f"{r['best_score']:.4f}" if r['best_score'] is not None else "N/A"
             print(f"{sym:<10} | {r['tf']:<9} | {r['eligible']:<19} | {score_str}")
             total_eligible += r['eligible']
-            
+
     print("-" * 65)
     print(f"Total des itérations éligibles sur l'ensemble : {total_eligible}")
 

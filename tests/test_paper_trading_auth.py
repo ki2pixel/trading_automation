@@ -86,7 +86,7 @@ def test_login_logout_flow_and_authenticated_access():
     response = client.post("/api/login", json={"username": "test_user", "password": "test_password"})
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    
+
     # Verify cookie was set
     assert "paper_trader_session" in response.cookies
     session_cookie = response.cookies["paper_trader_session"]
@@ -108,7 +108,7 @@ def test_login_logout_flow_and_authenticated_access():
     response = client.post("/api/logout", follow_redirects=False)
     assert response.status_code == 307
     assert response.headers["Location"] == "/login.html"
-    
+
     # Cookie should be deleted/expired in response headers
     cookie_headers = response.headers.get("set-cookie", "")
     assert "paper_trader_session=;" in cookie_headers or 'Max-Age=0' in cookie_headers or 'expires=Thursday, 01-Jan-1970 00:00:00 GMT' in cookie_headers

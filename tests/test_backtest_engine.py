@@ -1037,32 +1037,32 @@ class OptimizerTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            
+
             # 1. Test CLI with no arguments - should fallback to custom config values 0.6 and 0.2
             parser = build_parser()
             args = parser.parse_args(["interpret-optimization", "--job-dir", str(job_dir)])
             self.assertIsNone(args.top_quantile)
             self.assertIsNone(args.score_tolerance_pct)
-            
+
             output = io.StringIO()
             with redirect_stdout(output):
                 exit_code = cmd_interpret_optimization(args)
             self.assertEqual(exit_code, 0)
-            
+
             report = json.loads((job_dir / "recommendations.json").read_text(encoding="utf-8"))
             self.assertEqual(report["selection_settings"]["top_quantile"], 0.6)
             self.assertEqual(report["selection_settings"]["score_tolerance_pct"], 0.2)
-            
+
             # 2. Test CLI with explicit arguments - should override config
             args_override = parser.parse_args(["interpret-optimization", "--job-dir", str(job_dir), "--top-quantile", "0.8", "--score-tolerance-pct", "0.05"])
             self.assertEqual(args_override.top_quantile, 0.8)
             self.assertEqual(args_override.score_tolerance_pct, 0.05)
-            
+
             output_override = io.StringIO()
             with redirect_stdout(output_override):
                 exit_code_override = cmd_interpret_optimization(args_override)
             self.assertEqual(exit_code_override, 0)
-            
+
             report_override = json.loads((job_dir / "recommendations.json").read_text(encoding="utf-8"))
             self.assertEqual(report_override["selection_settings"]["top_quantile"], 0.8)
             self.assertEqual(report_override["selection_settings"]["score_tolerance_pct"], 0.05)
@@ -1372,24 +1372,24 @@ class BackendSecurityTests(unittest.TestCase):
     def test_fastapi_bulk_delete_jobs_succeeds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp).resolve()
-            
+
             # Setup job 1: finished with valid output directory
             output_dir_1 = repo_root / "reports" / "local_optimizer" / "20260522T231608Z-job1"
             output_dir_1.mkdir(parents=True)
             (output_dir_1 / "results.parquet").write_bytes(b"dummy1")
-            
+
             # Setup job 2: failed with valid output directory
             output_dir_2 = repo_root / "reports" / "local_optimizer" / "20260522T231608Z-job2"
             output_dir_2.mkdir(parents=True)
             (output_dir_2 / "results.parquet").write_bytes(b"dummy2")
-            
+
             # Setup job 3: no output directory, status cancelled
-            
+
             store = OptimizerJobStore(ttl_seconds=None, storage_path=repo_root / "jobs.sqlite3")
             store.add(OptimizerJob(id="job1", created_at=1.0, request={}, status="FINISHED", output_dir=str(output_dir_1)))
             store.add(OptimizerJob(id="job2", created_at=2.0, request={}, status="FAILED", output_dir=str(output_dir_2)))
             store.add(OptimizerJob(id="job3", created_at=3.0, request={}, status="CANCELLED", output_dir=None))
-            
+
             app = create_optimizer_app(repo_root=repo_root, store=store)
             client = TestClient(app)
 
@@ -1400,12 +1400,12 @@ class BackendSecurityTests(unittest.TestCase):
             self.assertEqual(data["deleted"], 3)
             self.assertEqual(data["skipped_active"], 0)
             self.assertEqual(data["errors"], [])
-            
+
             # Verify jobs are removed from store
             self.assertIsNone(store.get("job1"))
             self.assertIsNone(store.get("job2"))
             self.assertIsNone(store.get("job3"))
-            
+
             # Verify output directories are deleted
             self.assertFalse(output_dir_1.exists())
             self.assertFalse(output_dir_2.exists())
@@ -1413,20 +1413,20 @@ class BackendSecurityTests(unittest.TestCase):
     def test_fastapi_bulk_delete_jobs_skips_active(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp).resolve()
-            
+
             # Setup job 1: finished
             output_dir_1 = repo_root / "reports" / "local_optimizer" / "20260522T231608Z-job1"
             output_dir_1.mkdir(parents=True)
             (output_dir_1 / "results.parquet").write_bytes(b"dummy1")
-            
+
             # Setup job 2: pending (active)
             # Setup job 3: running (active)
-            
+
             store = OptimizerJobStore(ttl_seconds=None, storage_path=repo_root / "jobs.sqlite3")
             store.add(OptimizerJob(id="job1", created_at=1.0, request={}, status="FINISHED", output_dir=str(output_dir_1)))
             store.add(OptimizerJob(id="job2", created_at=2.0, request={}, status="PENDING"))
             store.add(OptimizerJob(id="job3", created_at=3.0, request={}, status="IN_PROGRESS"))
-            
+
             app = create_optimizer_app(repo_root=repo_root, store=store)
             client = TestClient(app)
 
@@ -1437,11 +1437,11 @@ class BackendSecurityTests(unittest.TestCase):
             self.assertEqual(data["deleted"], 1)
             self.assertEqual(data["skipped_active"], 2)
             self.assertEqual(data["errors"], [])
-            
+
             # Verify finished job is deleted
             self.assertIsNone(store.get("job1"))
             self.assertFalse(output_dir_1.exists())
-            
+
             # Verify active jobs are NOT deleted
             self.assertIsNotNone(store.get("job2"))
             self.assertIsNotNone(store.get("job3"))
@@ -1449,14 +1449,14 @@ class BackendSecurityTests(unittest.TestCase):
     def test_fastapi_bulk_delete_jobs_deletes_cancelled_in_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp).resolve()
-            
+
             # Setup job 1: running (active), cancel_requested is True
             # Setup job 2: pending (active), cancel_requested is False (should be skipped)
-            
+
             store = OptimizerJobStore(ttl_seconds=None, storage_path=repo_root / "jobs.sqlite3")
             store.add(OptimizerJob(id="job1", created_at=1.0, request={}, status="IN_PROGRESS", cancel_requested=True))
             store.add(OptimizerJob(id="job2", created_at=2.0, request={}, status="PENDING", cancel_requested=False))
-            
+
             app = create_optimizer_app(repo_root=repo_root, store=store)
             client = TestClient(app)
 
@@ -1467,29 +1467,29 @@ class BackendSecurityTests(unittest.TestCase):
             self.assertEqual(data["deleted"], 1)
             self.assertEqual(data["skipped_active"], 1)
             self.assertEqual(data["errors"], [])
-            
+
             # Verify job1 is deleted
             self.assertIsNone(store.get("job1"))
-            
+
             # Verify job2 is NOT deleted
             self.assertIsNotNone(store.get("job2"))
 
     def test_fastapi_bulk_delete_jobs_reports_security_errors(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp).resolve()
-            
+
             # Setup job 1: path outside repo_root
             # Setup job 2: path too shallow (<3 parts under reports parent)
             output_dir_2 = repo_root / "reports"
             # Setup job 3: missing job ID in output dir name
             output_dir_3 = repo_root / "reports" / "local_optimizer" / "timestamp-randomhex"
             output_dir_3.mkdir(parents=True)
-            
+
             store = OptimizerJobStore(ttl_seconds=None, storage_path=repo_root / "jobs.sqlite3")
             store.add(OptimizerJob(id="job1", created_at=1.0, request={}, status="FINISHED", output_dir="../outside"))
             store.add(OptimizerJob(id="job2", created_at=2.0, request={}, status="FINISHED", output_dir=str(output_dir_2)))
             store.add(OptimizerJob(id="job3", created_at=3.0, request={}, status="FINISHED", output_dir=str(output_dir_3)))
-            
+
             app = create_optimizer_app(repo_root=repo_root, store=store)
             client = TestClient(app)
 
@@ -1500,12 +1500,12 @@ class BackendSecurityTests(unittest.TestCase):
             self.assertEqual(data["deleted"], 0)
             self.assertEqual(data["skipped_active"], 0)
             self.assertEqual(len(data["errors"]), 3)
-            
+
             # Verify error messages
             self.assertTrue(any("repo_root" in err or "inside the reports directory" in err for err in data["errors"]))
             self.assertTrue(any("3 levels deep" in err for err in data["errors"]))
             self.assertTrue(any("must contain the job ID" in err for err in data["errors"]))
-            
+
             # Verify jobs are NOT deleted from store
             self.assertIsNotNone(store.get("job1"))
             self.assertIsNotNone(store.get("job2"))
@@ -1577,24 +1577,24 @@ class BackendSecurityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             storage_path = Path(tmp) / "jobs.sqlite3"
             store = OptimizerJobStore(max_jobs=10, ttl_seconds=None, storage_path=storage_path)
-            
+
             # Add two jobs in progress for different workers
             store.add(OptimizerJob(id="job-worker-1", created_at=1.0, request={}, status="PENDING"))
             store.claim_next(worker_id="worker-1")
-            
+
             store.add(OptimizerJob(id="job-worker-2", created_at=2.0, request={}, status="PENDING"))
             store.claim_next(worker_id="worker-2")
-            
+
             self.assertEqual(store.get("job-worker-1").status, "IN_PROGRESS")
             self.assertEqual(store.get("job-worker-2").status, "IN_PROGRESS")
-            
+
             # Mark worker-1 as crashed
             count = store.mark_worker_crashed(worker_id="worker-1", error_message="Worker worker-1 died!")
             self.assertEqual(count, 1)
-            
+
             self.assertEqual(store.get("job-worker-1").status, "FAILED")
             self.assertEqual(store.get("job-worker-1").error, "Worker worker-1 died!")
-            
+
             # Worker 2 should still be in progress (safe multi-worker isolation!)
             self.assertEqual(store.get("job-worker-2").status, "IN_PROGRESS")
 
@@ -1706,9 +1706,9 @@ class BackendSecurityTests(unittest.TestCase):
             repo_root = Path(tmp).resolve()
             store = OptimizerJobStore(max_jobs=10, ttl_seconds=None, storage_path=repo_root / "jobs.sqlite3")
             store.add(OptimizerJob(id="stuck", created_at=1.0, request={}, status="IN_PROGRESS"))
-            
+
             exit_code = run_optimizer_worker(repo_root=repo_root, store=store, once=True, worker_id="unit-test")
-            
+
             self.assertEqual(exit_code, 0)
             stuck = store.get("stuck")
             self.assertEqual(stuck.status, "FAILED")
@@ -1736,11 +1736,11 @@ class BackendSecurityTests(unittest.TestCase):
             output_dir = "reports/local_optimizer"
             strategy = "hma_crossover"
             strategy_dir = repo_root / output_dir / strategy
-            
+
             btc_dir = strategy_dir / "BTCUSDT"
             btc_run = btc_dir / "T20240101_120000"
             btc_run.mkdir(parents=True)
-            
+
             with open(btc_run / "recommendations.json", "w", encoding="utf-8") as f:
                 json.dump({
                     "score_metric": "sharpe_ratio",
@@ -1794,7 +1794,7 @@ class BackendSecurityTests(unittest.TestCase):
             repo_root = Path(tmp).resolve()
             strategy_dir = repo_root / "reports" / "local_optimizer" / "hma_crossover"
             strategy_dir.mkdir(parents=True)
-            
+
             pd.DataFrame({"SYMBOL": ["BTCUSDT"], "BEST_SCORE": [10.0]}).to_parquet(strategy_dir / "global_summary.parquet", engine="pyarrow")
             (strategy_dir / "global_summary.html").write_text("<html>Summary</html>", encoding="utf-8")
 
@@ -1828,7 +1828,7 @@ class BackendSecurityTests(unittest.TestCase):
             symbol_dir = repo_root / "reports" / "local_optimizer" / "hma_crossover" / "BTCUSDT"
             run_dir = symbol_dir / "T20240101_120000"
             run_dir.mkdir(parents=True)
-            
+
             with open(run_dir / "optimization_config.json", "w", encoding="utf-8") as f:
                 json.dump({"timeframe_minutes": 60}, f)
 
@@ -1858,11 +1858,11 @@ class BackendSecurityTests(unittest.TestCase):
     def test_fastapi_viewer_chart_data(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp).resolve()
-            
+
             # Setup dummy processed market data
             out = repo_root / "storage" / "processed" / "market_data_15m"
             out.mkdir(parents=True)
-            
+
             # Generate more than 20 periods to allow simple indicators (e.g. SMA/HMA of length 5)
             index = pd.date_range("2024-01-01 09:30:00", periods=40, freq="15min")
             closes = [100.0 + (i % 5) for i in range(len(index))]
@@ -1977,15 +1977,15 @@ class BacktestReportsDirTests(unittest.TestCase):
         try:
             os.environ["BACKTEST_REPORTS_DIR"] = "/mnt/custom/reports"
             repo_root = Path("/home/user/repo")
-            
+
             # Should allow path inside repo
             p1 = resolve_repo_path(repo_root, "storage/processed", "processed")
             self.assertEqual(p1, Path("/home/user/repo/storage/processed"))
-            
+
             # Should allow path inside external BACKTEST_REPORTS_DIR
             p2 = resolve_repo_path(repo_root, "/mnt/custom/reports/local_optimizer/job1", "job_dir")
             self.assertEqual(p2, Path("/mnt/custom/reports/local_optimizer/job1"))
-            
+
             # Should reject path outside both
             with self.assertRaises(ValueError):
                 resolve_repo_path(repo_root, "/var/log/syslog", "invalid")

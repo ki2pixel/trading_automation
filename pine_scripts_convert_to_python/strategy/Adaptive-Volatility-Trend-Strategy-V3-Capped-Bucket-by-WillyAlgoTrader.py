@@ -611,30 +611,30 @@ class _AVTBacktestSession:
         self.early_stop_drawdown_pct = early_stop_drawdown_pct
         self.broker = broker
         self.enriched = enriched
-        
+
         self.n = len(enriched)
         self.index = enriched.index
         self.open_arr = _as_float_series(enriched, "open").to_numpy(dtype=float)
         self.close_arr = _as_float_series(enriched, "close").to_numpy(dtype=float)
         self.long_signal_arr = enriched["avt_long_signal"].to_numpy(dtype=bool)
         self.short_signal_arr = enriched["avt_short_signal"].to_numpy(dtype=bool)
-        
+
         self.capital_bucket = _bucket_clamp(config.initial_capital_bucket, config.max_capital_bucket)
         self.withdrawn_profit = 0.0
         self.strategy_netprofit = 0.0
         self.processed_netprofit = 0.0
         self.peak_equity = float(broker.cash)
-        
+
         self.position_size = 0.0
         self.position_avg_price = np.nan
         self.entry_bar_index: Optional[int] = None
-        
+
         self.pending_target_size: Optional[float] = None
         self.pending_comment: Optional[str] = None
         self.pending_created_at = None
-        
+
         self.trades: List[Dict[str, Any]] = []
-        
+
         from collections import defaultdict
         self.records = defaultdict(list)
 

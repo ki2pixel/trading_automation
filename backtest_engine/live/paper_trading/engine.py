@@ -30,7 +30,8 @@ class PaperTradingEngine:
             config = Trading212Config()
             config.validate()
             self.t212_client = Trading212Client(config)
-            logger.info("[PaperTrader] Trading 212 API client successfully initialized.")
+            self.t212_client.get_pending_orders()
+            logger.info("[PaperTrader] Trading 212 API client successfully initialized and pending orders recovered.")
             self.t212_init_error = None
         except ValueError as e:
             logger.info(f"[PaperTrader] Trading 212 credentials not configured or invalid, running in local-only mode: {e}")
@@ -97,7 +98,7 @@ class PaperTradingEngine:
 
         try:
             from backtest_engine.live.connection import get_db_connection
-            
+
             try:
                 with get_db_connection() as conn:
                     # 1. Update NAV and active position prices

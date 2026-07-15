@@ -49,7 +49,7 @@ def main():
         "use_sequential_ladder": True,
         "entry_on_high_low": True
     }
-    
+
     overrides = noise_boundary_overrides_from_mapping(params)
 
     # Save original calculate_position_size
@@ -62,7 +62,7 @@ def main():
         return original_calculate_position_size(self, price, equity, realized_volatility=None, bars_for_vol=bars_for_vol)
 
     BrokerSimulator.calculate_position_size = mock_calculate_position_size_old
-    
+
     try:
         res_old = run_noise_boundary_intraday(
             data=df,
@@ -75,13 +75,13 @@ def main():
         metrics_old = res_old.metrics
         equity_old = res_old.equity_curve
         trades_old = res_old.trades
-        
+
         print(f"Old Mode Metrics:")
         print(f"  Sharpe Ratio: {metrics_old.get('sharpe_ratio')}")
         print(f"  CAGR: {metrics_old.get('cagr_pct')}%")
         print(f"  Max Drawdown: {metrics_old.get('max_drawdown_pct')}%")
         print(f"  Total Trades: {metrics_old.get('closed_trades')}")
-        
+
         if not trades_old.empty:
             max_size_old = trades_old["quantity"].abs().max()
             max_value_old = (trades_old["quantity"].abs() * trades_old["entry_price"]).max()
@@ -89,7 +89,7 @@ def main():
             print(f"  Max Position Value: {max_value_old:.2f} EUR (leverage: {max_value_old / 1000.0:.1f}x)")
         else:
             print("  No trades in Old Mode.")
-            
+
     except Exception as e:
         print(f"Old Mode failed: {e}")
         import traceback
@@ -112,13 +112,13 @@ def main():
         metrics_new = res_new.metrics
         equity_new = res_new.equity_curve
         trades_new = res_new.trades
-        
+
         print(f"New Mode Metrics:")
         print(f"  Sharpe Ratio: {metrics_new.get('sharpe_ratio')}")
         print(f"  CAGR: {metrics_new.get('cagr_pct')}%")
         print(f"  Max Drawdown: {metrics_new.get('max_drawdown_pct')}%")
         print(f"  Total Trades: {metrics_new.get('closed_trades')}")
-        
+
         if not trades_new.empty:
             max_size_new = trades_new["quantity"].abs().max()
             max_value_new = (trades_new["quantity"].abs() * trades_new["entry_price"]).max()
@@ -126,7 +126,7 @@ def main():
             print(f"  Max Position Value: {max_value_new:.2f} EUR (leverage: {max_value_new / 1000.0:.1f}x)")
         else:
             print("  No trades in New Mode.")
-            
+
     except Exception as e:
         print(f"New Mode failed: {e}")
         import traceback

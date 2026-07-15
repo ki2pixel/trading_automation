@@ -94,24 +94,24 @@ def is_market_open(asset: str, market_hours: dict = None, current_time: datetime
     """
     if is_crypto_asset(asset):
         return True
-        
+
     if market_hours is None:
         market_hours = get_market_hours()
-        
+
     if not market_hours or asset not in market_hours:
         return False
-        
+
     config = market_hours[asset]
     if config.get("is_crypto", False) or config.get("exchange") == "CRYPTO":
         return True
-        
+
     timezone_name = config.get("timezone")
-    
+
     if current_time is not None:
         utc_now = current_time
     else:
         utc_now = datetime.now(dt.timezone.utc)
-    
+
     local_time = None
     if timezone_name:
         try:
@@ -123,7 +123,7 @@ def is_market_open(asset: str, market_hours: dict = None, current_time: datetime
                 local_time = utc_now.astimezone(pytz.timezone(timezone_name))
             except Exception:
                 pass
-                
+
     if local_time is None:
         tz_offset_str = config.get("tz_offset", "+00:00")
         sign = 1 if tz_offset_str[0] == "+" else -1
@@ -134,12 +134,12 @@ def is_market_open(asset: str, market_hours: dict = None, current_time: datetime
             local_time = utc_now.astimezone(pytz.FixedOffset(sign * (hours_offset * 60 + mins_offset)))
         except Exception:
             local_time = utc_now
-            
+
     # Check if it's weekend (Monday = 0, Sunday = 6)
     if not config.get("is_crypto", False) and config.get("exchange") != "CRYPTO":
         if local_time.weekday() >= 5:
             return False
-            
+
     current_time_str = local_time.strftime("%H:%M")
     return config["open"] <= current_time_str <= config["close"]
 
@@ -156,9 +156,9 @@ def get_eurusd_rate(conn=None):
     Cache TTL is set to 10 minutes (600s).
     """
     global _eurusd_cache_rate, _eurusd_cache_expiry
-    
+
     current_time = time.time()
-    
+
     # 0. Check cache first
     with _eurusd_cache_lock:
         if _eurusd_cache_rate is not None and current_time < _eurusd_cache_expiry:
@@ -183,7 +183,7 @@ def get_eurusd_rate(conn=None):
         import urllib.request
         import urllib.error
         import json
-        
+
         urls = [
             "https://open.er-api.com/v6/latest/EUR",
             "https://api.exchangerate-api.com/v4/latest/EUR"

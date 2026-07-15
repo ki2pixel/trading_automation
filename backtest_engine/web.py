@@ -176,7 +176,7 @@ def resolve_repo_path(repo_root: Path, raw_path: str | Path, label: str) -> Path
     repo = repo_root.resolve()
     path = Path(raw_path)
     resolved = path.resolve(strict=False) if path.is_absolute() else (repo / path).resolve(strict=False)
-    
+
     # Allow specific external reporting paths dynamically
     reports_dir = get_reports_dir(repo)
     try:
@@ -184,7 +184,7 @@ def resolve_repo_path(repo_root: Path, raw_path: str | Path, label: str) -> Path
         return resolved
     except ValueError:
         pass
-        
+
     try:
         resolved.relative_to(repo)
     except ValueError as exc:
@@ -391,13 +391,13 @@ def _estimate_payload(payload: dict[str, Any], repo_root: Path) -> dict[str, Any
     )
     warnings = []
     is_grid = payload.get("optimization_mode", "grid") != "bayesian"
-    
+
     if is_grid:
         if total > max_iterations:
             warnings.append(f"La grille brute dépasse la limite configurée ({max_iterations})")
         if grid_validation["canonical_iterations"] > max_iterations:
             warnings.append(f"La grille canonique dépasse la limite configurée ({max_iterations})")
-            
+
     if grid_validation["skipped_iterations"]:
         warnings.append(
             f"{grid_validation['skipped_iterations']} combinaison(s) seront ignorées "
@@ -528,7 +528,7 @@ def _handle_api_delete_job(job_id, store, repo_root):
                 output_path.relative_to(reports_dir)
             except ValueError:
                 return _api_error("job output directory must be inside the reports directory", status_code=400)
-            
+
             # Check depth: must have at least 3 parts relative to reports_dir's parent
             try:
                 rel_parts = output_path.relative_to(reports_dir.parent).parts
@@ -536,7 +536,7 @@ def _handle_api_delete_job(job_id, store, repo_root):
                     return _api_error("job output directory must be at least 3 levels deep under reports directory parent", status_code=400)
             except ValueError:
                 return _api_error("job output directory must be inside the reports directory", status_code=400)
-            
+
             # Check that the job ID is contained in the name of the output directory
             # (or matches the legacy format: timestamp-uuid8)
             is_legacy_dir = bool(re.match(r"^\d{8}T\d{6}Z-[0-9a-f]{8}$", output_path.name))
@@ -602,7 +602,7 @@ def _handle_api_bulk_delete_jobs(payload, store, repo_root):
                 except ValueError:
                     errors.append(f"Job {job_id}: job output directory must be inside the reports directory")
                     continue
-                
+
                 # Check depth: must have at least 3 parts relative to reports_dir's parent
                 try:
                     rel_parts = output_path.relative_to(reports_dir.parent).parts
@@ -612,7 +612,7 @@ def _handle_api_bulk_delete_jobs(payload, store, repo_root):
                 except ValueError:
                     errors.append(f"Job {job_id}: job output directory must be inside the reports directory")
                     continue
-                
+
                 # Check that the job ID is contained in the name of the output directory
                 # (or matches the legacy format: timestamp-uuid8)
                 is_legacy_dir = bool(re.match(r"^\d{8}T\d{6}Z-[0-9a-f]{8}$", output_path.name))
@@ -769,14 +769,14 @@ def _handle_api_job_chart_data(job_id, store, repo_root, processed_dir):
         return _api_error("job not found", status_code=404)
     if not job.best or not job.best.get("best_backtest_dir"):
         return _api_error("best run not ready", status_code=404)
-        
+
     try:
         best_backtest_dir = resolve_repo_path(repo_root, str(job.best["best_backtest_dir"]), "best_backtest_dir")
         trades_parquet_path = resolve_repo_path(repo_root, best_backtest_dir / "trades.parquet", "trades.parquet")
         equity_parquet_path = resolve_repo_path(repo_root, best_backtest_dir / "equity_curve.parquet", "equity_curve.parquet")
     except Exception as exc:
         return _api_error(str(exc), status_code=400)
-        
+
     payload = job.request
     from .data import load_canonical_market_data
     try:
@@ -810,7 +810,7 @@ def _handle_api_job_chart_data(job_id, store, repo_root, processed_dir):
                 entry_ts = pd.Timestamp(row["entry_time"])
                 entry_ts = entry_ts.tz_localize("UTC") if entry_ts.tzinfo is None else entry_ts
                 side = str(row["side"]).upper()
-                
+
                 # Entry marker
                 markers.append({
                     "time": int(entry_ts.timestamp()),
@@ -819,7 +819,7 @@ def _handle_api_job_chart_data(job_id, store, repo_root, processed_dir):
                     "shape": "arrowUp" if side == "LONG" else "arrowDown",
                     "text": "Buy" if side == "LONG" else "Sell"
                 })
-                
+
                 # Exit marker
                 if "exit_time" in row and pd.notna(row["exit_time"]):
                     exit_ts = pd.Timestamp(row["exit_time"])
@@ -834,7 +834,7 @@ def _handle_api_job_chart_data(job_id, store, repo_root, processed_dir):
                     })
         except Exception:
             pass
-            
+
     equity = []
     if equity_parquet_path.exists():
         try:
@@ -915,10 +915,10 @@ def create_optimizer_app(
             )
         correlation_id = str(uuid4())
         logger.exception(f"Unhandled exception occurred. Reference: {correlation_id} | Path: {request.url.path}")
-        
+
         is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
         is_debug = os.getenv("DEBUG", "false").lower() == "true"
-        
+
         if is_prod and not is_debug:
             return JSONResponse(
                 status_code=500,

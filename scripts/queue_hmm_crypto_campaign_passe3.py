@@ -22,10 +22,10 @@ from backtest_engine.optimizer import estimate_iterations, validate_parameter_gr
 def timeframe_to_minutes(tf_str: str) -> int:
     """
     Convertit un timeframe textuel (ex: '15min', '1h') en nombre de minutes.
-    
+
     Args:
         tf_str: Chaîne de caractères représentant le timeframe.
-        
+
     Returns:
         La valeur équivalente en minutes.
     """
@@ -48,7 +48,7 @@ def main() -> None:
     symbol = "bnbusdt"
     tf_str = "60min"
     tf_min = timeframe_to_minutes(tf_str)
-    
+
     opt_p2 = {
         "obs_len": 23,
         "stat_len": 77,
@@ -142,7 +142,7 @@ def main() -> None:
                 "rawIterations": raw_iterations
             }
         )
-        
+
         # Ajout en BDD
         store.add(job)
         print(f"Succès ! Le job de Passe 3 pour {symbol} ({tf_str}) a été ajouté à la base de données SQLite.")

@@ -29,27 +29,27 @@ class Trading212Bootstrapper:
         """Runs the bootstrap check and submits market buy orders for missing micro-positions."""
         target_tickers = self.get_target_tickers()
         print(f"[Bootstrapper] Starting bootstrap for {len(target_tickers)} target tickers.")
-        
+
         # 1. Fetch current open positions
         try:
             positions = self.client.get_positions()
         except Exception as e:
             print(f"[Bootstrapper] Failed to retrieve open positions: {e}")
             return []
-            
+
         held_tickers = set()
         for pos in positions:
             ticker = pos.get("instrument", {}).get("ticker")
             if ticker:
                 held_tickers.add(ticker)
-                
+
         # 2. Fetch current pending/NEW orders to avoid placing duplicates if market is closed
         try:
             orders = self.client.get_pending_orders()
         except Exception as e:
             print(f"[Bootstrapper] Failed to retrieve pending orders: {e}")
             orders = []
-            
+
         pending_tickers = set()
         for order in orders:
             # Only consider buy orders that are active/waiting
@@ -67,7 +67,7 @@ class Trading212Bootstrapper:
             if ticker in pending_tickers:
                 print(f"[Bootstrapper] Ticker {ticker} already has a pending buy order. Skipping.")
                 continue
-                
+
             print(f"[Bootstrapper] Ticker {ticker} is missing. Placing micro market buy order of {self.micro_qty} shares...")
             try:
                 result = self._place_adaptive_market_order(ticker, self.micro_qty)
@@ -75,7 +75,7 @@ class Trading212Bootstrapper:
                 placed_tickers.append(ticker)
             except Exception as e:
                 print(f"[Bootstrapper] Failed to place order for {ticker}: {e}")
-                
+
         print(f"[Bootstrapper] Bootstrap complete. Placed {len(placed_tickers)} new micro-position orders.")
         return placed_tickers
 
@@ -83,9 +83,9 @@ class Trading212Bootstrapper:
         """Places a market order and dynamically adapts to quantity/precision limits on errors."""
         if depth > 3:
             raise RuntimeError(f"Max adaptive order retries exceeded for {ticker}")
-        
+
         qty = round(quantity, precision)
-        
+
         try:
             return self.client.place_market_order(ticker, qty)
         except Exception as e:
@@ -94,7 +94,7 @@ class Trading212Bootstrapper:
                     err_data = e.response.json()
                     err_type = err_data.get("type", "")
                     err_detail = err_data.get("detail", "")
-                    
+
                     # Case 1: Quantity is too small (Min Order Value limit)
                     if "min-quantity" in err_type or "must trade at least" in err_detail:
                         import re
@@ -104,7 +104,7 @@ class Trading212Bootstrapper:
                             target_qty = min_qty + 1e-6
                             print(f"[Bootstrapper] Ticker {ticker} needs larger quantity. Re-trying with target_qty={target_qty}...")
                             return self._place_adaptive_market_order(ticker, target_qty, precision, depth + 1)
-                            
+
                     # Case 2: Precision mismatch
                     if "quantity-precision" in err_type or "invalid quantity precision" in err_detail:
                         import re
@@ -112,25 +112,25 @@ class Trading212Bootstrapper:
                         if match:
                             allowed_precision = int(match.group(1))
                             print(f"[Bootstrapper] Ticker {ticker} has quantity precision limit of {allowed_precision}. Re-rounding...")
-                            
+
                             import math
                             factor = 10 ** allowed_precision
                             target_qty = math.ceil(quantity * factor) / factor
-                            
+
                             return self._place_adaptive_market_order(ticker, target_qty, allowed_precision, depth + 1)
-                            
+
                 except Exception as inner_err:
                     print(f"[Bootstrapper] Inner adaptive logic failed for {ticker}: {inner_err}")
-            
+
             raise e
 
 if __name__ == "__main__":
     # Executable entry point for manual validation
     from backtest_engine.live.trading212.config import Trading212Config
-    
+
     config = Trading212Config()
     client = Trading212Client(config)
     resolver = Trading212TickerResolver(client)
     bootstrapper = Trading212Bootstrapper(client, resolver)
-    
+
     bootstrapper.bootstrap()

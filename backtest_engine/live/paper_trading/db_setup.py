@@ -416,78 +416,89 @@ def init_db():
                 cur.execute("""
                     DO $$
                     BEGIN
-                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'trading212_prices') AND 
-                           NOT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'live_prices') THEN
+                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'trading212_prices') AND 
+                           NOT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'live_prices') THEN
                             ALTER TABLE trading212_prices RENAME TO live_prices;
                         END IF;
                         
-                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'trading212_candles_1m') AND 
-                           NOT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'live_candles_1m') THEN
+                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'trading212_candles_1m') AND 
+                           NOT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'live_candles_1m') THEN
                             ALTER TABLE trading212_candles_1m RENAME TO live_candles_1m;
                         END IF;
                     END $$;
                 """)
 
-                # 0.1 Migration: Migrate USDT assets/tickers to USDC for Bybit safely (idempotent)
+                # 0b. Create schema_version table if it doesn't exist
                 cur.execute("""
-                    DO $$
-                    BEGIN
-                        -- live_prices migration
-                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'live_prices') THEN
-                            DELETE FROM live_prices 
-                            WHERE ticker LIKE '%usdt' 
-                              AND REPLACE(ticker, 'usdt', 'usdc') IN (SELECT ticker FROM live_prices);
-                            
-                            UPDATE live_prices SET ticker = REPLACE(ticker, 'usdt', 'usdc') 
-                            WHERE ticker LIKE '%usdt' AND source = 'bybit';
-                        END IF;
-                        
-                        -- live_candles_1m migration
-                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'live_candles_1m') THEN
-                            DELETE FROM live_candles_1m c_usdt
-                            WHERE c_usdt.ticker LIKE '%usdt'
-                              AND EXISTS (
-                                  SELECT 1 FROM live_candles_1m c_usdc
-                                  WHERE c_usdc.ticker = REPLACE(c_usdt.ticker, 'usdt', 'usdc')
-                                    AND c_usdc.timestamp_minute = c_usdt.timestamp_minute
-                              );
-                            
-                            UPDATE live_candles_1m SET ticker = REPLACE(ticker, 'usdt', 'usdc') 
-                            WHERE ticker LIKE '%usdt';
-                        END IF;
-                        
-                        -- paper_strategy_configs migration
-                        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'paper_strategy_configs') THEN
-                            DELETE FROM paper_strategy_configs cfg_usdt
-                            WHERE cfg_usdt.asset LIKE '%usdt'
-                              AND EXISTS (
-                                  SELECT 1 FROM paper_strategy_configs cfg_usdc
-                                  WHERE cfg_usdc.strategy_name = cfg_usdt.strategy_name
-                                    AND cfg_usdc.asset = REPLACE(cfg_usdt.asset, 'usdt', 'usdc')
-                                    AND cfg_usdc.timeframe = cfg_usdt.timeframe
-                              );
-                            
-                            UPDATE paper_strategy_configs SET asset = REPLACE(asset, 'usdt', 'usdc') 
-                            WHERE asset LIKE '%usdt';
-                        END IF;
-                    END $$;
+                    CREATE TABLE IF NOT EXISTS schema_version (
+                        version INT PRIMARY KEY,
+                        applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        description VARCHAR(255)
+                    )
                 """)
+                
+                # Check if Version 2 has been applied
+                cur.execute("SELECT EXISTS (SELECT 1 FROM schema_version WHERE version = 2)")
+                v2_applied = cur.fetchone()[0]
+
+                # Check if timeframe column exists in paper_positions
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_schema = current_schema()
+                          AND table_name = 'paper_positions'
+                    );
+                """)
+                table_exists = cur.fetchone()[0]
+                
+                timeframe_column_exists = False
+                if table_exists:
+                    cur.execute("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_schema = current_schema()
+                              AND table_name = 'paper_positions'
+                              AND column_name = 'timeframe'
+                        );
+                    """)
+                    timeframe_column_exists = cur.fetchone()[0]
+                
+                run_timeframe_backfill = not timeframe_column_exists and not v2_applied
+                run_timeframe_repair = timeframe_column_exists and not v2_applied
+
+                # NOTE: USDT→USDC migration is handled exclusively by the manual script
+                # scripts/migrate_usdt_to_usdc.py (with --confirm-purge, JSON export, and conflict journaling).
+                # No automatic data deletion at startup.
+
+
 
                 # 1. Create Portfolio Balance table
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS paper_portfolio_balance (
                         id SERIAL PRIMARY KEY,
                         source VARCHAR(50) NOT NULL DEFAULT 'trading212' UNIQUE,
-                        cash_balance NUMERIC NOT NULL DEFAULT 100000,
+                        paper_cash_balance NUMERIC NOT NULL DEFAULT 100000 CHECK (paper_cash_balance >= 0),
                         allocated_balance NUMERIC NOT NULL DEFAULT 0,
-                        total_nav NUMERIC NOT NULL DEFAULT 100000,
+                        total_nav NUMERIC NOT NULL DEFAULT 100000 CHECK (total_nav >= 0),
                         secured_balance NUMERIC NOT NULL DEFAULT 0,
                         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 
                 # Migrate paper_portfolio_balance to add source and secured_balance if they don't exist
+                # Also rename cash_balance to paper_cash_balance if it exists
                 cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_schema = current_schema()
+                              AND table_name='paper_portfolio_balance' 
+                              AND column_name='cash_balance'
+                        ) THEN
+                            ALTER TABLE paper_portfolio_balance RENAME COLUMN cash_balance TO paper_cash_balance;
+                        END IF;
+                    END $$;
                     ALTER TABLE paper_portfolio_balance ADD COLUMN IF NOT EXISTS source VARCHAR(50) NOT NULL DEFAULT 'trading212';
                     ALTER TABLE paper_portfolio_balance ADD COLUMN IF NOT EXISTS secured_balance NUMERIC NOT NULL DEFAULT 0;
                     -- Ensure UNIQUE constraint on source column
@@ -495,7 +506,9 @@ def init_db():
                     BEGIN
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.table_constraints 
-                            WHERE table_name='paper_portfolio_balance' AND constraint_type='UNIQUE'
+                            WHERE table_schema = current_schema()
+                              AND table_name='paper_portfolio_balance' 
+                              AND constraint_type='UNIQUE'
                         ) THEN
                             ALTER TABLE paper_portfolio_balance ADD CONSTRAINT paper_portfolio_balance_source_key UNIQUE (source);
                         END IF;
@@ -504,12 +517,12 @@ def init_db():
 
                 # Seed the double portfolio balances
                 cur.execute("""
-                    INSERT INTO paper_portfolio_balance (source, cash_balance, total_nav)
+                    INSERT INTO paper_portfolio_balance (source, paper_cash_balance, total_nav)
                     VALUES ('trading212', 100000, 100000)
                     ON CONFLICT (source) DO NOTHING;
                 """)
                 cur.execute("""
-                    INSERT INTO paper_portfolio_balance (source, cash_balance, total_nav)
+                    INSERT INTO paper_portfolio_balance (source, paper_cash_balance, total_nav)
                     VALUES ('bybit', 10000, 10000)
                     ON CONFLICT (source) DO NOTHING;
                 """)
@@ -520,12 +533,13 @@ def init_db():
                         id SERIAL PRIMARY KEY,
                         asset VARCHAR(50) NOT NULL,
                         strategy_name VARCHAR(100) NOT NULL,
-                        qty NUMERIC NOT NULL,
-                        entry_price NUMERIC NOT NULL,
-                        current_price NUMERIC NOT NULL,
+                        timeframe VARCHAR(10) NOT NULL DEFAULT '1m',
+                        qty NUMERIC NOT NULL CHECK (qty > 0),
+                        entry_price NUMERIC NOT NULL CHECK (entry_price > 0),
+                        current_price NUMERIC NOT NULL CHECK (current_price >= 0),
                         pnl NUMERIC NOT NULL DEFAULT 0,
                         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        CONSTRAINT paper_positions_asset_strategy_key UNIQUE (asset, strategy_name)
+                        CONSTRAINT paper_positions_asset_strategy_tf_key UNIQUE (asset, strategy_name, timeframe)
                     )
                 """)
 
@@ -536,11 +550,40 @@ def init_db():
                         timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         asset VARCHAR(50) NOT NULL,
                         strategy_name VARCHAR(100) NOT NULL,
-                        action VARCHAR(20) NOT NULL,
-                        qty NUMERIC NOT NULL,
-                        price NUMERIC NOT NULL,
-                        total_value NUMERIC NOT NULL
+                        action VARCHAR(20) NOT NULL CHECK (UPPER(action) IN ('BUY', 'SELL')),
+                        qty NUMERIC NOT NULL CHECK (qty > 0),
+                        price NUMERIC NOT NULL CHECK (price > 0),
+                        total_value NUMERIC NOT NULL CHECK (total_value > 0)
                     )
+                """)
+
+                # 3b. Migrate existing paper_positions: add timeframe column if not exists
+                cur.execute("""
+                    ALTER TABLE paper_positions ADD COLUMN IF NOT EXISTS timeframe VARCHAR(10) NOT NULL DEFAULT '1m';
+                """)
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        -- Drop old constraint if it exists
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.table_constraints
+                            WHERE table_schema = current_schema()
+                              AND table_name='paper_positions' 
+                              AND constraint_name='paper_positions_asset_strategy_key'
+                        ) THEN
+                            ALTER TABLE paper_positions DROP CONSTRAINT paper_positions_asset_strategy_key;
+                        END IF;
+                        -- Add new constraint if it doesn't exist
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.table_constraints
+                            WHERE table_schema = current_schema()
+                              AND table_name='paper_positions' 
+                              AND constraint_name='paper_positions_asset_strategy_tf_key'
+                        ) THEN
+                            ALTER TABLE paper_positions ADD CONSTRAINT paper_positions_asset_strategy_tf_key
+                                UNIQUE (asset, strategy_name, timeframe);
+                        END IF;
+                    END $$;
                 """)
 
                 # 4. Create Strategy Configs table
@@ -562,6 +605,23 @@ def init_db():
                     )
                 """)
                 
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS paper_position_timeframe_reviews (
+                        id SERIAL PRIMARY KEY,
+                        position_id INTEGER NOT NULL,
+                        migration_version INTEGER NOT NULL,
+                        original_timeframe VARCHAR(10) NOT NULL,
+                        candidate_timeframes JSONB NOT NULL,
+                        review_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        resolved_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+                        CONSTRAINT paper_position_timeframe_reviews_status_check
+                            CHECK (review_status IN ('PENDING', 'RESOLVED')),
+                        CONSTRAINT paper_position_timeframe_reviews_position_version_key
+                            UNIQUE (position_id, migration_version)
+                    )
+                """)
+
                 # 5. Create Live Prices and Candles tables (if not migrated)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS live_prices (
@@ -643,18 +703,45 @@ def init_db():
                 cur.execute("ALTER TABLE paper_transactions ALTER COLUMN timestamp TYPE TIMESTAMP WITH TIME ZONE;")
                 cur.execute("ALTER TABLE paper_evaluations ALTER COLUMN timestamp TYPE TIMESTAMP WITH TIME ZONE;")
                 
-                # Migration: Add unique constraint to paper_positions if not exists
+                # Migration: Add CHECK constraints to existing tables idempotently
                 cur.execute("""
                     DO $$
                     BEGIN
-                        IF NOT EXISTS (
-                            SELECT 1 FROM pg_constraint WHERE conname = 'paper_positions_asset_strategy_key'
-                        ) THEN
-                            ALTER TABLE paper_positions ADD CONSTRAINT paper_positions_asset_strategy_key UNIQUE (asset, strategy_name);
+                        -- For paper_portfolio_balance
+                        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'paper_portfolio_balance_cash_check') THEN
+                            ALTER TABLE paper_portfolio_balance ADD CONSTRAINT paper_portfolio_balance_cash_check CHECK (paper_cash_balance >= 0);
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'paper_portfolio_balance_nav_check') THEN
+                            ALTER TABLE paper_portfolio_balance ADD CONSTRAINT paper_portfolio_balance_nav_check CHECK (total_nav >= 0);
+                        END IF;
+
+                        -- For paper_positions
+                        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'paper_positions_qty_check') THEN
+                            ALTER TABLE paper_positions ADD CONSTRAINT paper_positions_qty_check CHECK (qty > 0);
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'paper_positions_entry_price_check') THEN
+                            ALTER TABLE paper_positions ADD CONSTRAINT paper_positions_entry_price_check CHECK (entry_price > 0);
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'paper_positions_current_price_check') THEN
+                            ALTER TABLE paper_positions ADD CONSTRAINT paper_positions_current_price_check CHECK (current_price >= 0);
+                        END IF;
+
+                        -- For paper_transactions
+                        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'paper_transactions_action_check') THEN
+                            ALTER TABLE paper_transactions ADD CONSTRAINT paper_transactions_action_check CHECK (UPPER(action) IN ('BUY', 'SELL'));
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'paper_transactions_qty_check') THEN
+                            ALTER TABLE paper_transactions ADD CONSTRAINT paper_transactions_qty_check CHECK (qty > 0);
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'paper_transactions_price_check') THEN
+                            ALTER TABLE paper_transactions ADD CONSTRAINT paper_transactions_price_check CHECK (price > 0);
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'paper_transactions_value_check') THEN
+                            ALTER TABLE paper_transactions ADD CONSTRAINT paper_transactions_value_check CHECK (total_value > 0);
                         END IF;
                     END $$;
                 """)
-
+                
                 # Add run_status column if it doesn't exist
                 cur.execute("""
                     ALTER TABLE paper_strategy_configs 
@@ -677,6 +764,97 @@ def init_db():
                         ON CONFLICT (strategy_name, asset, timeframe) 
                         DO NOTHING
                     """, (config['strategy'], config['asset'], config['timeframe'], kelly_weight, params_json))
+
+                # 8. Backfill/Repair timeframe from strategy configs for existing positions
+                if not v2_applied:
+                    if run_timeframe_backfill:
+                        cur.execute("SELECT COUNT(*) FROM paper_positions WHERE timeframe = '1m'")
+                        if cur.fetchone()[0] > 0:
+                            # 1. Update positions with unique matching timeframe config
+                            cur.execute("""
+                                UPDATE paper_positions p
+                                SET timeframe = (
+                                    SELECT MIN(c.timeframe)
+                                    FROM paper_strategy_configs c
+                                    WHERE c.asset = p.asset AND c.strategy_name = p.strategy_name
+                                )
+                                WHERE p.timeframe = '1m'
+                                  AND (
+                                      SELECT COUNT(DISTINCT c.timeframe)
+                                      FROM paper_strategy_configs c
+                                      WHERE c.asset = p.asset AND c.strategy_name = p.strategy_name
+                                  ) = 1;
+                            """)
+                            
+                            # 2. Quarantine ambiguous positions (multiple matching configs)
+                            cur.execute("""
+                                SELECT id, asset, strategy_name FROM paper_positions p
+                                WHERE p.timeframe = '1m'
+                                  AND (
+                                      SELECT COUNT(DISTINCT c.timeframe)
+                                      FROM paper_strategy_configs c
+                                      WHERE c.asset = p.asset AND c.strategy_name = p.strategy_name
+                                  ) > 1;
+                            """)
+                            ambiguous_positions = cur.fetchall()
+                            if ambiguous_positions:
+                                print(f"[DB Setup] WARNING: Found {len(ambiguous_positions)} ambiguous positions with multiple timeframe configs. Quarantining them to 'AMBIGUOUS'.")
+                                cur.execute("""
+                                    UPDATE paper_positions p
+                                    SET timeframe = 'AMBIGUOUS'
+                                    WHERE p.timeframe = '1m'
+                                      AND (
+                                          SELECT COUNT(DISTINCT c.timeframe)
+                                          FROM paper_strategy_configs c
+                                          WHERE c.asset = p.asset AND c.strategy_name = p.strategy_name
+                                      ) > 1;
+                                """)
+                    
+                    elif run_timeframe_repair:
+                        cur.execute("""
+                            INSERT INTO paper_position_timeframe_reviews (
+                                position_id,
+                                migration_version,
+                                original_timeframe,
+                                candidate_timeframes
+                            )
+                            SELECT
+                                p.id,
+                                2,
+                                p.timeframe,
+                                jsonb_agg(DISTINCT c.timeframe ORDER BY c.timeframe)
+                            FROM paper_positions p
+                            JOIN paper_strategy_configs c
+                              ON c.asset = p.asset
+                             AND c.strategy_name = p.strategy_name
+                            GROUP BY p.id, p.timeframe
+                            HAVING COUNT(DISTINCT c.timeframe) > 1
+                            ON CONFLICT (position_id, migration_version) DO NOTHING;
+                        """)
+                        review_count = cur.rowcount
+                        if review_count > 0:
+                            print(f"[DB Setup] AUDIT: Recorded {review_count} multi-timeframe positions for manual review.")
+
+                        cur.execute("""
+                            UPDATE paper_positions p
+                            SET timeframe = (
+                                SELECT MIN(c.timeframe)
+                                FROM paper_strategy_configs c
+                                WHERE c.asset = p.asset AND c.strategy_name = p.strategy_name
+                            )
+                            WHERE (
+                                SELECT COUNT(DISTINCT c.timeframe)
+                                FROM paper_strategy_configs c
+                                WHERE c.asset = p.asset AND c.strategy_name = p.strategy_name
+                            ) = 1;
+                        """)
+                    
+                    # Record Version 2 in schema_version
+                    cur.execute("""
+                        INSERT INTO schema_version (version, description)
+                        VALUES (2, 'Timeframe column added to paper_positions, unique constraints updated, and historical positions backfilled/quarantined.')
+                        ON CONFLICT (version) DO NOTHING;
+                    """)
 
             conn.commit()
             print("[DB Setup] Paper trading database schema initialized and seeded.")

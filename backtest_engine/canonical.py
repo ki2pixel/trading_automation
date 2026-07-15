@@ -92,7 +92,7 @@ def load_symbol_currency_map(repo_root: Path, timeframe_minutes: int | str = BAS
     cache_key = (str(repo_root), timeframe_minutes)
     if cache_key in _currency_map_cache:
         return _currency_map_cache[cache_key]
-        
+
     path = repo_root / "SheetsFinance_Export" / "fx_data" / _raw_folder_name(timeframe_minutes) / "symbol_currency_map.csv"
     if not path.exists():
         _currency_map_cache[cache_key] = {}

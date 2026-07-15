@@ -636,7 +636,7 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
-    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres
     de Lorentzian Classification avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging

@@ -44,7 +44,7 @@ def test_run_vwap_exit(mock_intraday_data):
     hist_data = pd.DataFrame({
         "open": 100, "high": 105, "low": 95, "close": 100, "volume": 1000
     }, index=dates)
-    
+
     # We just test the execution loop without crashing
     res = run_noise_boundary_intraday(mock_intraday_data, "MOCK", overrides)
     assert res.strategy == "noise_boundary_intraday"
@@ -105,31 +105,31 @@ def test_run_early_stop_drawdown():
     df = make_multi_day_data()
     last_day_mask = df.index.normalize() == "2026-05-15"
     last_day_locs = np.where(last_day_mask)[0]
-    
+
     prev_close = df.loc["2026-05-14"]["close"].iloc[-1]
-    
+
     df.iloc[last_day_locs[0], df.columns.get_loc("open")] = prev_close
     df.iloc[last_day_locs[0], df.columns.get_loc("high")] = prev_close * 1.01
     df.iloc[last_day_locs[0], df.columns.get_loc("low")] = prev_close * 0.99
     df.iloc[last_day_locs[0], df.columns.get_loc("close")] = prev_close * 1.01
-    
+
     df.iloc[last_day_locs[1], df.columns.get_loc("open")] = prev_close
     df.iloc[last_day_locs[1], df.columns.get_loc("high")] = prev_close
     df.iloc[last_day_locs[1], df.columns.get_loc("low")] = prev_close
     df.iloc[last_day_locs[1], df.columns.get_loc("close")] = prev_close
-    
+
     for idx in last_day_locs[2:]:
         df.iloc[idx, df.columns.get_loc("open")] = prev_close * 0.7
         df.iloc[idx, df.columns.get_loc("high")] = prev_close * 0.7
         df.iloc[idx, df.columns.get_loc("low")] = prev_close * 0.7
         df.iloc[idx, df.columns.get_loc("close")] = prev_close * 0.7
-        
+
     res = run_noise_boundary_intraday(df, "MOCK", overrides, initial_capital=1000.0)
     assert res.strategy == "noise_boundary_intraday"
-    
+
     # Verify we entered a trade
     assert not res.trades.empty
-    
+
     # Verify that we ended up flat with subsequent bars having zero position size
     last_day_states = res.state.loc["2026-05-15"]
     assert last_day_states.iloc[1]["position_size"] > 0
@@ -149,27 +149,27 @@ def _disabled_test_run_net_bracket_tp_exit():
     df = make_multi_day_data()
     last_day_mask = df.index.normalize() == "2026-05-15"
     last_day_locs = np.where(last_day_mask)[0]
-    
+
     prev_close = df.loc["2026-05-14"]["close"].iloc[-1]
-    
+
     df.iloc[last_day_locs[0], df.columns.get_loc("open")] = prev_close
     df.iloc[last_day_locs[0], df.columns.get_loc("high")] = prev_close * 1.01
     df.iloc[last_day_locs[0], df.columns.get_loc("low")] = prev_close * 0.99
     df.iloc[last_day_locs[0], df.columns.get_loc("close")] = prev_close * 1.01
-    
+
     df.iloc[last_day_locs[1], df.columns.get_loc("open")] = prev_close
     df.iloc[last_day_locs[1], df.columns.get_loc("high")] = prev_close
     df.iloc[last_day_locs[1], df.columns.get_loc("low")] = prev_close
     df.iloc[last_day_locs[1], df.columns.get_loc("close")] = prev_close
-    
+
     df.iloc[last_day_locs[2], df.columns.get_loc("open")] = prev_close * 1.02
     df.iloc[last_day_locs[2], df.columns.get_loc("high")] = prev_close * 1.02
     df.iloc[last_day_locs[2], df.columns.get_loc("low")] = prev_close * 1.02
     df.iloc[last_day_locs[2], df.columns.get_loc("close")] = prev_close * 1.02
-    
+
     res = run_noise_boundary_intraday(df, "MOCK", overrides, initial_capital=1000.0)
     assert res.strategy == "noise_boundary_intraday"
-    
+
     # Verify we hit TP and closed position
     assert not res.trades.empty
     assert any("Net TP" in str(c) for c in res.trades["exit_comment"])
@@ -190,27 +190,27 @@ def _disabled_test_run_safety_stop_loss_exit():
     df = make_multi_day_data()
     last_day_mask = df.index.normalize() == "2026-05-15"
     last_day_locs = np.where(last_day_mask)[0]
-    
+
     prev_close = df.loc["2026-05-14"]["close"].iloc[-1]
-    
+
     df.iloc[last_day_locs[0], df.columns.get_loc("open")] = prev_close
     df.iloc[last_day_locs[0], df.columns.get_loc("high")] = prev_close * 1.01
     df.iloc[last_day_locs[0], df.columns.get_loc("low")] = prev_close * 0.99
     df.iloc[last_day_locs[0], df.columns.get_loc("close")] = prev_close * 1.01
-    
+
     df.iloc[last_day_locs[1], df.columns.get_loc("open")] = prev_close
     df.iloc[last_day_locs[1], df.columns.get_loc("high")] = prev_close
     df.iloc[last_day_locs[1], df.columns.get_loc("low")] = prev_close
     df.iloc[last_day_locs[1], df.columns.get_loc("close")] = prev_close
-    
+
     df.iloc[last_day_locs[2], df.columns.get_loc("open")] = prev_close * 0.85
     df.iloc[last_day_locs[2], df.columns.get_loc("high")] = prev_close * 0.85
     df.iloc[last_day_locs[2], df.columns.get_loc("low")] = prev_close * 0.85
     df.iloc[last_day_locs[2], df.columns.get_loc("close")] = prev_close * 0.85
-    
+
     res = run_noise_boundary_intraday(df, "MOCK", overrides, initial_capital=1000.0)
     assert res.strategy == "noise_boundary_intraday"
-    
+
     # Verify Safety Stop triggered
     assert not res.trades.empty
     assert any("Safety Stop triggered" in str(c) for c in res.trades["exit_comment"])
@@ -230,24 +230,24 @@ def _disabled_test_run_safety_stop_bars_exit():
     df = make_multi_day_data()
     last_day_mask = df.index.normalize() == "2026-05-15"
     last_day_locs = np.where(last_day_mask)[0]
-    
+
     prev_close = df.loc["2026-05-14"]["close"].iloc[-1]
-    
+
     df.iloc[last_day_locs[0], df.columns.get_loc("open")] = prev_close
     df.iloc[last_day_locs[0], df.columns.get_loc("high")] = prev_close * 1.01
     df.iloc[last_day_locs[0], df.columns.get_loc("low")] = prev_close * 0.99
     df.iloc[last_day_locs[0], df.columns.get_loc("close")] = prev_close * 1.01
-    
+
     # Keep price stable so position stays open until bars limit hits
     for idx in last_day_locs[1:]:
         df.iloc[idx, df.columns.get_loc("open")] = prev_close
         df.iloc[idx, df.columns.get_loc("high")] = prev_close
         df.iloc[idx, df.columns.get_loc("low")] = prev_close
         df.iloc[idx, df.columns.get_loc("close")] = prev_close
-    
+
     res = run_noise_boundary_intraday(df, "MOCK", overrides, initial_capital=1000.0)
     assert res.strategy == "noise_boundary_intraday"
-    
+
     # Verify bars limit triggered
     assert not res.trades.empty
     assert any("Safety Stop triggered" in str(c) for c in res.trades["exit_comment"])
@@ -256,7 +256,7 @@ def _disabled_test_run_safety_stop_bars_exit():
 def test_trade_frequency_bars_5min():
     dates = pd.bdate_range(start="2026-05-01", periods=10)
     all_dfs = []
-    
+
     for day_idx, d in enumerate(dates):
         time_index = pd.date_range(
             start=f"{d.strftime('%Y-%m-%d')} 09:30:00",
@@ -272,9 +272,9 @@ def test_trade_frequency_bars_5min():
             "volume": [1000] * len(time_index)
         }, index=time_index)
         all_dfs.append(df)
-        
+
     data = pd.concat(all_dfs)
-    
+
     # 1. Test evaluate_at_period_start
     overrides_start = NoiseBoundaryConfigOverrides(
         lookback_days=3,
@@ -291,23 +291,23 @@ def test_trade_frequency_bars_5min():
         safety_stop_mode="Max bars only",
         safety_max_bars_in_trade=1
     )
-    
+
     res_start = run_noise_boundary_intraday(data, "MOCK", overrides_start, initial_capital=100000.0)
     assert not res_start.trades.empty
-    
+
     day3_date = dates[3].date()
     day3_trades = res_start.trades[res_start.trades["entry_time"].dt.date == day3_date]
     assert not day3_trades.empty
-    
+
     bar_indices = pd.Series(range(len(data)), index=data.index)
     entry_bar_indices = day3_trades["entry_time"].map(bar_indices).values
-    
+
     day3_start_idx = 3 * 78
     for idx in entry_bar_indices:
         relative_idx = idx - day3_start_idx
         # Signal triggers at bar i (multiple of 3), filled at bar i + 1
         assert (relative_idx - 1) % 3 == 0, f"Expected relative index {relative_idx} - 1 to be a multiple of 3"
-        
+
     # 2. Test evaluate_at_period_end
     overrides_end = NoiseBoundaryConfigOverrides(
         lookback_days=3,
@@ -324,7 +324,7 @@ def test_trade_frequency_bars_5min():
         safety_stop_mode="Max bars only",
         safety_max_bars_in_trade=1
     )
-    
+
     res_end = run_noise_boundary_intraday(data, "MOCK", overrides_end, initial_capital=100000.0)
     day3_trades_end = res_end.trades[res_end.trades["entry_time"].dt.date == day3_date]
     assert not day3_trades_end.empty
@@ -364,7 +364,7 @@ def test_allow_overnight_keeps_position_across_days():
     )
     df = make_multi_day_data()
     res = run_noise_boundary_intraday(df, "MOCK", overrides)
-    
+
     # Verify that the position is held across daily sessions.
     # We look for a transition from the end of one day to the start of the next day where position remains non-zero.
     state = res.state
@@ -378,14 +378,14 @@ def test_allow_overnight_keeps_position_across_days():
             if state["position_size"].iloc[j - 1] != 0 and state["position_size"].iloc[j] != 0:
                 has_overnight_hold = True
                 break
-                
+
     assert has_overnight_hold, "Expected position to be held overnight across days"
 
 
 def test_use_vwap_filter_false_allows_entry_below_vwap():
     # Create a 1-day dataset with a few bars.
     # We want to force the price to cross upper enter band but remain BELOW vwap.
-    
+
     dates = pd.date_range(start="2026-05-18 09:30", periods=5, freq="5min")
     # We need a small history for lookback to not be NaN.
     # Let's create a 10-day history with same times.
@@ -401,7 +401,7 @@ def test_use_vwap_filter_false_allows_entry_below_vwap():
             "volume": [100] * 5
         }, index=d_dates)
         all_dfs.append(df)
-    
+
     # On the last day, we set a specific pattern:
     # Bar 1 has open=100, low=10, close=10 with high volume -> sets a low typical price & low VWAP.
     # Bar 3 has close=95 -> crosses lower band (since lower_enter = 100), but is above VWAP (since VWAP is ~40.1).
@@ -413,9 +413,9 @@ def test_use_vwap_filter_false_allows_entry_below_vwap():
         "volume": [10000, 10, 10, 10, 10]
     }, index=pd.date_range(start="2026-05-18 09:30", periods=5, freq="5min"))
     all_dfs.append(last_df)
-    
+
     data = pd.concat(all_dfs)
-    
+
     # Let's run with use_vwap_filter = True (should NOT enter because of VWAP condition)
     overrides_with_filter = NoiseBoundaryConfigOverrides(
         lookback_days=5,
@@ -428,7 +428,7 @@ def test_use_vwap_filter_false_allows_entry_below_vwap():
     res_filter = run_noise_boundary_intraday(data, "MOCK", overrides_with_filter)
     last_day_state_with = res_filter.state.loc["2026-05-18"]
     assert (last_day_state_with["position_size"] == 0).all(), "Expected no position with VWAP filter enabled"
-    
+
     # Now run with use_vwap_filter = False (should enter because VWAP is ignored)
     overrides_no_filter = NoiseBoundaryConfigOverrides(
         lookback_days=5,

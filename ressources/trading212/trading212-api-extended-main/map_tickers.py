@@ -207,17 +207,17 @@ def load_instruments(api_key_id, api_secret):
         print(f"Loading instruments from cache: {CACHE_FILE}")
         with open(CACHE_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
-            
+
     if not api_key_id or not api_secret:
         return None
-        
+
     print("Fetching instruments from Trading 212 DEMO API...")
     url = "https://demo.trading212.com/api/v0/equity/metadata/instruments"
     try:
         response = requests.get(url, auth=HTTPBasicAuth(api_key_id, api_secret), timeout=60)
         response.raise_for_status()
         instruments = response.json()
-        
+
         # Enregistrer dans le cache
         with open(CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(instruments, f, indent=2)
@@ -230,7 +230,7 @@ def load_instruments(api_key_id, api_secret):
 def perform_mapping(instruments):
     """Effectue la correspondance des 21 actifs avec les instruments T212 ou utilise les valeurs par défaut."""
     mappings = []
-    
+
     if instruments is None:
         print("Using validated local mappings (Offline / Fallback mode)...")
         for local_id, info in TARGET_ASSETS.items():
@@ -249,49 +249,49 @@ def perform_mapping(instruments):
         search_t = info["search_ticker"].lower()
         pref_currency = info["preferred_currency"]
         suffixes = info["suffixes"]
-        
+
         candidates = []
         for inst in instruments:
             t212_ticker = inst.get("ticker", "")
             t212_name = inst.get("name", "")
             t212_currency = inst.get("currencyCode", "")
-            
+
             # 1. Vérifier si le nom ou le ticker correspond
             match_name = search_n in t212_name.lower()
             match_ticker = search_t in t212_ticker.lower()
-            
+
             if match_name or match_ticker:
                 score = 0
-                
+
                 # Bonus pour la devise correspondante
                 if t212_currency.upper() == pref_currency.upper():
                     score += 10
-                    
+
                 # Bonus si le nom d'entreprise exact ou très proche correspond
                 if search_n in t212_name.lower():
                     score += 5
                     if t212_name.lower().startswith(search_n):
                         score += 3
-                        
+
                 # Bonus pour les suffixes de ticker préférés
                 for suff in suffixes:
                     if t212_ticker.lower().endswith(suff.lower()) or suff.lower() in t212_ticker.lower():
                         score += 5
                         break
-                        
+
                 # Malus pour les ADRs américaines si on cherche une européenne (sauf si USD est préféré)
                 if pref_currency != "USD" and t212_ticker.endswith("_US_EQ"):
                     score -= 10
-                    
+
                 # Malus si la devise ne correspond pas du tout
                 if t212_currency.upper() != pref_currency.upper():
                     score -= 5
-                    
+
                 candidates.append((score, inst))
-                
+
         # Trier par score décroissant
         candidates.sort(key=lambda x: x[0], reverse=True)
-        
+
         if candidates:
             best_score, best_inst = candidates[0]
             mappings.append({
@@ -314,21 +314,21 @@ def perform_mapping(instruments):
                 "score": 0
             })
             print(f"FAILED to map via API: {local_id} (using default: {info['t212_ticker_default']})")
-            
+
     return mappings
 
 def save_mappings(mappings):
     """Sauvegarde le mapping consolidé dans les formats structurés CSV et JSON."""
     dir_path = Path("/home/kidpixel/trading_automation_v2/ressources/trading212/trading212-api-extended-main")
-    
+
     csv_file = dir_path / "t212_assets_mapping.csv"
     json_file = dir_path / "t212_assets_mapping.json"
-    
+
     # Sauvegarde JSON
     with open(json_file, 'w', encoding='utf-8') as f:
         json.dump(mappings, f, indent=2)
     print(f"Mapping JSON enregistré dans {json_file}")
-    
+
     # Sauvegarde CSV
     with open(csv_file, 'w', encoding='utf-8', newline='') as f:
         writer = csv.writer(f)
@@ -364,13 +364,13 @@ def main():
     parser.add_argument("--api-key-id", default=os.getenv("T212_API_KEY_ID"), help="ID de la clé API")
     parser.add_argument("--api-secret", default=os.getenv("T212_API_SECRET"), help="Clé secrète")
     args = parser.parse_args()
-    
+
     # Mettre à jour les variables d'environnement au cas où elles auraient été passées en argument de ligne de commande
     if args.api_key_id:
         os.environ["T212_API_KEY_ID"] = args.api_key_id
     if args.api_secret:
         os.environ["T212_API_SECRET"] = args.api_secret
-    
+
     instruments = load_instruments(args.api_key_id or os.getenv("T212_API_KEY_ID"), args.api_secret or os.getenv("T212_API_SECRET"))
     mappings = perform_mapping(instruments)
     save_mappings(mappings)

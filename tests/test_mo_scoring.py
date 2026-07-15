@@ -97,13 +97,13 @@ class TestMultiObjectiveScoring(unittest.TestCase):
 
             self.assertIsInstance(pareto_data, list)
             self.assertGreater(len(pareto_data), 0)
-            
+
             first_item = pareto_data[0]
             self.assertIn("number", first_item)
             self.assertIn("score", first_item)
             self.assertIn("secondary_score", first_item)
             self.assertIn("parameters", first_item)
-            
+
             # Ensure the primary and secondary objectives mapped properly
             self.assertTrue(isinstance(first_item["score"], float))
             self.assertTrue(isinstance(first_item["secondary_score"], float))
@@ -140,10 +140,10 @@ class TestMultiObjectiveScoring(unittest.TestCase):
             self.assertEqual(summary.status, "FINISHED")
             self.assertEqual(summary.eligible_iterations, 0)
             self.assertTrue((summary.output_dir / "pareto_front.json").exists())
-            
+
             with open(summary.output_dir / "pareto_front.json", "r", encoding="utf-8") as f:
                 pareto_data = json.load(f)
-            
+
             # Since all were ineligible, they should have hit the -inf sentinels
             for item in pareto_data:
                 self.assertLess(item["score"], -100000.0)

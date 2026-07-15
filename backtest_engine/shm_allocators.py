@@ -2,7 +2,7 @@
 backtest_engine/shm_allocators.py
 
 Délégation de l'allocation des mémoires partagées POSIX (SharedIndicatorVolume)
-pour chaque stratégie. L'objectif est de réduire la complexité cognitive du 
+pour chaque stratégie. L'objectif est de réduire la complexité cognitive du
 Bayesian Optimizer principal.
 """
 
@@ -32,13 +32,13 @@ def _allocate_hma_crossover(data, parameter_specs, fixed_overrides, workers, shm
     slow_specs = next((s for s in parameter_specs if s.name == "slow_len"), None)
     fast_vals = list(fast_specs.values) if (fast_specs and fast_specs.values) else [_get_fixed_val(fixed_overrides, "fast_len", 20)]
     slow_vals = list(slow_specs.values) if (slow_specs and slow_specs.values) else [_get_fixed_val(fixed_overrides, "slow_len", 50)]
-    
+
     if fast_vals and slow_vals:
         from .strategies.hma_crossover import _load_strategy_module
         strategy_mod = _load_strategy_module()
         hma_func = strategy_mod.hma
         import gc as _gc
-        
+
         unique_lengths = sorted(list(set(fast_vals) | set(slow_vals)))
         length_to_idx = {int(length): i for i, length in enumerate(unique_lengths)}
 
@@ -79,7 +79,7 @@ def _allocate_hma_crossover(data, parameter_specs, fixed_overrides, workers, shm
                     strategy_mod._SHARED_HMA_LENGTH_TO_IDX = length_to_idx
             except Exception as e:
                 logger.debug(f"Failed to mount local parent HMA grid: {e}")
-                
+
     return hma_shm_metadata
 
 def _allocate_pmax_explorer(data, parameter_specs, fixed_overrides, workers, shm_objects):
@@ -96,13 +96,13 @@ def _allocate_pmax_explorer(data, parameter_specs, fixed_overrides, workers, shm
 
     from .strategies.pmax_explorer import _load_strategy_module
     strategy_mod = _load_strategy_module()
-    
+
     source_col = fixed_overrides.source_col if (fixed_overrides and hasattr(fixed_overrides, "source_col") and fixed_overrides.source_col) else "hl2"
     if source_col == "hl2" and "hl2" not in data.columns:
         hl2_series = (data["high"] + data["low"]) / 2.0
     else:
         hl2_series = data[source_col] if source_col in data.columns else data["close"]
-    
+
     src_arr = hl2_series.to_numpy(dtype=float)
     high_arr = data["high"].to_numpy(dtype=float)
     low_arr = data["low"].to_numpy(dtype=float)
@@ -178,7 +178,7 @@ def _allocate_pmax_explorer(data, parameter_specs, fixed_overrides, workers, shm
             strategy_mod._SHARED_PMAX_ATR_KEYS = atr_keys
         except Exception as e:
             logger.debug(f"Failed to mount local parent PMax grid: {e}")
-            
+
     return pmax_shm_metadata
 
 def _allocate_range_filter(data, parameter_specs, fixed_overrides, workers, shm_objects):
@@ -191,10 +191,10 @@ def _allocate_range_filter(data, parameter_specs, fixed_overrides, workers, shm_
 
     from .strategies.range_filter import _load_strategy_module
     strategy_mod = _load_strategy_module()
-    
+
     source_col = fixed_overrides.source_col if (fixed_overrides and hasattr(fixed_overrides, "source_col") and fixed_overrides.source_col) else "close"
     src_series = data[source_col] if source_col in data.columns else data["close"]
-    
+
     combos = []
     for period in period_vals:
         for mult in mult_vals:
@@ -218,7 +218,7 @@ def _allocate_range_filter(data, parameter_specs, fixed_overrides, workers, shm_
             period, mult = combo
             smrng_series = strategy_mod._smooth_range(src_series, period, mult)
             filt_series = strategy_mod._range_filter(src_series, smrng_series)
-            
+
             smrng_grid_arr[idx] = smrng_series.to_numpy(dtype=float)
             filt_grid_arr[idx] = filt_series.to_numpy(dtype=float)
 
@@ -241,7 +241,7 @@ def _allocate_range_filter(data, parameter_specs, fixed_overrides, workers, shm_
             strategy_mod._SHARED_RF_KEYS = rf_keys
         except Exception as e:
             logger.debug(f"Failed to mount local parent Range Filter grid: {e}")
-            
+
     return rf_shm_metadata
 
 def _allocate_bjorgum_double_tap(data, parameter_specs, fixed_overrides, workers, shm_objects):
@@ -287,17 +287,17 @@ def _allocate_bjorgum_double_tap(data, parameter_specs, fixed_overrides, workers
 
         atr_shm = SharedIndicatorVolume(shape=(len(atr_length_vals), len(data)), dtype=np.float64, create=True)
         atr_grid_arr = atr_shm.get_view()
-        
+
         closes = close_series.to_numpy(dtype=float)
         prev_closes = np.roll(closes, 1)
         prev_closes[0] = closes[0]
-        
+
         tr1 = high_series.to_numpy(dtype=float) - low_series.to_numpy(dtype=float)
         tr2 = np.abs(high_series.to_numpy(dtype=float) - prev_closes)
         tr3 = np.abs(low_series.to_numpy(dtype=float) - prev_closes)
         tr = np.maximum(tr1, np.maximum(tr2, tr3))
         tr_series = pd.Series(tr)
-        
+
         for idx, atr_length in enumerate(atr_length_vals):
             atr_grid_arr[idx] = tr_series.ewm(alpha=1.0 / int(atr_length), adjust=False).mean().to_numpy()
 
@@ -312,7 +312,7 @@ def _allocate_bjorgum_double_tap(data, parameter_specs, fixed_overrides, workers
             "atr_shape": atr_shm.shape,
             "atr_dtype": str(atr_shm.dtype),
             "atr_keys": {int(v): i for i, v in enumerate(atr_length_vals)},
-            
+
             "piv_high_shm_name": piv_high_shm.shm_name,
             "piv_high_shape": piv_high_shm.shape,
             "piv_high_dtype": str(piv_high_shm.dtype),
@@ -347,7 +347,7 @@ def _allocate_bjorgum_double_tap(data, parameter_specs, fixed_overrides, workers
                 strategy_mod._SHARED_BJ_ROLL_MIN_KEYS = bjorgum_shm_metadata["roll_min_keys"]
                 strategy_mod._SHARED_BJ_ROLL_MAX_GRID = roll_max_shm.get_view()
                 strategy_mod._SHARED_BJ_ROLL_MAX_KEYS = bjorgum_shm_metadata["roll_max_keys"]
-                
+
                 del piv_high_grid_arr
                 del piv_low_grid_arr
                 del roll_min_grid_arr
@@ -367,7 +367,7 @@ def _allocate_bjorgum_double_tap(data, parameter_specs, fixed_overrides, workers
                 strategy_mod._SHARED_BJ_ROLL_MAX_KEYS = bjorgum_shm_metadata["roll_max_keys"]
         except Exception as e:
             logger.debug(f"Failed to mount local parent Bjorgum Double Tap grid: {e}")
-            
+
     return bjorgum_shm_metadata
 
 def _allocate_adaptive_volatility_trend(data, parameter_specs, fixed_overrides, workers, shm_objects):
@@ -421,7 +421,7 @@ def _allocate_adaptive_volatility_trend(data, parameter_specs, fixed_overrides, 
         high_series = data["high"]
         low_series = data["low"]
         close_series = data["close"]
-        
+
         atr_shm = SharedIndicatorVolume(shape=(len(atr_len_vals), len(data)), dtype=np.float64, create=True)
         atr_grid_arr = atr_shm.get_view()
         atr_keys = {int(v): i for i, v in enumerate(atr_len_vals)}
@@ -698,7 +698,7 @@ def allocate_shared_memory_for_strategy(strategy: str, data: pd.DataFrame, param
         "noise_boundary_shm_metadata": None,
         "hilbert_shm_metadata": None,
     }
-    
+
     if strategy == "hma_crossover":
         metadata_dict["hma_shm_metadata"] = _allocate_hma_crossover(data, parameter_specs, fixed_overrides, workers, shm_objects)
     elif strategy == "pmax_explorer":
@@ -715,12 +715,12 @@ def allocate_shared_memory_for_strategy(strategy: str, data: pd.DataFrame, param
         metadata_dict["noise_boundary_shm_metadata"] = _allocate_noise_boundary_intraday(data, parameter_specs, fixed_overrides, workers, shm_objects)
     elif strategy == "cybernetic_hilbert":
         metadata_dict["hilbert_shm_metadata"] = _allocate_cybernetic_hilbert(data, parameter_specs, fixed_overrides, workers, shm_objects)
-        
+
     return metadata_dict
 
 def reset_shared_memory_for_strategy(strategy: str) -> None:
     """
-    Réinitialise les références globales du parent local pour éviter 
+    Réinitialise les références globales du parent local pour éviter
     les fuites de références sur les objets mémoire.
     """
     if strategy == "hma_crossover":

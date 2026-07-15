@@ -80,24 +80,24 @@ class BaseStrategyRunner:
         pos_size = np.zeros(n, dtype=np.float64)
         pos_avg = np.zeros(n, dtype=np.float64)
         bar_positions = pd.Series(np.arange(n, dtype=np.int64), index=timestamps)
-        
+
         for ct in broker.closed_trades:
             exit_ts = ct.exit_time
             if exit_ts in bar_positions.index:
                 idx = bar_positions[exit_ts]
                 realized[idx] += ct.net_pnl
-                
+
         fill_by_bar: dict[object, list] = {}
         for fill in broker.fills:
             fill_by_bar.setdefault(fill.timestamp, []).append(fill)
-            
+
         cur_qty = 0.0
         cur_avg = 0.0
         last_idx = 0
         pos_qty = np.zeros(n, dtype=np.float64)
         fill_indices = [bar_positions.get(ts, -1) for ts in fill_by_bar.keys()]
         fill_indices = sorted([i for i in fill_indices if i != -1])
-        
+
         for idx in fill_indices:
             if idx > last_idx:
                 pos_qty[last_idx:idx] = cur_qty
@@ -123,7 +123,7 @@ class BaseStrategyRunner:
             pos_qty[idx] = cur_qty
             pos_avg[idx] = cur_avg
             last_idx = idx + 1
-            
+
         if last_idx < n:
             pos_qty[last_idx:n] = cur_qty
             pos_avg[last_idx:n] = cur_avg
@@ -165,7 +165,7 @@ class BaseBrokerStrategyRunner(BaseStrategyRunner):
     ) -> Tuple[Any, Any]:
         """Set up the BrokerSimulator and configure exit rules."""
         from ..broker import BrokerSimulator, BrokerConfig
-        
+
         exec_col = overrides.next_bar_execution_price_col or "open"
         broker_config = BrokerConfig(
             initial_capital=initial_capital,
@@ -196,7 +196,7 @@ class BaseBrokerStrategyRunner(BaseStrategyRunner):
                 tp_pct=tp,
                 sl_pct=sl,
             ))
-            
+
         if getattr(overrides, "enable_trailing_stop", False):
             from ..broker import TrailingStopExitRule
             exit_rules.append(TrailingStopExitRule(
@@ -204,7 +204,7 @@ class BaseBrokerStrategyRunner(BaseStrategyRunner):
                 trail_profit_pct=overrides.trail_profit_pct if overrides.trail_profit_pct is not None else 0.5,
                 trail_loss_pct=overrides.trail_loss_pct if overrides.trail_loss_pct is not None else 0.5,
             ))
-            
+
         if overrides.use_safety_stop if overrides.use_safety_stop is not None else False:
             from ..broker import SafetyStopExitRule
             exit_rules.append(SafetyStopExitRule(
@@ -216,9 +216,9 @@ class BaseBrokerStrategyRunner(BaseStrategyRunner):
                 max_loss_pct=overrides.safety_max_net_loss_percent,
                 max_bars=overrides.safety_max_bars_in_trade or 0,
             ))
-            
+
         if exit_rules:
             from ..broker import ExitOrchestrator
             broker.exit_orchestrator = ExitOrchestrator(exit_rules)
-            
+
         return broker, broker_config

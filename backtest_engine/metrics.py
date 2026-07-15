@@ -416,11 +416,11 @@ def compute_fast_score(trades: pd.DataFrame, score_metric: str, *, state: pd.Dat
         open_pnl = state.get("estimated_net_if_closed_now", pd.Series(0.0, index=state.index)).fillna(0.0)
         final_equity = float(initial_capital) + float(realized.sum()) + float(open_pnl.iloc[-1])
         return_pct = float((final_equity / initial_capital - 1.0) * 100.0) if initial_capital > 0 else 0.0
-        
+
         initial_price = float(bars["close"].iloc[0])
         final_price = float(bars["close"].iloc[-1])
         buy_hold_return_pct = float(((final_price / initial_price) - 1.0) * 100.0) if initial_price and final_price else 0.0
-        
+
         return return_pct - buy_hold_return_pct
 
     if trades.empty:
@@ -449,5 +449,5 @@ def compute_fast_score(trades: pd.DataFrame, score_metric: str, *, state: pd.Dat
         return float(pnl[pnl < 0].sum())
     elif score_metric == "average_trade":
         return float(pnl.mean())
-        
+
     return None

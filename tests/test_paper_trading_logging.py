@@ -19,7 +19,7 @@ class TestPaperTradingLogging:
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
         engine = PaperTradingEngine(db_url="sqlite:///:memory:")
-        
+
         # Test basic logging
         engine._log_evaluation(
             mock_conn,
@@ -37,7 +37,7 @@ class TestPaperTradingLogging:
         # Verify SQL statement execution
         mock_cursor.execute.assert_called_once()
         args, kwargs = mock_cursor.execute.call_args
-        
+
         assert "INSERT INTO paper_evaluations" in args[0]
         # Check params (timestamp is CURRENT_TIMESTAMP)
         params = args[1]

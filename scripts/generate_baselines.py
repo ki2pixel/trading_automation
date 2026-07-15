@@ -30,7 +30,7 @@ def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
         df_temp = df_temp.set_index('timestamp')
     if not isinstance(df_temp.index, pd.DatetimeIndex):
         df_temp.index = pd.to_datetime(df_temp.index)
-        
+
     resampler = df_temp.resample(rule)
     resampled = pd.DataFrame({
         'open': resampler['open'].first(),
@@ -46,31 +46,31 @@ def main():
     print("Début du calcul des baselines statistiques pour les 9 actifs phares...")
     signatures = {}
     feature_list = []
-    
+
     # 1. Extraire les signatures pour chaque configuration
     for ref in REFERENCES:
         symbol = ref["symbol"]
         tf = ref["timeframe"]
         strat = ref["strategy"]
         src = ref["src_dir"]
-        
+
         path = os.path.join(DATA_DIR, src, f"{symbol}.parquet")
         if not os.path.exists(path):
             print(f"Erreur: Fichier introuvable pour {symbol} : {path}")
             continue
-            
+
         print(f"Chargement et rééchantillonnage de {symbol} en {tf}...")
         df = pd.read_parquet(path)
         df_resampled = resample_ohlcv(df, tf)
-        
+
         print(f"Calcul des descripteurs pour {symbol}...")
         sig = extract_statistical_signature(df_resampled)
         sig["symbol"] = symbol
         sig["timeframe"] = tf
         sig["strategy"] = strat
-        
+
         signatures[f"{symbol}_{tf}"] = sig
-        
+
         # Stocker les caractéristiques pour le calcul de la covariance globale
         features = [
             sig["hurst"],
@@ -84,24 +84,24 @@ def main():
 
     # Convertir en tableau numpy
     feature_matrix = np.array(feature_list)
-    
+
     # 2. Calculer la matrice de covariance globale
     # Elle servira pour la distance de Mahalanobis car nous n'avons pas assez
     # de données par stratégie individuelle pour estimer des covariances séparées.
     print("Calcul de la matrice de covariance globale...")
     cov_matrix = np.cov(feature_matrix, rowvar=False)
-    
+
     # Sérialiser les signatures
     output_data = {
         "signatures": signatures,
         "global_covariance": cov_matrix.tolist(),
         "feature_names": ["hurst", "adf_stat", "half_life", "volatility_daily", "rho_1", "rho_5"]
     }
-    
+
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     with open(OUTPUT_FILE, "w") as f:
         json.dump(output_data, f, indent=4)
-        
+
     print(f"Baselines sauvegardées avec succès dans {OUTPUT_FILE} !")
 
 if __name__ == "__main__":

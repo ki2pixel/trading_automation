@@ -376,28 +376,29 @@ def _adx_filter_nb(high, low, close, length, threshold):
         if not np.isnan(adx[i]):
             out[i] = 1 if adx[i] > threshold else 0
     return out
-@njit(cache=True, parallel=True)
+@njit(cache=True)
 def _compute_knn_predictions_parallel(
     f1, f2, f3, f4, f5, y_train, neighbors_count, max_bars_back
 ):
     """
-    Parallel execution of the KNN ANN logic using Numba prange.
-    Computes distances with Early Abandoning (Short-circuit).
+    KNN ANN logic with Early Abandoning (Short-circuit).
+    Note: parallel=True removed due to Numba 0.61.x instability with local buffer
+    allocations inside prange. Sequential execution is stable and sufficient.
     """
     n = f1.shape[0]
     out_prediction = np.zeros(n, dtype=np.float64)
-    
-    for t in prange(5, n):
+
+    for t in range(5, n):
         last_distance = -1.0
         buf_size = 0
         dist_buf = np.zeros(neighbors_count + 1, dtype=np.float64)
         pred_buf = np.zeros(neighbors_count + 1, dtype=np.int64)
-        
+
         start_idx = max(0, t - max_bars_back)
-        
+
         for j in range(start_idx, t):
             i = j - start_idx
-            
+
             # Early Abandoning
             if (i % 4) == 0:
                 d = (
@@ -430,7 +431,7 @@ def _compute_knn_predictions_parallel(
             dist_buf[pos] = d
             pred_buf[pos] = y_train[j]
             buf_size += 1
-            
+
             if buf_size > neighbors_count:
                 idx_75 = int(round((neighbors_count + 1) * 0.75)) - 1
                 idx_75 = max(0, min(idx_75, buf_size - 1))
@@ -440,7 +441,7 @@ def _compute_knn_predictions_parallel(
         prediction = 0.0
         for k in range(buf_size):
             prediction += float(pred_buf[k])
-            
+
         out_prediction[t] = prediction
 
     return out_prediction
@@ -747,6 +748,12 @@ def apply_lorentzian_classification(
         high = high.reshape(-1, 1)
         low = low.reshape(-1, 1)
         close = close.reshape(-1, 1)
+    # Ensure contiguous C-order arrays for Numba. The 2D wrapper iterates column-by-column
+    # extracting 1D slices, so C-order is correct and avoids Numba cache/layout conflicts.
+    close = np.ascontiguousarray(close, dtype=np.float64)
+    high = np.ascontiguousarray(high, dtype=np.float64)
+    low = np.ascontiguousarray(low, dtype=np.float64)
+    order = 'C'
 
     n_rows, n_cols = close.shape
     hlc3 = (high + low + close) / 3.0
@@ -780,24 +787,24 @@ def apply_lorentzian_classification(
     k_lag = int(kernel_lag)
 
     # Pre-compute features per column
-    all_f1 = np.zeros((n_rows, n_cols), dtype=np.float64)
-    all_f2 = np.zeros((n_rows, n_cols), dtype=np.float64)
-    all_f3 = np.zeros((n_rows, n_cols), dtype=np.float64)
-    all_f4 = np.zeros((n_rows, n_cols), dtype=np.float64)
-    all_f5 = np.zeros((n_rows, n_cols), dtype=np.float64)
+    all_f1 = np.zeros((n_rows, n_cols), dtype=np.float64, order=order)
+    all_f2 = np.zeros((n_rows, n_cols), dtype=np.float64, order=order)
+    all_f3 = np.zeros((n_rows, n_cols), dtype=np.float64, order=order)
+    all_f4 = np.zeros((n_rows, n_cols), dtype=np.float64, order=order)
+    all_f5 = np.zeros((n_rows, n_cols), dtype=np.float64, order=order)
 
     # Pre-compute filter arrays
-    all_vol_filter = np.ones((n_rows, n_cols), dtype=np.int64)
-    all_regime_filter = np.ones((n_rows, n_cols), dtype=np.int64)
-    all_adx_filter = np.ones((n_rows, n_cols), dtype=np.int64)
+    all_vol_filter = np.ones((n_rows, n_cols), dtype=np.int64, order=order)
+    all_regime_filter = np.ones((n_rows, n_cols), dtype=np.int64, order=order)
+    all_adx_filter = np.ones((n_rows, n_cols), dtype=np.int64, order=order)
 
     # Pre-compute EMA/SMA
-    all_ema = np.full((n_rows, n_cols), np.nan, dtype=np.float64)
-    all_sma = np.full((n_rows, n_cols), np.nan, dtype=np.float64)
+    all_ema = np.full((n_rows, n_cols), np.nan, dtype=np.float64, order=order)
+    all_sma = np.full((n_rows, n_cols), np.nan, dtype=np.float64, order=order)
 
     # Pre-compute kernel regression
-    all_yhat1 = np.full((n_rows, n_cols), np.nan, dtype=np.float64)
-    all_yhat2 = np.full((n_rows, n_cols), np.nan, dtype=np.float64)
+    all_yhat1 = np.full((n_rows, n_cols), np.nan, dtype=np.float64, order=order)
+    all_yhat2 = np.full((n_rows, n_cols), np.nan, dtype=np.float64, order=order)
 
     for c in range(n_cols):
         c_close = close[:, c]
@@ -915,5 +922,5 @@ LorentzianClassification = vbt.IndicatorFactory(
     kernel_lag=2,
     use_kernel_smoothing=False,
     use_dynamic_exits=False,
-    keep_pd=True,
+    keep_pd=False,
 )

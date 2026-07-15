@@ -50,7 +50,7 @@ class AdaptiveTrendClassificationConfigOverrides:
     kama_len: int | None = None
     kama_w: float | None = None
     signal_mode: str | None = None
-    
+
     max_entry_price: float | None = None
     max_capital_bucket: float | None = None
     initial_capital_bucket: float | None = None
@@ -237,7 +237,7 @@ def _build_state_from_broker(
         else:
             fx_arr = np.array([broker.fx_rate(timestamps[idx]) for idx in active_indices])
             price_account = close_arr[active_indices] * fx_arr
-        
+
         side_mult = np.sign(pos_qty[active_indices])
         open_pnl[active_indices] = (price_account - pos_avg[active_indices]) * np.abs(pos_qty[active_indices]) * side_mult * broker.config.point_value
 
@@ -288,7 +288,7 @@ def run_adaptive_trend_classification(
     config = _apply_overrides(config, overrides)
 
     bars = _to_strategy_ohlcv(data)
-    
+
     # Vectorized execution
     raw_state, _ = module.run_adaptive_trend_classification_strategy(bars, config)
 
@@ -553,7 +553,7 @@ def _process_prescan_batch(args):
         short_exits=short_exits,
         freq=f"{prescan_timeframe}min",
     )
-    
+
     ret_series = pf.total_return()
     if not isinstance(ret_series, pd.Series):
         ret_series = pd.Series([ret_series], index=[(rob_val,) + batch_combos[0]])
@@ -572,7 +572,7 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
-    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres
     de Adaptive Trend Classification avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
@@ -778,7 +778,7 @@ def vectorbt_prescan(
                         short_exits=short_exits,
                         freq=f"{prescan_timeframe}min",
                     )
-                    
+
                     ret_series = pf.total_return()
                     if not isinstance(ret_series, pd.Series):
                         ret_series = pd.Series([ret_series], index=[0])
@@ -853,7 +853,7 @@ def vectorbt_prescan(
                         min_v = max(float(s.values[0]), float(min_v) - margin)
                         max_v = min(float(s.values[-1]), float(max_v) + margin)
                         new_vals = tuple(v for v in s.values if min_v <= float(v) <= max_v)
-                    
+
                     filtered_res = new_vals or s.values
                     new_specs.append(ParameterGridSpec(name=s.name, kind=s.kind, values=filtered_res))
                     report_params[s.name] = {

@@ -27,13 +27,13 @@ class TestBayesianSamplerSelection(unittest.TestCase):
     def test_qmc_sampler_selection_pure_numeric_over_1000_trials(self, mock_create_study) -> None:
         mock_study = MagicMock()
         mock_create_study.return_value = mock_study
-        
+
         # Pure numeric parameter specs
         parameter_specs = [
             ParameterGridSpec("fast_len", "numeric", (3, 4, 5)),
             ParameterGridSpec("slow_len", "numeric", (10, 11, 12)),
         ]
-        
+
         try:
             run_bayesian_optimization(
                 data=self.bars,
@@ -61,12 +61,12 @@ class TestBayesianSamplerSelection(unittest.TestCase):
     def test_tpe_sampler_selection_pure_numeric_under_1000_trials(self, mock_create_study) -> None:
         mock_study = MagicMock()
         mock_create_study.return_value = mock_study
-        
+
         # Pure numeric parameter specs
         parameter_specs = [
             ParameterGridSpec("fast_len", "numeric", (3, 4, 5)),
         ]
-        
+
         try:
             run_bayesian_optimization(
                 data=self.bars,
@@ -93,13 +93,13 @@ class TestBayesianSamplerSelection(unittest.TestCase):
     def test_tpe_sampler_selection_with_categorical_over_1000_trials(self, mock_create_study) -> None:
         mock_study = MagicMock()
         mock_create_study.return_value = mock_study
-        
+
         # Parameter specs containing a categorical variable
         parameter_specs = [
             ParameterGridSpec("fast_len", "numeric", (3, 4, 5)),
             ParameterGridSpec("trade_direction_mode", "choice", ("Long Only", "Short Only", "Long & Short")),
         ]
-        
+
         try:
             run_bayesian_optimization(
                 data=self.bars,
@@ -126,13 +126,13 @@ class TestBayesianSamplerSelection(unittest.TestCase):
     def test_tpe_sampler_selection_with_categorical_under_1000_trials(self, mock_create_study) -> None:
         mock_study = MagicMock()
         mock_create_study.return_value = mock_study
-        
+
         # Parameter specs containing a categorical variable
         parameter_specs = [
             ParameterGridSpec("fast_len", "numeric", (3, 4, 5)),
             ParameterGridSpec("trade_direction_mode", "choice", ("Long Only", "Short Only")),
         ]
-        
+
         try:
             run_bayesian_optimization(
                 data=self.bars,

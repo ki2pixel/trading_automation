@@ -73,7 +73,7 @@ def convert_single_file(args: Tuple[Path, Path, str]) -> Dict[str, Any]:
     """Clean, normalize and serialize a single CSV file to Parquet format."""
     csv_path, output_dir, symbol = args
     parquet_path = output_dir / f"{symbol}.parquet"
-    
+
     try:
         # 1. Read CSV using the robust line splitter
         df = read_csv_robust(csv_path)
@@ -234,7 +234,7 @@ def main() -> None:
             total_initial_rows += res["initial_rows"]
             total_final_rows += res["final_rows"]
             total_parquet_bytes += res["parquet_size_bytes"]
-            
+
             # Global times calculation
             if res["min_time"] != "N/A":
                 min_time = pd.Timestamp(res["min_time"])

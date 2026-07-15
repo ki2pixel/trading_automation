@@ -39,7 +39,7 @@ class TestHighPerformanceOptimization(unittest.TestCase):
     def test_shared_memory_volume_lifecycle(self) -> None:
         """Verify allocation, zero-copy mapping, and clean unlinking of SharedIndicatorVolume."""
         test_arr = np.linspace(1.0, 100.0, 1000, dtype=np.float64)
-        
+
         # Parent allocates
         parent_vol = SharedIndicatorVolume(array_to_share=test_arr)
         self.assertIsNotNone(parent_vol.shm_name)
@@ -54,10 +54,10 @@ class TestHighPerformanceOptimization(unittest.TestCase):
                 dtype=parent_vol.dtype,
             )
             worker_view = worker_vol.get_view()
-            
+
             # Assert identity and direct mapping
             np.testing.assert_array_equal(worker_view, test_arr)
-            
+
             # Mutate to confirm it's shared memory (mutates worker view if parent view is mutated)
             parent_view = parent_vol.get_view()
             parent_view[0] = 999.0
@@ -75,14 +75,14 @@ class TestHighPerformanceOptimization(unittest.TestCase):
         high_prices = open_prices + 0.5
         low_prices = open_prices - 0.5
         close_prices = open_prices + 0.1
-        
+
         raw_signals = np.zeros((1, n_bars), dtype=np.int8)
         raw_signals[0, 2] = 1  # Trigger long entry on bar 2
-        
+
         strategy_ids = np.array([0], dtype=np.int32)
         initial_cash = 1000.0
         capped_bucket_limit = 500.0
-        
+
         # Run kernel
         equity_curve = run_broker_simulation_kernel(
             open_prices=open_prices,
@@ -97,7 +97,7 @@ class TestHighPerformanceOptimization(unittest.TestCase):
             trailing_stop_pct=0.01,
             take_profit_pct=0.05,
         )
-        
+
         self.assertEqual(len(equity_curve), n_bars)
         self.assertTrue(np.all(equity_curve >= 0.0))
         # Initial cash on first bars should match
@@ -211,13 +211,13 @@ class TestHighPerformanceOptimization(unittest.TestCase):
         # Precalculate and mount shared grids locally to simulate worker environment
         combos = [(100, 3.0)]
         rf_keys = {combos[0]: 0}
-        
+
         smrng_grid_arr = np.zeros((1, len(self.data)), dtype=np.float64)
         filt_grid_arr = np.zeros((1, len(self.data)), dtype=np.float64)
-        
+
         smrng_series = strategy_mod._smooth_range(self.data["close"], 100, 3.0)
         filt_series = strategy_mod._range_filter(self.data["close"], smrng_series)
-        
+
         smrng_grid_arr[0] = smrng_series.to_numpy(dtype=float)
         filt_grid_arr[0] = filt_series.to_numpy(dtype=float)
 
@@ -277,7 +277,7 @@ class TestHighPerformanceOptimization(unittest.TestCase):
         prev_closes[0] = closes[0]
         tr = np.maximum(self.data["high"] - self.data["low"], np.maximum(np.abs(self.data["high"] - prev_closes), np.abs(self.data["low"] - prev_closes)))
         tr_series = pd.Series(tr)
-        
+
         atr_grid_arr[0] = tr_series.ewm(alpha=1.0 / 14, adjust=False).mean().to_numpy()
         piv_high_grid_arr[0] = self.data["high"].rolling(50, min_periods=1).max().to_numpy()
         piv_low_grid_arr[0] = self.data["low"].rolling(50, min_periods=1).min().to_numpy()
@@ -614,7 +614,7 @@ class TestHighPerformanceOptimization(unittest.TestCase):
 
         # Calculate original
         original_df = nb_mod.compute_noise_boundary(data, 2, 2.0, 1.0)
-        
+
         # Calculate original spy_dvol
         daily_close = data["close"].resample("D").last().dropna()
         daily_returns = daily_close.pct_change()
@@ -625,7 +625,7 @@ class TestHighPerformanceOptimization(unittest.TestCase):
         # Precalculate components to mount onto shared variables locally
         vol_grid_arr = np.zeros((1, 2, len(data)), dtype=np.float64)
         vol_grid_arr[0, 0] = original_df["daily_volatility"].to_numpy(dtype=float)
-        
+
         spy_dvol_filled = np.where(np.isnan(original_spy_dvol), 0.0, original_spy_dvol)
         vol_grid_arr[0, 1] = spy_dvol_filled
 
@@ -643,7 +643,7 @@ class TestHighPerformanceOptimization(unittest.TestCase):
                 rtol=1e-9,
                 atol=1e-9
             )
-            
+
             # Assert optimized run_noise_boundary_intraday matches standard by running backtest
             res = nb_mod.run_noise_boundary_intraday(data, "TEST", cfg, compute_full_metrics=False)
             self.assertIsNotNone(res)

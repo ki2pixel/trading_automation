@@ -21,9 +21,9 @@ class BybitConfig:
             self.dotenv_path = dotenv_path
 
         self._load_dotenv()
-        
+
         self.env = os.getenv("BYBIT_ENV", "testnet").lower()
-        
+
         if self.env == "live":
             self.api_key = os.getenv("BYBIT_LIVE_API_KEY") or os.getenv("BYBIT_API_KEY")
             self.api_secret = os.getenv("BYBIT_LIVE_API_SECRET") or os.getenv("BYBIT_API_SECRET")
@@ -58,7 +58,7 @@ class BybitConfig:
         key_hash = hashlib.sha256(self.api_key.encode("utf-8")).hexdigest()
         expected_live_hash = os.getenv("EXPECTED_BYBIT_LIVE_KEY_HASH")
         expected_demo_hash = os.getenv("EXPECTED_BYBIT_DEMO_KEY_HASH")
-        
+
         if self.env == "live":
             if not expected_live_hash:
                 raise ValueError("[Failsafe] CRITICAL: EXPECTED_BYBIT_LIVE_KEY_HASH is not set in a Live environment! This is strictly forbidden.")
@@ -67,5 +67,9 @@ class BybitConfig:
             if key_hash != expected_live_hash:
                 raise ValueError("[Failsafe] CRITICAL: Bybit API key does not match EXPECTED_BYBIT_LIVE_KEY_HASH in Live environment! Shutting down immediately.")
         else:
+            if not expected_demo_hash:
+                raise ValueError("[Failsafe] CRITICAL: EXPECTED_BYBIT_DEMO_KEY_HASH is not set in a Demo/Testnet environment! This is strictly forbidden.")
             if expected_live_hash and key_hash == expected_live_hash:
                 raise ValueError("[Failsafe] CRITICAL: Bybit Live API key detected in Demo/Testnet environment! Shutting down immediately.")
+            if key_hash != expected_demo_hash:
+                raise ValueError("[Failsafe] CRITICAL: Bybit API key does not match EXPECTED_BYBIT_DEMO_KEY_HASH in Demo/Testnet environment! Shutting down immediately.")

@@ -47,7 +47,7 @@ def calculate_bayesian_iterations(canonical_iterations: int) -> int:
 
 def main() -> None:
     print("Initialisation de la Passe 2 (Gestion du Risque) de momentum_based_zigzag pour les 9 actifs qualifiés...")
-    
+
     # Définition des paramètres à optimiser (Passe 2)
     parameters_payload: list[dict[str, Any]] = [
         {"name": "enable_stop_loss", "kind": "choice", "values": [True]},
@@ -83,7 +83,7 @@ def main() -> None:
     queued_count = 0
     for symbol, tf_str, rsi_period, qqe_factor, rsi_smoothing, ob, os, signal_mode in TARGET_CONFIGS:
         tf_min = timeframe_to_minutes(tf_str)
-        
+
         # Paramètres bloqués de Passe 1 spécifiques à cet actif
         fixed_overrides: dict[str, Any] = {
             "use_safety_stop": False,
@@ -95,7 +95,7 @@ def main() -> None:
             "os": float(os),
             "signal_mode": str(signal_mode)
         }
-        
+
         # Payload de requête
         request_payload: dict[str, Any] = {
             "strategy": "momentum_based_zigzag",
@@ -134,7 +134,7 @@ def main() -> None:
                 "rawIterations": raw_iterations
             }
         )
-        
+
         store.add(job)
         queued_count += 1
         print(f"  -> Job enfilé pour {symbol} {tf_str} (Core bloqué: rsi_period={rsi_period}, qqe_factor={qqe_factor}, rsi_smoothing={rsi_smoothing}, ob={ob}, os={os}, signal_mode='{signal_mode}')")

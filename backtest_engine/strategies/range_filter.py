@@ -185,7 +185,7 @@ def run_range_filter(
 
     bars = _to_strategy_ohlcv(data)
     state, raw_trades = module.run_range_filter_strategy(
-        bars, 
+        bars,
         config,
         early_stop_drawdown_pct=overrides.early_stop_drawdown_pct,
         compute_full_metrics=compute_full_metrics,
@@ -210,10 +210,10 @@ def run_range_filter(
         metrics = {"closed_trades": len(trades)}
         if fast_score_metric:
             score = compute_fast_score(
-                trades, 
-                fast_score_metric, 
-                state=state, 
-                initial_capital=initial_capital, 
+                trades,
+                fast_score_metric,
+                state=state,
+                initial_capital=initial_capital,
                 timeframe_minutes=timeframe_minutes,
                 bars=bars,
             )

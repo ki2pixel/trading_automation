@@ -17,14 +17,14 @@ MINIMUM_ALLOWED_THRESHOLD = Decimal("5.00")   # Plancher de sécurité
 class AccumulatorBuffer:
     """
     Registre persistant d'accumulation des profits USDC.
-    
+
     Responsabilités:
     - Enregistrer chaque plus-value réalisée via deposit()
     - Évaluer le franchissement du seuil via should_trigger()
     - Fournir le solde accumulé via get_balance()
     - Marquer le buffer comme drainé après conversion via drain()
     """
-    
+
     def __init__(
         self,
         threshold: Decimal = DEFAULT_TRIGGER_THRESHOLD,
@@ -37,7 +37,7 @@ class AccumulatorBuffer:
             )
         self.threshold = threshold
         self.source = source
-    
+
     def deposit(self, conn, amount: Decimal, trade_ref: str = "") -> Decimal:
         """
         Enregistre un profit réalisé dans le buffer.
@@ -48,26 +48,26 @@ class AccumulatorBuffer:
             raise TypeError(f"amount must be Decimal, got {type(amount)}")
         if amount <= Decimal("0"):
             raise ValueError("Cannot deposit non-positive amount")
-        
+
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO conversion_accumulator (source, amount, trade_ref, created_at)
                 VALUES (%s, %s, %s, %s)
             """, (self.source, amount, trade_ref, datetime.now(timezone.utc)))
-            
+
             cur.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM conversion_accumulator
                 WHERE source = %s AND drained = FALSE
             """, (self.source,))
             balance = Decimal(str(cur.fetchone()[0]))
-        
+
         conn.commit()
         logger.info(
             f"[Accumulator] Deposited {amount} USDC (ref: {trade_ref}). "
             f"Buffer balance: {balance} USDC"
         )
         return balance
-    
+
     def get_balance(self, conn) -> Decimal:
         """Retourne le solde non-drainé du buffer."""
         with conn.cursor() as cur:
@@ -76,7 +76,7 @@ class AccumulatorBuffer:
                 WHERE source = %s AND drained = FALSE
             """, (self.source,))
             return Decimal(str(cur.fetchone()[0]))
-    
+
     def should_trigger(self, conn) -> Tuple[bool, Decimal]:
         """
         Évalue si le seuil d'accumulation est atteint.
@@ -84,7 +84,7 @@ class AccumulatorBuffer:
         """
         balance = self.get_balance(conn)
         return balance >= self.threshold, balance
-    
+
     def drain(self, conn, conversion_id: str) -> Decimal:
         """
         Marque toutes les entrées non-drainées comme drainées.

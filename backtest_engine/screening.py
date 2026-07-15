@@ -15,14 +15,14 @@ def calculate_hurst_exponent(series: pd.Series, max_lag: int = 100) -> float:
     n = len(clean_series)
     if n < max_lag * 2:
         return np.nan
-        
+
     lags = np.arange(2, min(max_lag, n // 10))
     tau = []
     for lag in lags:
         # Écart-type des différences retardées de lag périodes
         diff = clean_series[lag:] - clean_series[:-lag]
         tau.append(np.std(diff))
-        
+
     # Régression linéaire de ln(tau) sur ln(lag)
     # log(std) = H * log(lag) + C
     try:
@@ -61,16 +61,16 @@ def calculate_half_life(series: pd.Series) -> float:
     clean_series = series.dropna()
     if len(clean_series) < 20:
         return np.nan
-        
+
     x = clean_series.shift(1).iloc[1:].values
     y = clean_series.diff().iloc[1:].values
-    
+
     try:
         # Régression linéaire : dy = alpha + beta * x
         beta, alpha = np.polyfit(x, y, 1)
         if beta >= 0:
             return np.inf  # Pas de mean reversion
-            
+
         # demi-vie = -ln(2) / beta
         half_life = -np.log(2) / beta
         return float(half_life)
@@ -110,7 +110,7 @@ def calculate_adv_currency(df: pd.DataFrame) -> float:
         df_temp = df_temp.set_index('timestamp')
     if not isinstance(df_temp.index, pd.DatetimeIndex):
         df_temp.index = pd.to_datetime(df_temp.index)
-        
+
     daily_value = (df_temp['close'] * df_temp['volume']).resample('D').sum()
     daily_value = daily_value[daily_value > 0]
     if len(daily_value) == 0:
@@ -136,26 +136,26 @@ def extract_statistical_signature(df: pd.DataFrame, target_col: str = 'close', i
         df_clean = df_clean.set_index('timestamp')
     if not isinstance(df_clean.index, pd.DatetimeIndex):
         df_clean.index = pd.to_datetime(df_clean.index)
-        
+
     series = df_clean[target_col]
-    
+
     hurst = calculate_hurst_exponent(series)
     adf = calculate_adf_statistic(series)
     half_life = calculate_half_life(series)
     rho_1 = calculate_autocorrelation(series, lag=1)
     rho_5 = calculate_autocorrelation(series, lag=5)
-    
+
     # Rendements journaliers pour la volatilité
     daily_series = series.resample('D').last().dropna()
     periods = 365 if is_crypto else 252
     vol = calculate_realized_volatility(daily_series, periods=periods)
-    
+
     adv = calculate_adv_currency(df_clean)
-    
+
     # Nombre d'années de données
     total_days = (df_clean.index[-1] - df_clean.index[0]).days
     history_years = total_days / 365.25
-    
+
     return {
         "hurst": hurst,
         "adf_stat": adf["stat"],

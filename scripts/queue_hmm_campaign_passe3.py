@@ -157,7 +157,7 @@ def main():
                 "rawIterations": raw_iterations
             }
         )
-        
+
         store.add(job)
         queued_count += 1
         print(f"  -> Job enfilé pour {symbol} {tf_str} ({canonical_iterations} combinaisons réelles)")

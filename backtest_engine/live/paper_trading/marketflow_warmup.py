@@ -26,19 +26,19 @@ def fetch_candles(mf_symbol, range_limit=1440):
         "x-rapidapi-key": api_key,
         "x-rapidapi-host": API_HOST
     }
-    
+
     try:
         response = requests.get(URL, headers=headers, params=querystring, timeout=NETWORK_TIMEOUT_DEFAULT)
         response.raise_for_status()
         data = response.json()
-        
+
         candles = data.get("data", [])
         if not candles and isinstance(data, list):
             candles = data
-            
+
         logger.info(f"[WarmUp] Récupéré {len(candles)} bougies pour {mf_symbol}")
         return candles
-        
+
     except requests.exceptions.RequestException as e:
         logger.error(f"[WarmUp] Erreur API pour {mf_symbol} : {e}")
         return []
@@ -57,7 +57,7 @@ def get_t212_current_price(t212_ticker, conn) -> Optional[Decimal]:
 def parse_and_insert(t212_ticker, candles, conn):
     live_price = get_t212_current_price(t212_ticker, conn)
     ratio = Decimal("1.0")
-    
+
     if live_price and len(candles) > 0:
         for c in reversed(candles):
             last_close = Decimal(str(c.get("close", 0)))
@@ -77,7 +77,7 @@ def parse_and_insert(t212_ticker, candles, conn):
                 ts_val = candle.get("timestamp", candle.get("time"))
                 if ts_val is None:
                     continue
-                    
+
                 if isinstance(ts_val, (int, float)):
                     if ts_val > 1e11: # likely milliseconds
                         dt_val = datetime.fromtimestamp(ts_val / 1000.0, tz=pytz.utc)
@@ -87,35 +87,35 @@ def parse_and_insert(t212_ticker, candles, conn):
                     dt_val = datetime.fromisoformat(ts_val.replace("Z", "+00:00"))
                 else:
                     continue
-                
+
                 open_val = Decimal(str(candle.get("open", 0))) * ratio
                 high_val = Decimal(str(candle.get("high", 0))) * ratio
                 low_val = Decimal(str(candle.get("low", 0))) * ratio
                 close_val = Decimal(str(candle.get("close", 0))) * ratio
-                
+
                 if open_val == Decimal("0"):
                     continue
 
                 records.append((t212_ticker, dt_val, open_val, high_val, low_val, close_val))
             except Exception as e:
                 logger.exception(f"[WarmUp] Erreur parsing bougie {candle} pour {t212_ticker}: {e}")
-                
+
         if records:
             try:
                 cur.executemany("""
                     INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
                     VALUES (%s, date_trunc('minute', %s::timestamptz), %s, %s, %s, %s)
-                    ON CONFLICT (ticker, timestamp_minute) 
-                    DO UPDATE SET 
-                        open = EXCLUDED.open, 
-                        high = EXCLUDED.high, 
-                        low = EXCLUDED.low, 
+                    ON CONFLICT (ticker, timestamp_minute)
+                    DO UPDATE SET
+                        open = EXCLUDED.open,
+                        high = EXCLUDED.high,
+                        low = EXCLUDED.low,
                         close = EXCLUDED.close;
                 """, records)
                 inserted = len(records)
             except Exception as e:
                 logger.exception(f"[WarmUp] Erreur insertion batch pour {t212_ticker}: {e}")
-                
+
         conn.commit()
         logger.info(f"[WarmUp] {inserted} bougies insérées pour {t212_ticker}")
 
@@ -123,24 +123,24 @@ def run_warmup():
     logger.info("========================================")
     logger.info("Démarrage du Warm-Up (MarketFlow API)")
     logger.info("========================================")
-    
+
     api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
         logger.error("[WarmUp] RAPIDAPI_KEY not set. Cannot proceed.")
         raise ValueError("[WarmUp] RAPIDAPI_KEY not set. Cannot proceed.")
-        
+
     try:
         with get_db_connection() as conn:
             for t212_ticker, mf_symbol in TICKER_MAPPING.items():
                 logger.info(f"Traitement de {t212_ticker} (via {mf_symbol})...")
                 candles = fetch_candles(mf_symbol, range_limit=1440)
-                
+
                 if candles:
                     parse_and_insert(t212_ticker, candles, conn)
     except Exception as e:
         logger.exception(f"[WarmUp] Erreur durant le warm-up : {e}")
         raise e
-        
+
     logger.info("[WarmUp] Processus terminé.")
 
 if __name__ == "__main__":

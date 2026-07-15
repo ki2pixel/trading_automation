@@ -44,7 +44,7 @@ class PMaxExplorerConfigOverrides:
     length: int | None = None
     change_atr: bool | None = None
     source_col: str | None = None
-    
+
     max_entry_price: float | None = None
     max_capital_bucket: float | None = None
     initial_capital_bucket: float | None = None
@@ -159,12 +159,12 @@ def run_pmax_explorer(
 
     bars = _to_strategy_ohlcv(data)
     state, trades = module.run_pmax_explorer_strategy(
-        bars, 
+        bars,
         config,
         early_stop_drawdown_pct=overrides.early_stop_drawdown_pct if overrides else None,
         compute_full_metrics=compute_full_metrics,
     )
-    
+
     if compute_full_metrics:
         metrics, equity_curve = compute_metrics(
             MetricsInput(
@@ -182,10 +182,10 @@ def run_pmax_explorer(
         metrics = {"closed_trades": len(trades)}
         if fast_score_metric:
             score = compute_fast_score(
-                trades, 
-                fast_score_metric, 
-                state=state, 
-                initial_capital=initial_capital, 
+                trades,
+                fast_score_metric,
+                state=state,
+                initial_capital=initial_capital,
                 timeframe_minutes=timeframe_minutes,
                 bars=bars,
             )
@@ -500,7 +500,7 @@ def vectorbt_prescan(
         if ma_np.ndim == 1:
             ma_np = ma_np.reshape(-1, 1)
         length_to_idx = {l: idx for idx, l in enumerate(length_vals)}
-        
+
         # Pre-calculer toutes les ATR avec VectorBT
         all_atr = vbt.ATR.run(high, low, close, window=periods_vals)
         atr_np = all_atr.atr.to_numpy(dtype=float)
@@ -518,7 +518,7 @@ def vectorbt_prescan(
             max_batch_combos = max(1, 100 // len(multiplier_vals))
         else:
             max_batch_combos = max(1, 400 // len(multiplier_vals))
-            
+
         BATCH_SIZE = max_batch_combos
         total_batches = (len(combos) + BATCH_SIZE - 1) // BATCH_SIZE if combos else 0
         returns_batches: list[pd.Series] = []

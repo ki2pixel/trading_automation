@@ -23,7 +23,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 def read_csv_robust(csv_path: Path) -> Tuple[pd.DataFrame, bool, int]:
     """Read a CSV file, recovering any merged lines on-the-fly.
-    
+
     Returns:
         DataFrame, has_corruption, count of recovered lines.
     """

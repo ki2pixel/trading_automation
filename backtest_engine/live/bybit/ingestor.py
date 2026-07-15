@@ -71,11 +71,11 @@ class BybitPriceIngestor(BasePriceIngestor):
                 if not klines_data:
                     print(f"[BybitIngestor] No historical candles returned for {symbol}")
                     continue
-                
+
                 # Bybit returns klines in descending order (newest first).
                 # We reverse the list to insert from oldest to newest.
                 klines_data = list(reversed(klines_data))
-                
+
                 with get_db_connection() as conn:
                     with conn.cursor() as cur:
                         for k in klines_data:
@@ -85,7 +85,7 @@ class BybitPriceIngestor(BasePriceIngestor):
                             h = Decimal(k[2])
                             l = Decimal(k[3])
                             c = Decimal(k[4])
-                            
+
                             cur.execute("""
                                 INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
                                 VALUES (%s, %s, %s, %s, %s, %s)
@@ -111,7 +111,7 @@ class BybitPriceIngestor(BasePriceIngestor):
                 tickers_list = ticker_data.get("result", {}).get("list", [])
                 if not tickers_list:
                     continue
-                
+
                 price_val = Decimal(tickers_list[0].get("lastPrice", "0"))
                 symbol_lower = symbol.lower()
                 prices[symbol_lower] = float(price_val)
@@ -119,7 +119,7 @@ class BybitPriceIngestor(BasePriceIngestor):
                 # 2. Fetch last 5 candles to keep live_candles_1m up-to-date
                 res = self.client.get_klines(symbol, interval="1", limit=5)
                 klines_data = res.get("result", {}).get("list", [])
-                
+
                 # 3. Write current price to Redis, PostgreSQL and local cache
                 redis_client = get_redis_client()
                 if redis_client:
@@ -150,7 +150,7 @@ class BybitPriceIngestor(BasePriceIngestor):
                             h = Decimal(k[2])
                             l = Decimal(k[3])
                             c = Decimal(k[4])
-                            
+
                             cur.execute("""
                                 INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
                                 VALUES (%s, %s, %s, %s, %s, %s)
@@ -161,7 +161,7 @@ class BybitPriceIngestor(BasePriceIngestor):
                                     low = EXCLUDED.low,
                                     close = EXCLUDED.close;
                             """, (symbol_lower, dt, o, h, l, c))
-                        
+
                         # Auto-cleanup: keep only last 7 days
                         cur.execute("DELETE FROM live_candles_1m WHERE ticker = %s AND timestamp_minute < NOW() - INTERVAL '7 days'", (symbol_lower,))
                         conn.commit()
@@ -171,7 +171,7 @@ class BybitPriceIngestor(BasePriceIngestor):
 
         if prices:
             self._write_local_cache(prices)
-            
+
         return prices
 
     def _write_local_cache(self, prices: Dict[str, float]) -> None:
@@ -220,7 +220,7 @@ class BybitPriceIngestor(BasePriceIngestor):
                 self.poll_and_cache()
             except Exception as e:
                 print(f"[BybitIngestor] Error in loop: {e}")
-            
+
             for _ in range(interval_seconds):
                 if not self._running:
                     break
@@ -240,7 +240,7 @@ class BybitPriceIngestor(BasePriceIngestor):
                 await asyncio.to_thread(self.poll_and_cache)
             except Exception as e:
                 print(f"[BybitIngestor] Error in async loop: {e}")
-            
+
             for _ in range(interval_seconds):
                 if not self._running:
                     break

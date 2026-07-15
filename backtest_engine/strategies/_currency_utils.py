@@ -10,7 +10,7 @@ def setup_currency_and_fx_provider(
     default_account_currency: str = "EUR",
 ) -> tuple[str, str, Any]:
     """Helper to build fx rate provider and load asset/account currency.
-    
+
     Returns (account_currency, asset_currency, fx_rate_provider)
     """
     fx_rate_provider = getattr(overrides, "fx_rate_provider", None) if overrides else None
@@ -29,8 +29,8 @@ def setup_currency_and_fx_provider(
         if fx_rate_provider is not None and asset_currency is None:
             currency_map = load_symbol_currency_map(repo_root, timeframe_minutes)
             asset_currency = currency_map.get(symbol, account_currency).upper()
-            
+
     if asset_currency is None:
         asset_currency = account_currency
-        
+
     return account_currency, asset_currency, fx_rate_provider

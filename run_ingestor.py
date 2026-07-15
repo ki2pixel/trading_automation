@@ -28,7 +28,7 @@ from contextlib import asynccontextmanager
 async def lifespan(app: FastAPI):
     global background_tasks, t212_ingestor, bybit_ingestor
     import asyncio
-    
+
     # 1. Initialize Trading 212 Client and Ingestor dynamically if not initialized (Uvicorn worker re-import)
     if t212_ingestor is None:
         t212_env = os.getenv("T212_INGESTOR_ENV", "demo").lower()
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Runner] Trading 212 not configured (env={t212_env}): {e}. Skipping.")
             t212_ingestor = None
-            
+
     # 2. Initialize Bybit Client and Ingestor dynamically if not initialized (Uvicorn worker re-import)
     if bybit_ingestor is None:
         bybit_config = BybitConfig()
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
             bybit_ingestor = None
 
     polling_interval = int(os.getenv("T212_POLLING_INTERVAL", "60"))
-    
+
     if t212_ingestor is not None:
         background_tasks.append(
             asyncio.create_task(
@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
             )
         )
         print("[Runner] Started background async Trading 212 polling task.")
-        
+
     if bybit_ingestor is not None:
         background_tasks.append(
             asyncio.create_task(
@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
             )
         )
         print("[Runner] Started background async Bybit polling task.")
-        
+
     # Start database keep-alive heartbeat task
     background_tasks.append(
         asyncio.create_task(
@@ -79,18 +79,18 @@ async def lifespan(app: FastAPI):
         )
     )
     print("[Runner] Started background async PostgreSQL keep-alive task.")
-        
+
     yield
-    
+
     if t212_ingestor is not None:
         t212_ingestor._running = False
     if bybit_ingestor is not None:
         bybit_ingestor._running = False
-        
+
     # Cancel all background tasks to ensure clean exit
     for task in background_tasks:
         task.cancel()
-        
+
     for task in background_tasks:
         try:
             await task
@@ -152,7 +152,7 @@ def get_prices():
             return prices
         except Exception as e:
             print(f"[Runner] Failed to fetch prices from PostgreSQL: {e}")
-            
+
     # 3. Fallback to local JSON caches
     prices = {}
     if t212_ingestor is not None:
@@ -163,7 +163,7 @@ def get_prices():
 
 def main():
     global t212_ingestor, bybit_ingestor
-    
+
     # 1. Initialize Trading 212 Client and Ingestor
     t212_env = os.getenv("T212_INGESTOR_ENV", "demo").lower()
     t212_config = Trading212Config(env=t212_env)
@@ -175,7 +175,7 @@ def main():
     except Exception as e:
         print(f"[Runner] Trading 212 not configured (env={t212_env}): {e}. Skipping.")
         t212_ingestor = None
-        
+
     # 2. Initialize Bybit Client and Ingestor
     bybit_config = BybitConfig()
     try:
@@ -190,7 +190,7 @@ def main():
     if t212_ingestor is None and bybit_ingestor is None:
         print("[Runner] ERROR: Neither Trading 212 nor Bybit are configured. Exiting.", file=sys.stderr)
         sys.exit(1)
-        
+
     # 3. Bootstrapping (optional for T212)
     bootstrap_env = os.getenv("T212_BOOTSTRAP", "false").lower()
     if bootstrap_env in ("true", "1", "yes") and t212_ingestor is not None:
@@ -201,11 +201,11 @@ def main():
             bootstrapper.bootstrap()
         except Exception as e:
             print(f"[Runner] Bootstrap failed: {e}", file=sys.stderr)
-            
+
     # 4. Mode routing
     mode = os.getenv("T212_INGESTOR_MODE", "worker").lower()
     polling_interval = int(os.getenv("T212_POLLING_INTERVAL", "60"))
-    
+
     if mode == "web":
         port = int(os.getenv("PORT", "8080"))
         host = os.getenv("HOST", "0.0.0.0")

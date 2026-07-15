@@ -4,7 +4,7 @@ from backtest_engine.data import split_wfo_windows
 
 def test_split_wfo_windows():
     data = pd.DataFrame({"value": range(100)})
-    
+
     # Test 1 window
     windows = split_wfo_windows(data, windows=1, train_ratio=0.8)
     assert len(windows) == 1
@@ -19,7 +19,7 @@ def test_split_wfo_windows():
     # Test 2 windows
     windows = split_wfo_windows(data, windows=2, train_ratio=0.7)
     assert len(windows) == 2
-    
+
     # Window 1: 0 to 49
     train1, test1 = windows[0]
     assert len(train1) == int(50 * 0.7)  # 35
@@ -28,7 +28,7 @@ def test_split_wfo_windows():
     assert train1.iloc[-1]["value"] == 34
     assert test1.iloc[0]["value"] == 35
     assert test1.iloc[-1]["value"] == 49
-    
+
     # Window 2: 50 to 99
     train2, test2 = windows[1]
     assert len(train2) == int(50 * 0.7)  # 35
@@ -42,12 +42,12 @@ def test_split_wfo_windows():
     data_uneven = pd.DataFrame({"value": range(105)})
     windows = split_wfo_windows(data_uneven, windows=2, train_ratio=0.8)
     assert len(windows) == 2
-    
+
     # window_size = 105 // 2 = 52
     train1, test1 = windows[0]
     assert len(train1) + len(test1) == 52
     assert len(train1) == int(52 * 0.8)  # 41
-    
+
     train2, test2 = windows[1]
     # second window takes the remainder: 105 - 52 = 53
     assert len(train2) + len(test2) == 53
@@ -55,13 +55,13 @@ def test_split_wfo_windows():
 
 def test_split_wfo_windows_edge_cases():
     data = pd.DataFrame({"value": range(10)})
-    
+
     with pytest.raises(ValueError, match="strictly positive"):
         split_wfo_windows(data, windows=0, train_ratio=0.8)
-        
+
     with pytest.raises(ValueError, match="train_ratio"):
         split_wfo_windows(data, windows=2, train_ratio=1.0)
-        
+
     with pytest.raises(ValueError, match="Not enough data"):
         split_wfo_windows(data, windows=20, train_ratio=0.8)
 
@@ -222,29 +222,29 @@ def test_filter_market_hours():
 def test_list_canonical_symbols(tmp_path):
     from backtest_engine.optimizer import list_canonical_symbols
     from pathlib import Path
-    
+
     # Setup temporary directory structure
     processed_dir = tmp_path / "processed"
     (processed_dir / "market_data_1m").mkdir(parents=True)
     (processed_dir / "market_data_5m").mkdir(parents=True)
     (processed_dir / "market_data_10m").mkdir(parents=True)
-    
+
     # Create mock parquet/csv files
     # market_data_1m has 'BTCUSD', 'ETHUSD'
     (processed_dir / "market_data_1m" / "BTCUSD.parquet").touch()
     (processed_dir / "market_data_1m" / "ETHUSD.csv.gz").touch()
-    
+
     # market_data_5m has 'BTCUSD', 'EURUSD'
     (processed_dir / "market_data_5m" / "BTCUSD.parquet").touch()
     (processed_dir / "market_data_5m" / "EURUSD.parquet").touch()
-    
+
     # market_data_10m has 'AAPL'
     (processed_dir / "market_data_10m" / "AAPL.parquet").touch()
-    
+
     # Test minutes == 1: should return only 1m symbols -> ['BTCUSD', 'ETHUSD']
     symbols_1m = list_canonical_symbols(Path("/"), processed_dir=processed_dir, timeframe_minutes=1)
     assert symbols_1m == ['BTCUSD', 'ETHUSD']
-    
+
     # Test minutes == 10: should return union of 10m, 1m, and 5m symbols -> ['AAPL', 'BTCUSD', 'ETHUSD', 'EURUSD']
     symbols_10m = list_canonical_symbols(Path("/"), processed_dir=processed_dir, timeframe_minutes=10)
     assert symbols_10m == ['AAPL', 'BTCUSD', 'ETHUSD', 'EURUSD']

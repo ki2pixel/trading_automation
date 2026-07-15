@@ -154,17 +154,17 @@ def _wma(series: pd.Series, length: int) -> pd.Series:
         raise ValueError("WMA length must be >= 1")
     weights = np.arange(1, length + 1, dtype=float)
     weight_sum = weights.sum()
-    
+
     values = series.to_numpy(dtype=float)
     if len(values) < length:
         return pd.Series(np.nan, index=series.index)
-        
+
     w = weights[::-1] / weight_sum
     conv = np.convolve(values, w, mode='valid')
-    
+
     pad = np.full(length - 1, np.nan)
     result = np.concatenate((pad, conv))
-    
+
     return pd.Series(result, index=series.index)
 
 
@@ -183,20 +183,20 @@ def _hma(series: pd.Series, length: int) -> pd.Series:
 def _ha_open(df: pd.DataFrame) -> pd.Series:
     if len(df) == 0:
         return pd.Series(dtype=float, index=df.index)
-        
+
     open_vals = df["open"].to_numpy(dtype=float)
     close_vals = df["close"].to_numpy(dtype=float)
     high_vals = df["high"].to_numpy(dtype=float)
     low_vals = df["low"].to_numpy(dtype=float)
-    
+
     ha_close_vals = (open_vals + high_vals + low_vals + close_vals) / 4.0
     ha_open_vals = np.empty(len(df), dtype=float)
-    
+
     ha_open_vals[0] = (open_vals[0] + close_vals[0]) / 2.0
-    
+
     for i in range(1, len(df)):
         ha_open_vals[i] = (ha_open_vals[i - 1] + ha_close_vals[i - 1]) / 2.0
-        
+
     return pd.Series(ha_open_vals, index=df.index)
 
 
@@ -455,7 +455,7 @@ class _CommasBotBacktestSession:
         self.config = config
         self.compute_full_metrics = compute_full_metrics
         self.broker = broker
-        
+
         self.n = len(out)
         self.index = out.index
         self.open_arr = out["open"].to_numpy(dtype=float)
@@ -463,33 +463,33 @@ class _CommasBotBacktestSession:
         self.low_arr = out["low"].to_numpy(dtype=float)
         self.close_arr = out["close"].to_numpy(dtype=float)
         self.fill_price_arr = out[config.next_bar_execution_price_col].to_numpy(dtype=float)
-        
+
         self.valid_long_arr = out["valid_long_entry"].to_numpy(dtype=bool)
         self.valid_short_arr = out["valid_short_entry"].to_numpy(dtype=bool)
         self.within_time_arr = out["within_time"].to_numpy(dtype=bool)
         self.atr_arr = out["atr"].to_numpy(dtype=float)
         self.lowest_low_arr = out["lowest_low"].to_numpy(dtype=float)
         self.highest_high_arr = out["highest_high"].to_numpy(dtype=float)
-        
+
         # State
         self.side = 0
         self.qty = 0.0
         self.entry_price = np.nan
         self.entry_index: Any = None
         self.entry_bar_number: Optional[int] = None
-        
+
         self.look_for_exit = False
         self.trade_stop_price = 0.0
         self.trade_target_price = np.nan
         self.trailing_stop = 0.0
         self.trade_exit_trigger_price = 0.0
-        
+
         self.pending_order: Optional[Dict[str, Any]] = None
         self.trades: List[Dict[str, Any]] = []
-        
+
         from collections import defaultdict
         self.records = defaultdict(list)
-        
+
         self.capital_bucket = bucket_clamp(config.initial_capital_bucket, config.max_capital_bucket)
         self.withdrawn_profit = 0.0
         self.peak_equity = float(broker.cash)
@@ -934,7 +934,7 @@ class _CommasBotBacktestSession:
     def run(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         for bar_number in range(self.n):
             self._process_bar(bar_number)
-            
+
         state_df = pd.DataFrame(self.records, index=self.index)
         trades_df = pd.DataFrame(self.trades)
         return state_df, trades_df

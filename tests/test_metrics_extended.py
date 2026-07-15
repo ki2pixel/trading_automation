@@ -35,7 +35,7 @@ class TestMetricsExtended(unittest.TestCase):
         bars = pd.DataFrame({
             "open": [100]*10, "high": [105]*10, "low": [95]*10, "close": [100]*10
         }, index=dates)
-        
+
         # State with a specific realized PnL to create drawdown
         # Initial 1000. Realized: 0, -100, 0, 100, 0, ...
         # Equity: 1000, 900, 900, 1000, 1000, ...
@@ -45,9 +45,9 @@ class TestMetricsExtended(unittest.TestCase):
             "realized_net_pnl_on_fill": [0, -100, 0, 100, 0, 0, 0, 0, 0, 0],
             "estimated_net_if_closed_now": [0]*10
         }, index=dates)
-        
+
         trades = pd.DataFrame(columns=["net_pnl", "bars_held"])
-        
+
         payload = MetricsInput(
             symbol="TEST",
             strategy="TEST",
@@ -57,9 +57,9 @@ class TestMetricsExtended(unittest.TestCase):
             trades=trades,
             timeframe_minutes=1440
         )
-        
+
         metrics, _ = compute_metrics(payload)
-        
+
         self.assertEqual(metrics["max_drawdown_period_bars"], 2)
         # 10 days total. 2 bars in drawdown out of 10.
         # Elapsed days = 9.0 (from 1st to 10th)

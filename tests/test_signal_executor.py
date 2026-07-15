@@ -11,13 +11,16 @@ from backtest_engine.live.paper_trading.engine import get_eurusd_rate
 import backtest_engine.live.utils as utils
 
 
+@pytest.fixture(autouse=True)
+def reset_kill_switch_global():
+    from backtest_engine.live.kill_switch import set_trading_suspended
+    set_trading_suspended(False)
+
 class TestGetEurUsdRate:
     @pytest.fixture(autouse=True)
     def reset_eurusd_cache(self):
         # Reset global cache to avoid test pollution
         utils._eurusd_cache_rate = None
-        utils._eurusd_cache_expiry = 0.0
-
     @patch('backtest_engine.live.paper_trading.engine.logger')
     def test_eurusd_rate_db_success(self, mock_logger):
         mock_conn = MagicMock()
@@ -68,7 +71,7 @@ class TestSignalExecutor:
 
         market_hours = {"AAPL": {"open": "09:00", "close": "17:30", "tz_offset": "+01:00"}}
         executor = SignalExecutor(market_hours=market_hours)
-        
+
         mock_is_market_open.return_value = True
         assert executor.is_market_open("AAPL") is True
         mock_is_market_open.assert_called_once_with("AAPL", market_hours, current_time=mock_now)
@@ -79,7 +82,7 @@ class TestSignalExecutor:
 
         executor = SignalExecutor()
         executor.log_evaluation(
-            mock_conn, "hma_crossover", "AAPL", "5m", Decimal("150.0"), 
+            mock_conn, "hma_crossover", "AAPL", "5m", Decimal("150.0"),
             "ENTRY", True, "EXECUTED", None, {"details_key": Decimal("42.0")}
         )
 
@@ -99,7 +102,7 @@ class TestSignalExecutor:
         assert "42.0" in params[8]  # serialized details
 
     @patch('backtest_engine.live.connection.get_redis_client')
-    @patch('backtest_engine.live.paper_trading.engine.get_eurusd_rate')
+    @patch('backtest_engine.live.utils.get_eurusd_rate')
     def test_update_portfolio_nav_empty(self, mock_get_rate, mock_get_redis):
         mock_conn = MagicMock()
         mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
@@ -129,21 +132,21 @@ class TestSignalExecutor:
 
         # check that cash balances were updated from APIs
         update_calls = [
-            call for call in mock_cursor.execute.call_args_list 
-            if "UPDATE paper_portfolio_balance SET cash_balance" in call[0][0]
+            call for call in mock_cursor.execute.call_args_list
+            if "UPDATE paper_portfolio_balance SET paper_cash_balance" in call[0][0]
         ]
         assert len(update_calls) == 2
         # verify total_nav was updated:
         # trading212 = 105000 (from API)
         # bybit = 12000 (from API) + 1000 * 1.10 = 13100
         nav_calls = [
-            call for call in mock_cursor.execute.call_args_list 
+            call for call in mock_cursor.execute.call_args_list
             if "UPDATE paper_portfolio_balance SET total_nav" in call[0][0]
         ]
         assert len(nav_calls) == 2
 
     @patch('backtest_engine.live.connection.get_redis_client')
-    @patch('backtest_engine.live.paper_trading.engine.get_eurusd_rate')
+    @patch('backtest_engine.live.utils.get_eurusd_rate')
     def test_update_portfolio_nav_with_positions(self, mock_get_rate, mock_get_redis):
         mock_conn = MagicMock()
         mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
@@ -185,7 +188,7 @@ class TestSignalExecutor:
         # T212 NAV = 100000 (cash) + 160 * 10 = 101600
         # Bybit NAV = 10000 (cash) + 32000 * 0.5 = 26000
         nav_calls = [
-            call for call in mock_cursor.execute.call_args_list 
+            call for call in mock_cursor.execute.call_args_list
             if "UPDATE paper_portfolio_balance SET total_nav = %s" in call[0][0]
         ]
         assert len(nav_calls) == 2
@@ -233,7 +236,7 @@ class TestSignalExecutor:
             {"long_entry": [False, True, False], "long_exit": [False, False, False]},
             index=idx
         )
-        
+
         mock_strat_info = MagicMock()
         mock_strat_info.overrides_from_mapping_function.return_value = {}
         mock_strat_info.run_function.return_value = mock_run_result
@@ -241,7 +244,7 @@ class TestSignalExecutor:
 
         # Market is open
         executor = SignalExecutor(is_market_open_func=lambda x: True)
-        
+
         # We need to mock the index aggregation timestamp for the df resample to work
         # To avoid actual pandas resampling logic issues with mock candle rows, let's patch pd.DataFrame or mock the Aggregation
         with patch('pandas.DataFrame.resample') as mock_resample:
@@ -259,21 +262,22 @@ class TestSignalExecutor:
 
         # Verify BUY was executed because long_entry_signal is True for idx[1] (last closed bar is index -2, i.e. idx[1])
         insert_calls = [
-            call for call in mock_cursor.execute.call_args_list 
+            call for call in mock_cursor.execute.call_args_list
             if "INSERT INTO paper_positions" in call[0][0]
         ]
         assert len(insert_calls) == 1
         params = insert_calls[0][0][1]
         assert params[0] == "AAPL"
         assert params[1] == "hma_crossover"
+        assert params[2] == "5m"
         # Allocated = min(kelly_size=100000*0.1=10000, cash=100000, initial_capital_bucket=5000) = 5000
         # Qty = 5000 / 160.0 = 31.25. Quantity precision = 6 by default -> 31.25
-        assert float(params[2]) == 31.25
-        assert params[3] == Decimal("160.0")
+        assert float(params[3]) == 31.25
+        assert params[4] == Decimal("160.0")
 
         # Balance was updated: cash deducted = 31.25 * 160.0 = 5000 (fee is 0.0 for trading212)
         balance_calls = [
-            call for call in mock_cursor.execute.call_args_list 
+            call for call in mock_cursor.execute.call_args_list
             if "UPDATE paper_portfolio_balance" in call[0][0]
         ]
         assert len(balance_calls) == 1
@@ -291,7 +295,7 @@ class TestSignalExecutor:
         # Mock active configs and positions batch
         mock_cursor.fetchall.side_effect = [
             [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)], # config query
-            [(401, "AAPL", "hma_crossover", Decimal("10.0"), Decimal("150.0"))], # positions batch query
+            [(401, "AAPL", "hma_crossover", Decimal("10.0"), Decimal("150.0"), "5m", "VALIDATED")], # positions batch query
             [("trading212", Decimal("100000"), Decimal("100000")), ("bybit", Decimal("100000"), Decimal("100000"))], # balances query
             [
                 (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
@@ -321,7 +325,7 @@ class TestSignalExecutor:
             {"long_entry": [False, False, False], "long_exit": [False, True, False]},
             index=idx
         )
-        
+
         mock_strat_info = MagicMock()
         mock_strat_info.overrides_from_mapping_function.return_value = {}
         mock_strat_info.run_function.return_value = mock_run_result
@@ -329,7 +333,7 @@ class TestSignalExecutor:
 
         # Market is open
         executor = SignalExecutor(is_market_open_func=lambda x: True)
-        
+
         with patch('pandas.DataFrame.resample') as mock_resample:
             mock_resample.return_value.agg.return_value.dropna.return_value = pd.DataFrame(
                 {"open": [150.0, 155.0, 160.0], "high": [151.0, 156.0, 161.0], "low": [149.0, 154.0, 159.0], "close": [150.5, 155.5, 160.0]},
@@ -345,7 +349,7 @@ class TestSignalExecutor:
 
         # Verify position was deleted (SELL executed)
         delete_calls = [
-            call for call in mock_cursor.execute.call_args_list 
+            call for call in mock_cursor.execute.call_args_list
             if "DELETE FROM paper_positions WHERE id = %s" in call[0][0]
         ]
         assert len(delete_calls) == 1
@@ -356,7 +360,7 @@ class TestSignalExecutor:
         # entry cost = 10 * 150 = 1500
         # cash balance increased by net_revenue (1650), allocated balance decreased by entry cost (1500)
         balance_calls = [
-            call for call in mock_cursor.execute.call_args_list 
+            call for call in mock_cursor.execute.call_args_list
             if "UPDATE paper_portfolio_balance" in call[0][0]
         ]
         assert len(balance_calls) == 1
@@ -376,7 +380,7 @@ class TestSignalExecutor:
         # Mock active configs and positions batch
         mock_cursor.fetchall.side_effect = [
             [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)],
-            [(401, "AAPL", "hma_crossover", Decimal("10.0001"), Decimal("150.0"))], # positions batch query
+            [(401, "AAPL", "hma_crossover", Decimal("10.0001"), Decimal("150.0"), "5m", "VALIDATED")], # positions batch query
             [("trading212", Decimal("100000"), Decimal("100000")), ("bybit", Decimal("100000"), Decimal("100000"))], # balances query
             [
                 (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
@@ -406,7 +410,7 @@ class TestSignalExecutor:
             {"long_entry": [False, False, False], "long_exit": [False, True, False]},
             index=idx
         )
-        
+
         mock_strat_info = MagicMock()
         mock_strat_info.overrides_from_mapping_function.return_value = {}
         mock_strat_info.run_function.return_value = mock_run_result
@@ -434,7 +438,7 @@ class TestSignalExecutor:
             t212_client=mock_t212_client,
             is_market_open_func=lambda x: True
         )
-        
+
         # Injecter manuellement le resolver et le bootstrapper pour éviter le chargement réel
         executor._t212_resolver = mock_resolver
         executor._t212_bootstrapper = mock_bootstrapper
@@ -449,7 +453,7 @@ class TestSignalExecutor:
         # Then:
         # 1. Resolver was called to find the ticker
         mock_resolver.resolve.assert_called_once_with("AAPL")
-        
+
         # 2. Trading 212 Client was called with a quantity protecting the micro-position:
         # paper qty = 10.0001, real qty = 10.0001, micro_qty = 0.0001
         # max_sellable = 10.0001 - 0.0001 = 10.0
@@ -460,7 +464,7 @@ class TestSignalExecutor:
             quantity=-10.0,
             client_order_id=ANY
         )
-        
+
         # 3. Bootstrapper bootstrap was triggered right after exit commit
         mock_bootstrapper.bootstrap.assert_called_once()
 

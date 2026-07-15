@@ -22,10 +22,10 @@ from backtest_engine.optimizer import estimate_iterations, validate_parameter_gr
 def timeframe_to_minutes(tf_str: str) -> int:
     """
     Convertit un timeframe textuel (ex: '15min', '1h') en nombre de minutes.
-    
+
     Args:
         tf_str: Chaîne de caractères représentant le timeframe.
-        
+
     Returns:
         La valeur équivalente en minutes.
     """
@@ -111,10 +111,10 @@ def main() -> None:
     for target in targets:
         symbol = target["symbol"]
         tf_str = target["timeframe"]
-        
+
         try:
             tf_min = timeframe_to_minutes(tf_str)
-            
+
             # Grille de paramètres dynamique par actif (Passe 2)
             parameters_payload: List[Dict[str, Any]] = [
                 {"name": "hilbert_smooth_period", "kind": "choice", "values": [target["hilbert_smooth_period"]]},
@@ -136,7 +136,7 @@ def main() -> None:
                 optimization_mode="grid"
             )
             canonical_iterations = grid_validation["canonical_iterations"]
-            
+
             # Fidélité aux standards de la Passe 2 : 1000 essais
             bayesian_max_iterations = 1000
 
@@ -178,7 +178,7 @@ def main() -> None:
                     "rawIterations": raw_iterations
                 }
             )
-            
+
             # Ajout en BDD SQLite (statut 'queued' par défaut)
             store.add(job)
             queued_count += 1

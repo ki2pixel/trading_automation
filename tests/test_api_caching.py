@@ -15,15 +15,15 @@ client = TestClient(app)
 class TestApiCaching:
 
     @patch('backtest_engine.live.paper_trading.api._get_pool')
-    @patch('backtest_engine.live.connection.get_redis_client')
+    @patch('backtest_engine.live.connection.get_async_redis_client')
     def test_get_candles_caching(self, mock_get_redis_client, mock_get_pool):
         # Given: Mock Redis client & Database connection
-        mock_redis = MagicMock()
+        mock_redis = AsyncMock()
         mock_get_redis_client.return_value = mock_redis
-        
+
         # Redis key does not exist initially
         mock_redis.get.return_value = None
-        
+
         # Mock database pool
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(return_value=[
@@ -37,20 +37,20 @@ class TestApiCaching:
         ])
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=False)
-        
+
         mock_pool = AsyncMock()
         mock_pool.acquire = MagicMock(return_value=mock_conn)
         mock_get_pool.return_value = mock_pool
 
         # When: Calling the endpoint for the first time (cache miss)
         response = client.get("/api/candles?ticker=aapl&limit=1000")
-        
+
         # Then:
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
         assert data[0]["open"] == 100.0
-        
+
         # Verify database was queried and cache was populated
         mock_conn.fetch.assert_called_once()
         mock_redis.get.assert_called_once_with("candles:aapl:1000")
@@ -81,13 +81,13 @@ class TestApiCaching:
         mock_redis.setex.assert_not_called()
 
     @patch('backtest_engine.live.paper_trading.api._get_pool')
-    @patch('backtest_engine.live.connection.get_redis_client')
+    @patch('backtest_engine.live.connection.get_async_redis_client')
     def test_get_performance_metrics_caching_zero_trades(self, mock_get_redis_client, mock_get_pool):
         # Given: Mock Redis client & Database connection
-        mock_redis = MagicMock()
+        mock_redis = AsyncMock()
         mock_get_redis_client.return_value = mock_redis
         mock_redis.get.return_value = None
-        
+
         mock_conn = AsyncMock()
         # 1. config_row fetchrow
         # 2. candle_rows fetch
@@ -109,19 +109,19 @@ class TestApiCaching:
         ])
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=False)
-        
+
         mock_pool = AsyncMock()
         mock_pool.acquire = MagicMock(return_value=mock_conn)
         mock_get_pool.return_value = mock_pool
 
         # When: Calling performance metrics (zero trades)
         response = client.get("/api/performance/metrics?ticker=aapl")
-        
+
         # Then:
         assert response.status_code == 200
         result = response.json()
         assert result["total_trades"] == 0
-        
+
         # Redis key check should occur and cache populate even with 0 trades
         mock_redis.get.assert_called_once_with("perf_metrics:aapl")
         mock_redis.setex.assert_called_once()

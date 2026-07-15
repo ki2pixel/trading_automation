@@ -164,7 +164,7 @@ def _smooth_range(source: pd.Series, period: int, multiplier: float) -> pd.Serie
 @numba.njit(cache=False)
 def _range_filter_numba(x: np.ndarray, r: np.ndarray) -> np.ndarray:
     out = np.full(len(x), np.nan, dtype=np.float64)
-    
+
     for i in range(len(x)):
         xi = x[i]
         ri = r[i]
@@ -232,7 +232,7 @@ def _compute_signals(long_cond: np.ndarray, short_cond: np.ndarray) -> tuple[np.
     cond_state = np.full(n, np.nan, dtype=np.float64)
     long_signal = np.zeros(n, dtype=np.bool_)
     short_signal = np.zeros(n, dtype=np.bool_)
-    
+
     for i in range(n):
         prev_state_raw = cond_state[i - 1] if i > 0 else np.nan
         prev_state_for_signal = 0.0 if np.isnan(prev_state_raw) else prev_state_raw
@@ -481,7 +481,7 @@ class _RangeFilterBacktestSession:
         self.early_stop_drawdown_pct = early_stop_drawdown_pct
         self.broker = broker
         self.result = result
-        
+
         self.n = len(result)
         self.index = result.index
         self.close_arr = result["close"].to_numpy(dtype=float)
@@ -770,7 +770,7 @@ class _RangeFilterBacktestSession:
             self.records["position_size"].append(self.position_size)
             self.records["position_avg_price"].append(self.entry_price)
             self.records["realized_net_pnl_on_fill"].append(bar_realized_net)
-            
+
             if self.compute_full_metrics:
                 self.records["position_side"].append(1 if self.position_size > 0 else -1 if self.position_size < 0 else 0)
                 self.records["capital_bucket"].append(self.capital_bucket)
@@ -782,7 +782,7 @@ class _RangeFilterBacktestSession:
                 self.records["order_action"].append(current_order_action)
                 self.records["fill_action"].append(current_fill_action)
                 self.records["fill_price"].append(current_fill_price)
-                
+
                 for key in metrics:
                     if key in self.records:
                         self.records[key].append(metrics[key])
@@ -830,7 +830,7 @@ def run_range_filter_strategy(
         broker=broker,
         result=result,
     )
-    
+
     records_df, trades_df, _ = session.run()
 
     if compute_full_metrics:

@@ -58,7 +58,7 @@ class KillSwitchListener:
             try:
                 redis_user = os.getenv("REDIS_USER")
                 redis_password = os.getenv("REDIS_PASSWORD")
-                
+
                 redis_kwargs = {
                     "decode_responses": True,
                     "socket_timeout": 10,
@@ -69,13 +69,13 @@ class KillSwitchListener:
                     redis_kwargs["username"] = redis_user
                 if redis_password:
                     redis_kwargs["password"] = redis_password
-                    
+
                 self.redis_client = aioredis.from_url(self.redis_url, **redis_kwargs)
                 pubsub = self.redis_client.pubsub()
                 await pubsub.subscribe("URGENCY")
-                
+
                 logger.info("[KillSwitch] Subscribed to Redis channel 'URGENCY'.")
-                
+
                 while self._running:
                     # Check for messages with timeout
                     message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
@@ -98,7 +98,7 @@ class KillSwitchListener:
         """Trigger the emergency suspension and order cancellations."""
         # 1. Suspend in memory and distributed
         set_trading_suspended(True)
-        
+
         # Share status via Redis for other workers/containers (N-13: Reuse client connection)
         try:
             client = self.redis_client
@@ -144,3 +144,13 @@ class KillSwitchListener:
                 logger.info("[KillSwitch] All Trading 212 open orders successfully cancelled.")
             except Exception as e:
                 logger.exception(f"[KillSwitch] Failed to cancel Trading 212 orders: {e}")
+
+        # 4. Confirm distributed kill completion
+        try:
+            client = self.redis_client
+            if client is None:
+                client = aioredis.from_url(self.redis_url)
+            await client.set("kill_switch:confirmed", "true", ex=60)
+            logger.info("[KillSwitch] Emergency suspension confirmed and propagated.")
+        except Exception as e:
+            logger.exception(f"[KillSwitch] Failed to set confirmation flag: {e}")

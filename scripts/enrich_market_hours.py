@@ -91,10 +91,10 @@ def main():
     if not os.path.exists(MARKET_HOURS_PATH):
         print(f"Error: {MARKET_HOURS_PATH} not found.")
         return
-        
+
     with open(MARKET_HOURS_PATH, "r") as f:
         market_hours = json.load(f)
-        
+
     updated = False
     for asset, details in NEW_ASSETS_HOURS.items():
         if asset not in market_hours:
@@ -103,7 +103,7 @@ def main():
             updated = True
         else:
             print(f"{asset} already present in market hours.")
-            
+
     if updated:
         with open(MARKET_HOURS_PATH, "w") as f:
             json.dump(market_hours, f, indent=2)

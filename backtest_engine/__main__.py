@@ -72,7 +72,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     import inspect
     overrides = _strategy_overrides_from_args(args, base=config_overrides)
     initial_capital = args.initial_capital if args.initial_capital is not None else float(config_backtest.get("initial_capital", 1000.0))
-    
+
     run_kwargs = {
         "data": data,
         "symbol": args.symbol,
@@ -81,11 +81,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         "timeframe_minutes": args.timeframe,
         "repo_root": repo_root,
     }
-    
+
     sig = inspect.signature(run_fn)
     if "early_stop_drawdown_pct" in sig.parameters:
         run_kwargs["early_stop_drawdown_pct"] = args.early_stop_drawdown_pct
-        
+
     result = run_fn(**run_kwargs)
     output_dir_path = Path(args.output_dir)
     if not output_dir_path.is_absolute():
@@ -297,9 +297,9 @@ def cmd_worker(args: argparse.Namespace) -> int:
     import logging
     import traceback
     from datetime import datetime
-    
+
     logger = logging.getLogger("backtest_engine.worker_main")
-    
+
     def signal_handler(signum, frame):
         logger.info(f"Signal {signum} reçu. Arrêt propre du worker...")
         for handler in logging.root.handlers[:]:
@@ -308,15 +308,15 @@ def cmd_worker(args: argparse.Namespace) -> int:
             except Exception:  # NOSONAR
                 pass
         sys.exit(0)
-        
+
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
-    
+
     repo_root = Path(args.repo_root).resolve()
     output_dir_path = Path(args.output_dir)
     if not output_dir_path.is_absolute():
         output_dir_path = (repo_root / output_dir_path).resolve()
-        
+
     try:
         return run_optimizer_worker(
             repo_root=repo_root,
@@ -331,14 +331,14 @@ def cmd_worker(args: argparse.Namespace) -> int:
         error_log = output_dir_path / "worker_error.log"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         tb = traceback.format_exc()
-        
+
         with open(error_log, "a", encoding="utf-8") as f:
             f.write(f"\n========================================\n")
             f.write(f"TIMESTAMP: {timestamp}\n")
             f.write(f"EXCEPTION: {type(e).__name__}: {e}\n")
             f.write(f"TRACEBACK:\n{tb}")
             f.write(f"========================================\n")
-            
+
         logger.error(f"Worker crashed with exception: {e}. Traceback logged to {error_log}")
         return 1
 
@@ -350,17 +350,17 @@ def cmd_mark_crashed(args: argparse.Namespace) -> int:
     if not output_dir_path.is_absolute():
         output_dir_path = (repo_root / output_dir_path).resolve()
     job_store_path = output_dir_path / "jobs.sqlite3"
-    
+
     store = OptimizerJobStore(storage_path=job_store_path)
     exit_code = args.exit_code
-    
+
     if exit_code == 137:
         reason = "Worker crashed (respawned by supervisor, exit code 137: OOM / SIGKILL)"
     elif exit_code == 139:
         reason = "Worker crashed (respawned by supervisor, exit code 139: Segfault / SIGSEGV)"
     else:
         reason = f"Worker crashed (respawned by supervisor, exit code {exit_code})"
-        
+
     count = store.mark_worker_crashed(worker_id=args.worker_id, error_message=reason)
     print(f"Successfully marked {count} in-progress jobs as FAILED for worker {args.worker_id}")
     return 0

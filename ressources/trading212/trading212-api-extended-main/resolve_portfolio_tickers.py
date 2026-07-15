@@ -18,13 +18,13 @@ def search_name_or_ticker(instruments, query):
 
 def main():
     instruments = get_instruments()
-    
+
     queries = {
         "NVS": ["novartis", "CH0012005267"],
         "GMAB": ["genmab", "DK0010272202"],
         "teniteur": ["tenaris", "LU0156801721"],
     }
-    
+
     for asset, terms in queries.items():
         print(f"\n=== Diagnostics for {asset} ===")
         seen = set()

@@ -43,11 +43,11 @@ def parse_eligible_targets(report_path: Path) -> List[Tuple[str, str]]:
             parts = [p.strip() for p in line.split("|")[1:-1]]
             if not parts or parts[0].startswith("---") or parts[0].startswith(":-") or "Symbole" in parts[0]:
                 continue
-            
+
             symbol = parts[0].replace("**", "").strip()
             timeframe = parts[1].replace("**", "").strip()
             strategy = parts[2].replace("`", "").strip()
-            
+
             if strategy == "cybernetic_hilbert":
                 ex_match = get_excluded_match(symbol)
                 if not ex_match:
@@ -122,7 +122,7 @@ def main() -> None:
     queued_count = 0
     for symbol, tf_str in targets:
         tf_min = timeframe_to_minutes(tf_str)
-        
+
         request_payload = {
             "strategy": "cybernetic_hilbert",
             "symbol": symbol,
@@ -160,7 +160,7 @@ def main() -> None:
                 "rawIterations": raw_iterations
             }
         )
-        
+
         store.add(job)
         queued_count += 1
 

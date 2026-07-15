@@ -138,14 +138,14 @@ async def get_portfolio():
     try:
         async with pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT source, cash_balance, allocated_balance, total_nav, last_updated, secured_balance "
+                "SELECT source, paper_cash_balance, allocated_balance, total_nav, last_updated, secured_balance "
                 "FROM paper_portfolio_balance"
             )
             portfolio = {}
             for r in rows:
                 source = r["source"]
                 portfolio[source] = {
-                    "cash_balance": float(r["cash_balance"]),
+                    "cash_balance": float(r["paper_cash_balance"]),
                     "allocated_balance": float(r["allocated_balance"]),
                     "total_nav": float(r["total_nav"]),
                     "last_updated": r["last_updated"].replace(tzinfo=timezone.utc).isoformat() if r["last_updated"] else None,
@@ -354,19 +354,19 @@ async def update_config(config_id: int, payload: ConfigUpdate):
 
 @router.get("/candles")
 async def get_candles(ticker: str, limit: int = 1000):
-    from backtest_engine.live.connection import get_redis_client
+    from backtest_engine.live.connection import get_async_redis_client
     redis_client = None
     try:
-        redis_client = get_redis_client()
+        redis_client = get_async_redis_client()
     except Exception:
         pass
-        
+
     limit = min(max(1, limit), 10000)
     cache_key = f"candles:{ticker.lower()}:{limit}"
-    
+
     if redis_client:
         try:
-            cached = redis_client.get(cache_key)
+            cached = await asyncio.wait_for(redis_client.get(cache_key), timeout=2.0)
             if cached:
                 return json.loads(cached)
         except Exception:
@@ -392,10 +392,10 @@ async def get_candles(ticker: str, limit: int = 1000):
                     "close": float(r["close"]),
                 } for r in reversed(rows)
             ]
-            
+
             if redis_client and result:
                 try:
-                    redis_client.setex(cache_key, 20, json.dumps(result))
+                    await asyncio.wait_for(redis_client.setex(cache_key, 20, json.dumps(result)), timeout=2.0)
                 except Exception:
                     pass
                     
@@ -542,7 +542,7 @@ async def panic_close_all():
                     # 4. Update balance
                     await conn.execute(
                         "UPDATE paper_portfolio_balance "
-                        "SET cash_balance = cash_balance + $1, "
+                        "SET paper_cash_balance = paper_cash_balance + $1, "
                         "    allocated_balance = GREATEST(0, allocated_balance - $2), "
                         "    last_updated = CURRENT_TIMESTAMP "
                         "WHERE source = $3",
@@ -639,17 +639,17 @@ async def stream_logs(request: Request):
 
 @router.get("/performance/metrics")
 async def get_performance_metrics(ticker: str):
-    from backtest_engine.live.connection import get_redis_client
+    from backtest_engine.live.connection import get_async_redis_client
     redis_client = None
     try:
-        redis_client = get_redis_client()
+        redis_client = get_async_redis_client()
     except Exception:
         pass
-        
+
     # 1. Cache lookup
     if redis_client:
         try:
-            cached = redis_client.get(f"perf_metrics:{ticker.lower()}")
+            cached = await asyncio.wait_for(redis_client.get(f"perf_metrics:{ticker.lower()}"), timeout=2.0)
             if cached:
                 return json.loads(cached)
         except Exception:
@@ -723,7 +723,7 @@ async def get_performance_metrics(ticker: str):
         # 3. Populate cache
         if redis_client:
             try:
-                redis_client.setex(f"perf_metrics:{ticker.lower()}", 300, json.dumps(result))
+                await asyncio.wait_for(redis_client.setex(f"perf_metrics:{ticker.lower()}", 300, json.dumps(result)), timeout=2.0)
             except Exception:
                 pass
                 
@@ -855,11 +855,11 @@ async def resume_trading():
     set_trading_suspended(False)
     
     # Also clear Redis flag
-    from backtest_engine.live.connection import get_redis_client
-    redis_client = get_redis_client()
+    from backtest_engine.live.connection import get_async_redis_client
+    redis_client = get_async_redis_client()
     if redis_client:
         try:
-            redis_client.delete("trading:suspended")
+            await asyncio.wait_for(redis_client.delete("trading:suspended"), timeout=2.0)
         except Exception as e:
             logger.error(f"[API] Failed to delete suspend flag in Redis: {e}")
             

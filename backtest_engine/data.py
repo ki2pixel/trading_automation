@@ -280,17 +280,17 @@ class FastFXProvider:
                 dt64 = ts.value
             else:
                 dt64 = pd.Timestamp(ts).value
-                
+
             idx = self.last_idx
             if idx >= self.n or self.timestamps[idx] > dt64:
                 idx = 0
-                
+
             while idx < self.n and self.timestamps[idx] <= dt64:
                 idx += 1
-                
+
             idx = max(0, idx - 1)
             self.last_idx = idx
-            
+
             val = self.values[idx]
             if math.isclose(val, 0.0, abs_tol=1e-9) or math.isnan(val):
                 return 1.0
@@ -849,7 +849,7 @@ def scan_market_data(
 
 def split_wfo_windows(data: pd.DataFrame, windows: int, train_ratio: float) -> list[tuple[pd.DataFrame, pd.DataFrame]]:
     """Split a DataFrame into Walk-Forward Optimization (WFO) windows.
-    
+
     Each window contains an In-Sample (IS) training set and an Out-of-Sample (OOS) testing set.
     The windows are strictly chronological and respect the train_ratio.
     """
@@ -857,26 +857,26 @@ def split_wfo_windows(data: pd.DataFrame, windows: int, train_ratio: float) -> l
         raise ValueError("Number of windows must be strictly positive")
     if not (0.0 < train_ratio < 1.0):
         raise ValueError("train_ratio must be between 0 and 1 (exclusive)")
-    
+
     total_rows = len(data)
     if total_rows == 0:
         return []
-        
+
     window_size = total_rows // windows
     if window_size == 0:
         raise ValueError("Not enough data to create the requested number of windows")
-        
+
     wfo_windows = []
     for i in range(windows):
         start_idx = i * window_size
         end_idx = (i + 1) * window_size if i < windows - 1 else total_rows
-        
+
         window_data = data.iloc[start_idx:end_idx]
         train_size = max(1, int(len(window_data) * train_ratio))
-        
+
         train_data = window_data.iloc[:train_size]
         test_data = window_data.iloc[train_size:]
-        
+
         wfo_windows.append((train_data, test_data))
-        
+
     return wfo_windows

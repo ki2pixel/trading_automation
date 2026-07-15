@@ -442,7 +442,7 @@ def validate_parameter_grid(
     optimization_mode: str = "grid",
 ) -> dict:
     total = estimate_iterations(parameter_specs)
-    
+
     if optimization_mode == "bayesian":
         return {
             "total_iterations": total,

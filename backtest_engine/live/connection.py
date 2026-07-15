@@ -16,6 +16,7 @@ __all__ = [
     "get_db_connection",
     "get_sync_connection",
     "get_redis_client",
+    "get_async_redis_client",
     "run_postgres_keep_alive_task",
     "FailoverRedisClient",
     "FailoverPipeline",
@@ -540,3 +541,17 @@ def get_redis_client() -> Optional[Union[redis.Redis, FailoverRedisClient]]:
 
 get_sync_connection = get_db_connection
 
+_async_redis_client = None
+_async_redis_client_lock = threading.Lock()
+
+def get_async_redis_client():
+    global _async_redis_client
+    if _async_redis_client is None:
+        with _async_redis_client_lock:
+            if _async_redis_client is None:
+                import os
+                import redis.asyncio as aioredis
+                redis_url = os.getenv("REDIS_URL")
+                if redis_url:
+                    _async_redis_client = aioredis.from_url(redis_url, decode_responses=True)
+    return _async_redis_client

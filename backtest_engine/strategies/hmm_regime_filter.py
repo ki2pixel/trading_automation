@@ -34,7 +34,7 @@ class HMMRegimeFilterConfigOverrides:
     stick: float | None = None
     confirm_bars: int | None = None
     dom_thresh: float | None = None
-    
+
     max_entry_price: float | None = None
     max_capital_bucket: float | None = None
     initial_capital_bucket: float | None = None
@@ -218,7 +218,7 @@ def _build_state_from_broker(
         else:
             fx_arr = np.array([broker.fx_rate(timestamps[idx]) for idx in active_indices])
             price_account = close_arr[active_indices] * fx_arr
-        
+
         side_mult = np.sign(pos_qty[active_indices])
         open_pnl[active_indices] = (price_account - pos_avg[active_indices]) * np.abs(pos_qty[active_indices]) * side_mult * broker.config.point_value
 
@@ -269,7 +269,7 @@ def run_hmm_regime_filter(
     config = _apply_overrides(config, overrides)
 
     bars = _to_strategy_ohlcv(data)
-    
+
     # Execution
     long_entry, short_entry, long_exit, short_exit, _ = module.run_hmm_regime_filter_strategy(bars, config)
 
@@ -508,7 +508,7 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
-    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres
     de HMM Regime Filter avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging

@@ -42,19 +42,19 @@ def main() -> int:
         repo_root=Path(args.repo_root),
         timeframe_minutes=args.timeframe,
     )
-    
+
     price = vbt_data.get("close")
-    
+
     print(f"Generating {args.n_samples} random strategies for {args.symbol}...")
-    
+
     # Generate multiple sets of signals using numpy default_rng
     rng = np.random.default_rng()
     entries_data = rng.choice([True, False], size=(len(price), args.n_samples), p=[args.prob_enter, 1 - args.prob_enter])
     exits_data = rng.choice([True, False], size=(len(price), args.n_samples), p=[args.prob_exit, 1 - args.prob_exit])
-    
+
     entries = pd.DataFrame(entries_data, index=price.index)
     exits = pd.DataFrame(exits_data, index=price.index)
-    
+
     pf = vbt.Portfolio.from_signals(
         price,
         entries,
@@ -64,20 +64,20 @@ def main() -> int:
         slippage=0.0,
         freq=f"{args.timeframe}min",
     )
-    
+
     total_return = pf.total_return()
     sharpe = pf.sharpe_ratio()
-    
+
     # Clean up NaNs from sharpe if any (e.g. no trades or zero variance)
     sharpe = sharpe.dropna()
-    
+
     print("\n--- Benchmark Results ---")
     print(f"Total Return: Mean = {total_return.mean()*100:.2f}%, Median = {total_return.median()*100:.2f}%, Max = {total_return.max()*100:.2f}%")
     if len(sharpe) > 0:
         print(f"Sharpe Ratio: Mean = {sharpe.mean():.4f}, Median = {sharpe.median():.4f}, Max = {sharpe.max():.4f}")
     else:
         print("Sharpe Ratio: Not enough valid paths to compute.")
-    
+
     return 0
 
 

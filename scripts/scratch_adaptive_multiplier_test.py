@@ -27,7 +27,7 @@ def main():
 
     tickers = ["SAP", "NVS"]
     multipliers = [0.20, 0.25, 0.30, 0.35, 0.40, 0.50, 0.60]
-    
+
     results = []
 
     for ticker in tickers:
@@ -72,9 +72,9 @@ def main():
                 "use_sequential_ladder": True,
                 "entry_on_high_low": True
             }
-            
+
             overrides = noise_boundary_overrides_from_mapping(params)
-            
+
             try:
                 res = run_noise_boundary_intraday(
                     data=df,
@@ -84,10 +84,10 @@ def main():
                     timeframe_minutes=1,
                     repo_root=repo
                 )
-                
+
                 metrics = res.metrics
                 trades = res.trades
-                
+
                 results.append({
                     "Ticker": ticker,
                     "Avg Vol (%)": avg_vol,
@@ -155,7 +155,7 @@ def main():
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / "adaptive_multiplier_test.md"
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
-    
+
     print(f"Report successfully saved to {report_path}")
     print("\n" + "=" * 60)
     print("Done!")

@@ -33,12 +33,12 @@ class MarginCheckResult(NamedTuple):
 class UTAMarginSimulator:
     """
     Contrôleur de risque pré-conversion.
-    
+
     Workflow:
     1. Interroge GET /v5/account/wallet-balance pour obtenir l'état de marge
     2. Modélise: (Equity - amount_to_convert) > (MM × safety_factor)
     3. Retourne un verdict structuré (MarginCheckResult)
-    
+
     Contrainte: Utilise exclusivement Decimal. Float interdit.
     """
 
@@ -55,24 +55,24 @@ class UTAMarginSimulator:
         """
         base_coin = self.client.config.base_currency
         data = self.client.get_account_summary(coin=base_coin)
-        
+
         # Naviguer dans la structure de réponse Bybit V5
         result_list = data.get("result", {}).get("list", [])
         if not result_list:
             raise ValueError(f"No account summary returned from Bybit: {data}")
-            
+
         acc_info = result_list[0]
-        
+
         total_equity = Decimal(str(acc_info.get("totalEquity", "0")))
         total_mm = Decimal(str(acc_info.get("totalMaintenanceMargin", "0")))
         available = Decimal(str(acc_info.get("totalAvailableBalance", "0")))
-        
+
         # Calculer le ratio de marge de maintien (MMR)
         if total_equity > Decimal("0"):
             mmr = total_mm / total_equity
         else:
             mmr = Decimal("0")
-        
+
         return MarginState(
             total_equity=total_equity,
             account_margin_rate=mmr,
@@ -86,7 +86,7 @@ class UTAMarginSimulator:
         """
         Pre-trade check : peut-on convertir `amount_usdc` sans
         mettre en danger les positions ouvertes ?
-        
+
         Logique:
         - EUR a un ratio de collatéral de 0% dans l'UTA
         - Convertir X USDC → EUR détruit X de collatéral
@@ -95,13 +95,13 @@ class UTAMarginSimulator:
         """
         if not isinstance(amount_usdc, Decimal):
             raise TypeError(f"amount must be Decimal, got {type(amount_usdc)}")
-        
+
         state = self.fetch_margin_state()
-        
+
         post_equity = state.total_equity - amount_usdc
         required_min = state.total_maintenance_margin * self.safety_factor
         headroom = post_equity - required_min
-        
+
         # Check if conversion amount exceeds available balance
         if state.available_balance < amount_usdc:
             reason = (
@@ -130,9 +130,9 @@ class UTAMarginSimulator:
                 headroom=headroom,
                 reason="No open derivative positions – conversion safe"
             )
-        
+
         is_safe = headroom > Decimal("0")
-        
+
         if is_safe:
             reason = (
                 f"Safe: post-conversion equity ({post_equity} USD) > "
@@ -149,7 +149,7 @@ class UTAMarginSimulator:
             logger.warning(f"[MarginSimulator] {reason}")
             self._conversion_locked = True
             self._lock_reason = reason
-        
+
         return MarginCheckResult(
             is_safe=is_safe,
             margin_state=state,

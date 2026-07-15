@@ -23,23 +23,23 @@ def realign_sequences():
     if not DATABASE_URL:
         print("[Realign] ERROR: DATABASE_URL not set in environment or .env file.")
         sys.exit(1)
-        
+
     print("[Realign] Connecting to database...")
     try:
         conn = psycopg2.connect(DATABASE_URL)
     except Exception as e:
         print(f"[Realign] Connection failed: {e}")
         sys.exit(1)
-        
+
     try:
         with conn.cursor() as cur:
             for table in TABLES_TO_REALIGN:
                 print(f"[Realign] Realigning sequence for table: {table}...")
-                
+
                 # Check if table exists
                 cur.execute(f"""
                     SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
+                        SELECT FROM information_schema.tables
                         WHERE table_name = %s
                     );
                 """, (table,))
@@ -47,11 +47,11 @@ def realign_sequences():
                 if not exists:
                     print(f"[Realign] Table {table} does not exist. Skipping.")
                     continue
-                
+
                 # Run setval query
                 query = f"""
                     SELECT setval(
-                        pg_get_serial_sequence('{table}', 'id'), 
+                        pg_get_serial_sequence('{table}', 'id'),
                         COALESCE(MAX(id), 1)
                     ) FROM {table};
                 """
@@ -63,7 +63,7 @@ def realign_sequences():
                     print(f"[Realign] Failed to realign '{table}': {ex}")
                     conn.rollback()
                     continue
-            
+
             conn.commit()
             print("[Realign] Sequence realigning completed successfully!")
     except Exception as e:

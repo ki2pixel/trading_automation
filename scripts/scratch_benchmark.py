@@ -56,14 +56,14 @@ def compute_noise_boundary_fast(bars, lookback_days, multiplier_enter, multiplie
     daily_returns = daily_close.pct_change()
     daily_vol = daily_returns.rolling(window=lookback_days).std()
     daily_vol_for_today = daily_vol.shift(1)
-    
+
     # Fast vectorized reindexing!
     normalized_index = bars.index.normalize()
     mapped_vol = daily_vol_for_today.reindex(normalized_index).values
-    
+
     # Fast grouping!
     daily_open = bars.groupby(normalized_index)["open"].transform("first")
-    
+
     results = pd.DataFrame(index=bars.index)
     results["daily_volatility"] = mapped_vol
     results["daily_open"] = daily_open

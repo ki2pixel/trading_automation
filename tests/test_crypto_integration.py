@@ -25,18 +25,18 @@ def test_crypto_volatility_annualization():
         "volume": [10.0] * 20,
         "symbol": ["btcusdt"] * 20
     })
-    
+
     # Calculate signature without is_crypto (default 252 days)
     sig_stock = extract_statistical_signature(df, is_crypto=False)
-    
+
     # Calculate signature with is_crypto (365 days)
     sig_crypto = extract_statistical_signature(df, is_crypto=True)
-    
+
     # Realized volatility is calculated as log_returns.std() * sqrt(periods)
     # Ratio should be sqrt(365) / sqrt(252)
     expected_ratio = np.sqrt(365) / np.sqrt(252)
     actual_ratio = sig_crypto["volatility_daily"] / sig_stock["volatility_daily"]
-    
+
     assert np.isclose(actual_ratio, expected_ratio)
 
 
@@ -64,24 +64,24 @@ def test_crypto_weekend_is_market_open(mock_load_hours):
             "timezone": "Europe/Berlin"
         }
     }
-    
+
     # Initialize engine resiliently
     with patch("backtest_engine.live.trading212.client.Trading212Client", MagicMock()):
         engine = PaperTradingEngine()
-        
+
     # Mock datetime.now to be a Saturday
     # 2026-07-04 is a Saturday
     saturday_utc = dt.datetime(2026, 7, 4, 12, 0, tzinfo=dt.timezone.utc)
-    
+
     with patch("backtest_engine.live.paper_trading.engine.datetime") as mock_datetime:
         mock_datetime.now.return_value = saturday_utc
         # Mock strftime and other behaviors if needed
         # We need mock_datetime to behave like dt.datetime but with now returning saturday_utc
         mock_datetime.side_effect = lambda *args, **kw: dt.datetime(*args, **kw)
-        
+
         # Zeal.co is a stock, closed on weekend
         assert engine.is_market_open("zeal.co") is False
-        
+
         # btcusdt is a crypto, open on weekend
         assert engine.is_market_open("btcusdt") is True
 
@@ -103,17 +103,17 @@ def test_crypto_filter_market_hours():
             "is_crypto": True
         }
     }
-    
+
     # Generate 24 hours of data
     timestamps = pd.date_range("2026-07-01 00:00:00", "2026-07-01 23:59:00", freq="min")
     df = pd.DataFrame(index=timestamps)
-    
+
     with patch("backtest_engine.data._load_market_hours_config") as mock_load:
         mock_load.return_value = mock_config
-        
+
         # Filter market hours
         filtered_df = filter_market_hours(df, "btcusdt", repo_root=Path("."))
-        
+
         # Number of rows should remain identical (1440 rows for 24h)
         assert len(filtered_df) == len(df)
         assert filtered_df.index.equals(df.index)
@@ -125,14 +125,14 @@ def test_crypto_fx_rate_provider_resolution():
     Then it should automatically map its currency to USD and resolve to the USDEUR.parquet provider.
     """
     from backtest_engine.data import build_fx_rate_provider
-    
+
     provider = build_fx_rate_provider(
         repo_root=Path("."),
         symbol="btcusdt",
         account_currency="EUR",
         timeframe_minutes=5
     )
-    
+
     assert provider is not None
     # Verify the provider can be called and returns a valid rate
     rate = provider("USD", pd.Timestamp("2026-06-30 12:00:00"))

@@ -184,7 +184,7 @@ class SignalExecutor:
                             
                             if api_cash is not None:
                                 cur.execute(
-                                    "UPDATE paper_portfolio_balance SET cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'",
+                                    "UPDATE paper_portfolio_balance SET paper_cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'",
                                     (api_cash,)
                                 )
                     except requests.exceptions.RequestException as api_err:
@@ -203,14 +203,14 @@ class SignalExecutor:
                                     break
                         if bybit_balance > 0:
                             cur.execute(
-                                "UPDATE paper_portfolio_balance SET cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'",
+                                "UPDATE paper_portfolio_balance SET paper_cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'",
                                 (bybit_balance,)
                             )
                     except requests.exceptions.RequestException as api_err:
                         logger.exception("[PaperTrader] Failed to fetch account summary from Bybit API")
 
                 # Fetch cash and secured balances for both ecosystems
-                cur.execute("SELECT source, cash_balance, secured_balance FROM paper_portfolio_balance")
+                cur.execute("SELECT source, paper_cash_balance, secured_balance FROM paper_portfolio_balance")
                 rows = cur.fetchall()
                 balances = {r[0]: Decimal(str(r[1])) for r in rows}
                 secured_balances = {r[0]: Decimal(str(r[2])) for r in rows}
@@ -373,15 +373,15 @@ class SignalExecutor:
             configs = cur.fetchall()
             
              # Fetch all active positions to avoid N+1 queries in the loop
-            cur.execute("SELECT id, asset, strategy_name, qty, entry_price FROM paper_positions")
+            cur.execute("SELECT id, asset, strategy_name, qty, entry_price, timeframe FROM paper_positions")
             positions_rows = cur.fetchall()
             active_positions = {
-                (r[1].lower(), r[2]): (r[0], Decimal(str(r[3])), Decimal(str(r[4])))
+                (r[1].lower(), r[2], r[5]): (r[0], Decimal(str(r[3])), Decimal(str(r[4])))
                 for r in positions_rows
             }
             
             # Fetch balances to avoid N+1 and fetchone shifts in the loop
-            cur.execute("SELECT source, cash_balance, total_nav FROM paper_portfolio_balance")
+            cur.execute("SELECT source, paper_cash_balance, total_nav FROM paper_portfolio_balance")
             balance_rows = cur.fetchall()
             balances = {
                 r[0]: (Decimal(str(r[1])), Decimal(str(r[2])))
@@ -434,8 +434,8 @@ class SignalExecutor:
                 
             source = 'bybit' if is_crypto_asset(asset) else 'trading212'
                 
-            # Check if we have an active position for this strategy + asset (O(1) local dict check)
-            position_row = active_positions.get((asset.lower(), strategy_name))
+            # Check if we have an active position for this strategy + asset + timeframe (O(1) local dict check)
+            position_row = active_positions.get((asset.lower(), strategy_name, timeframe))
             has_position = position_row is not None
             
             # Fetch 1m candles for this asset from the pre-fetched dict (N-01)
@@ -786,18 +786,18 @@ class SignalExecutor:
                     try:
                         with conn.cursor() as cur:
                             # Lock the balance row first to prevent concurrent balance mutations
-                            cur.execute("SELECT cash_balance FROM paper_portfolio_balance WHERE source = %s FOR UPDATE", (source,))
+                            cur.execute("SELECT paper_cash_balance FROM paper_portfolio_balance WHERE source = %s FOR UPDATE", (source,))
                             
                             # 1. Insert position
                             cur.execute("""
-                                INSERT INTO paper_positions (asset, strategy_name, qty, entry_price, current_price, pnl, updated_at)
-                                VALUES (%s, %s, %s, %s, %s, 0, CURRENT_TIMESTAMP)
-                            """, (asset, strategy_name, qty, current_price, current_price))
+                                INSERT INTO paper_positions (asset, strategy_name, timeframe, qty, entry_price, current_price, pnl, updated_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, 0, CURRENT_TIMESTAMP)
+                            """, (asset, strategy_name, timeframe, qty, current_price, current_price))
                             
                             # 2. Deduct cash from correct source (deduct total cost with fee, but allocate only actual cost)
                             cur.execute("""
                                 UPDATE paper_portfolio_balance 
-                                SET cash_balance = cash_balance - %s, 
+                                SET paper_cash_balance = paper_cash_balance - %s, 
                                     allocated_balance = allocated_balance + %s,
                                     last_updated = CURRENT_TIMESTAMP
                                 WHERE source = %s
@@ -1057,7 +1057,7 @@ class SignalExecutor:
                     try:
                         with conn.cursor() as cur:
                             # Lock the balance row first
-                            cur.execute("SELECT cash_balance FROM paper_portfolio_balance WHERE source = %s FOR UPDATE", (source,))
+                            cur.execute("SELECT paper_cash_balance FROM paper_portfolio_balance WHERE source = %s FOR UPDATE", (source,))
                             
                             # Remove position using RETURNING to verify it actually existed
                             cur.execute("DELETE FROM paper_positions WHERE id = %s RETURNING id", (pos_id,))
@@ -1074,7 +1074,7 @@ class SignalExecutor:
                                 pnl_eur = pnl / eurusd_rate
                                 cur.execute("""
                                     UPDATE paper_portfolio_balance 
-                                    SET cash_balance = cash_balance + %s,
+                                    SET paper_cash_balance = paper_cash_balance + %s,
                                         secured_balance = secured_balance + %s,
                                         allocated_balance = GREATEST(0, allocated_balance - %s),
                                         last_updated = CURRENT_TIMESTAMP
@@ -1083,7 +1083,7 @@ class SignalExecutor:
                             else:
                                 cur.execute("""
                                     UPDATE paper_portfolio_balance 
-                                    SET cash_balance = cash_balance + %s,
+                                    SET paper_cash_balance = paper_cash_balance + %s,
                                         allocated_balance = GREATEST(0, allocated_balance - %s),
                                         last_updated = CURRENT_TIMESTAMP
                                     WHERE source = %s

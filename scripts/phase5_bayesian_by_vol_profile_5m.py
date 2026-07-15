@@ -94,7 +94,7 @@ class ProfileObjective:
     def __call__(self, trial: optuna.Trial) -> float:
         # Parameter suggestions
         lookback_days = trial.suggest_int("lookback_days", 10, 30)
-        
+
         # Adaptive volatility multiplier enters & exits by profile
         if self.profile_name == "very_low":
             volatility_multiplier_enter = trial.suggest_float("volatility_multiplier_enter", 0.15, 0.30, step=0.01)
@@ -105,23 +105,23 @@ class ProfileObjective:
         else:  # standard
             volatility_multiplier_enter = trial.suggest_float("volatility_multiplier_enter", 0.50, 0.80, step=0.01)
             volatility_multiplier_exit = trial.suggest_float("volatility_multiplier_exit", 0.05, 0.25, step=0.01)
-        
+
         # Constraint: exit must be strictly smaller than enter
         if volatility_multiplier_exit >= volatility_multiplier_enter:
             volatility_multiplier_exit = volatility_multiplier_enter - 0.01
-            
+
         target_daily_volatility = trial.suggest_float("target_daily_volatility", 0.008, 0.018, step=0.001)
-        
+
         stoploss_step0 = trial.suggest_float("stoploss_ladder_step0", -0.020, -0.010, step=0.001)
         stoploss_step1 = trial.suggest_float("stoploss_ladder_step1", -0.030, -0.015, step=0.001)
-        
+
         # Constraint: step1 < step0
         if stoploss_step1 >= stoploss_step0:
             stoploss_step1 = stoploss_step0 - 0.002
-            
+
         stoploss_ratio0 = trial.suggest_float("stoploss_ladder_ratio0", 0.5, 0.9, step=0.1)
         takeprofit_step0 = trial.suggest_float("takeprofit_ladder_step0", 0.010, 0.030, step=0.001)
-        
+
         params = {
             "lookback_days": int(lookback_days),
             "volatility_multiplier_enter": float(round(volatility_multiplier_enter, 4)),
@@ -140,7 +140,7 @@ class ProfileObjective:
             "estimated_slippage_per_side_long": 0.0,
             "estimated_slippage_per_side_short": 0.0,
         }
-        
+
         scores = []
         for symbol in self.tickers:
             df = get_ticker_df(symbol, self.repo_root)
@@ -162,16 +162,16 @@ class ProfileObjective:
                 sharpe = m.get("sharpe_ratio")
                 if sharpe is None or pd.isna(sharpe):
                     sharpe = -1.0
-                
+
                 # Penalize lack of trading on 2-year IS data (adapted penalty for 5m)
                 if trades < 15:
                     sharpe -= (15 - trades) * 0.15
-                    
+
                 scores.append(sharpe)
             except Exception as e:
                 logger.warning(f"Backtest failed for {symbol} in trial {trial.number}: {e}")
                 scores.append(-3.0)
-                
+
         # Return average Sharpe ratio
         return float(np.mean(scores))
 
@@ -194,13 +194,13 @@ def run_worker(profile_name: str, tickers: list[str], n_trials: int, repo_root: 
 
 def main() -> None:
     repo_root = Path("/home/kidpixel/trading_automation_v2")
-    
+
     # Clean up previous Optuna DB to prevent conflict
     db_path = repo_root / "storage/optuna_study_phase5.db"
     if db_path.exists():
         logger.info(f"Removing old Optuna DB at {db_path}...")
         db_path.unlink()
-        
+
     # Pre-load IS data for all tickers (5m timeframe)
     logger.info("Pre-loading IS canonical market data (5m)...")
     for symbol, window in IS_WINDOWS.items():
@@ -226,10 +226,10 @@ def main() -> None:
         logger.info("=" * 60)
         logger.info(f"Starting Bayesian Optimization for profile: {profile_name} ({info['description']})")
         logger.info("=" * 60)
-        
+
         tickers = info["tickers"]
         trials = info["trials"]
-        
+
         study = optuna.create_study(
             study_name=f"phase5_{profile_name}",
             storage=f"sqlite:///{repo_root}/storage/optuna_study_phase5.db",
@@ -237,7 +237,7 @@ def main() -> None:
             sampler=optuna.samplers.TPESampler(seed=42),
             load_if_exists=True
         )
-        
+
         # Enqueue baseline conservative low vol parameters as prior for very_low
         if profile_name == "very_low":
             prior = {
@@ -252,12 +252,12 @@ def main() -> None:
             }
             study.enqueue_trial(prior)
             logger.info(f"Enqueued conservative low vol prior for {profile_name}")
-            
+
         # Determine trials per worker dynamically
         n_workers = 8
         trials_per_worker = int(np.ceil(trials / n_workers))
         logger.info(f"Spawning {n_workers} processes with {trials_per_worker} trials each...")
-        
+
         processes = []
         for _ in range(n_workers):
             p = multiprocessing.Process(
@@ -266,14 +266,14 @@ def main() -> None:
             )
             p.start()
             processes.append(p)
-            
+
         for p in processes:
             p.join()
-        
+
         best_trial = study.best_trial
         logger.info(f"Finished {profile_name}. Best average Sharpe IS: {best_trial.value:.3f}")
         logger.info(f"Best parameters: {best_trial.params}")
-        
+
         # Run backtest for each ticker in the profile under best parameters to get detailed metrics
         best_params = best_trial.params.copy()
         # Enforce manual constraints if they were violated/adjusted
@@ -281,7 +281,7 @@ def main() -> None:
             best_params["volatility_multiplier_exit"] = best_params["volatility_multiplier_enter"] - 0.01
         if best_params.get("stoploss_ladder_step1", -0.02) >= best_params.get("stoploss_ladder_step0", -0.015):
             best_params["stoploss_ladder_step1"] = best_params["stoploss_ladder_step0"] - 0.002
-            
+
         best_params["exit_mode"] = "combined"
         best_params["max_leverage"] = 3.0
         best_params["trade_direction_mode"] = "Long only"
@@ -290,7 +290,7 @@ def main() -> None:
         best_params["estimated_commission_per_order_short"] = 0.0
         best_params["estimated_slippage_per_side_long"] = 0.0
         best_params["estimated_slippage_per_side_short"] = 0.0
-        
+
         ticker_metrics = {}
         for symbol in tickers:
             df = get_ticker_df(symbol, repo_root)
@@ -313,7 +313,7 @@ def main() -> None:
                 "trades": m.get("closed_trades"),
                 "win_rate": m.get("win_rate_pct"),
             }
-            
+
         results_by_profile[profile_name] = {
             "profile_name": profile_name,
             "description": info["description"],
@@ -325,7 +325,7 @@ def main() -> None:
     # Save to report dir as JSON
     out_dir = repo_root / "reports/noise_boundary_intraday/phase5_bayesian_5m"
     out_dir.mkdir(parents=True, exist_ok=True)
-    
+
     json_path = out_dir / "bayesian_by_profile.json"
     json_path.write_text(json.dumps(results_by_profile, indent=2, default=str), encoding="utf-8")
     logger.info(f"All profile optimization results saved to {json_path}")
@@ -346,16 +346,16 @@ def generate_markdown_report(results: dict, output_path: Path) -> None:
     lines.append("")
     lines.append("| Profil | Description | Sharpe Moyen IS | Paramètres Optimisés |")
     lines.append("| :--- | :--- | :---: | :--- |")
-    
+
     for prof_name, data in results.items():
         bp = data["best_params"]
         param_str = f"Lookback: `{bp['lookback_days']}`d, Enter Mult: `{bp['volatility_multiplier_enter']:.2f}`, Exit Mult: `{bp['volatility_multiplier_exit']:.2f}`, Target Vol: `{bp['target_daily_volatility']:.3%}`"
         lines.append(f"| **{prof_name}** | {data['description']} | **{data['best_value']:.3f}** | {param_str} |")
-        
+
     lines.append("")
     lines.append("## 2. Performances Détaillées par Ticker")
     lines.append("")
-    
+
     for prof_name, data in results.items():
         lines.append(f"### Profil : {prof_name} ({data['description']})")
         lines.append("")
@@ -366,7 +366,7 @@ def generate_markdown_report(results: dict, output_path: Path) -> None:
                 f"| **{ticker}** | {m['sharpe']:.3f} | {m['cagr']:.2f}% | {m['mdd']:.2f}% | {m['trades']} | {m['win_rate']:.1f}% |"
             )
         lines.append("")
-        
+
     lines.append("## 3. Paramètres Optimaux Recommandés")
     lines.append("")
     for prof_name, data in results.items():
@@ -376,13 +376,13 @@ def generate_markdown_report(results: dict, output_path: Path) -> None:
         lines.append(json.dumps(bp, indent=2))
         lines.append("```")
         lines.append("")
-        
+
     lines.append("## 4. Analyse et Conclusion")
     lines.append("")
     lines.append("- **Filtre temporel (5m) :** Le passage à 5 minutes a démontré une excellente robustesse, réduisant le bruit haute fréquence tout en maintenant un échantillon de transactions statistiquement significatif.")
     lines.append("- **Sizing & Hard Cap Levier (3.0x) :** L'intégration de la protection de levier brute à 3.0x a efficacement immunisé la stratégie contre le risque de ruine lors des pics anormaux de volatilité quotidienne historique.")
     lines.append("- **Profils ciblés :** La segmentation en 3 profils a permis de débloquer de solides performances pour le profil `very_low` grâce à des multiplicateurs d'entrée adaptés (`0.15 - 0.30`).")
-    
+
     output_path.write_text("\n".join(lines), encoding="utf-8")
 
 

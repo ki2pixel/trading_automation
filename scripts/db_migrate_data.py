@@ -19,7 +19,7 @@ NEW_DB_URL = os.getenv("DATABASE_URL")
 TABLES_TO_MIGRATE = [
     {
         "table": "paper_portfolio_balance",
-        "conflict_clause": "ON CONFLICT (source) DO UPDATE SET cash_balance = EXCLUDED.cash_balance, allocated_balance = EXCLUDED.allocated_balance, total_nav = EXCLUDED.total_nav, secured_balance = EXCLUDED.secured_balance, last_updated = EXCLUDED.last_updated"
+        "conflict_clause": "ON CONFLICT (source) DO UPDATE SET paper_cash_balance = EXCLUDED.paper_cash_balance, allocated_balance = EXCLUDED.allocated_balance, total_nav = EXCLUDED.total_nav, secured_balance = EXCLUDED.secured_balance, last_updated = EXCLUDED.last_updated"
     },
     {
         "table": "paper_strategy_configs",
@@ -59,11 +59,11 @@ def migrate_data():
     if not NEW_DB_URL:
         print("[Migrate] ERROR: DATABASE_URL not set in environment or .env file.")
         sys.exit(1)
-        
+
     print("[Migrate] Starting database migration from Supabase to Aiven...")
     print(f"[Migrate] Source DB (Supabase): {OLD_DB_URL.split('@')[1]}")
     print(f"[Migrate] Target DB (Aiven): {NEW_DB_URL.split('@')[1]}")
-    
+
     try:
         # Connect to source and target databases
         src_conn = psycopg2.connect(OLD_DB_URL)
@@ -72,12 +72,12 @@ def migrate_data():
         print(f"[Migrate] Connection failed: {e}")
         print("[Migrate] Make sure both databases are running and accessible.")
         sys.exit(1)
-        
+
     try:
         for t_info in TABLES_TO_MIGRATE:
             table_name = t_info["table"]
             print(f"\n[Migrate] Migrating table: {table_name}...")
-            
+
             # Fetch data from source
             with src_conn.cursor(cursor_factory=RealDictCursor) as src_cur:
                 try:
@@ -87,30 +87,30 @@ def migrate_data():
                     print(f"[Migrate] Skipping {table_name}: table does not exist or failed to read: {e}")
                     src_conn.rollback()
                     continue
-                    
+
             if not rows:
                 print(f"[Migrate] No records found in source for {table_name}. Skipping.")
                 continue
-                
+
             print(f"[Migrate] Found {len(rows)} records in source.")
-            
+
             # Write to target
             columns = rows[0].keys()
             col_list = ", ".join(columns)
             val_placeholder = ", ".join(["%s"] * len(columns))
-            
+
             with tgt_conn.cursor() as tgt_cur:
                 # 1. Truncate if specified
                 if t_info.get("truncate"):
                     print(f"[Migrate] Truncating target table {table_name} before copy...")
                     tgt_cur.execute(f"TRUNCATE TABLE {table_name} CASCADE;")
-                    
+
                 # 2. Insert records using fast batch execution (execute_values)
                 from psycopg2.extras import execute_values
                 query = f"INSERT INTO {table_name} ({col_list}) VALUES %s"
                 if "conflict_clause" in t_info:
                     query = f"{query} {t_info['conflict_clause']}"
-                    
+
                 # Serialize dicts to JSON string (e.g. indicator_params jsonb column)
                 import json
                 values_to_insert = []
@@ -122,9 +122,9 @@ def migrate_data():
                             val = json.dumps(val)
                         row_vals.append(val)
                     values_to_insert.append(tuple(row_vals))
-                
+
                 execute_values(tgt_cur, query, values_to_insert)
-                
+
                 # 3. Automatically realign primary key sequence if 'id' column exists
                 if "id" in columns:
                     try:
@@ -138,10 +138,10 @@ def migrate_data():
                             print(f"[Migrate] No sequence associated with 'id' in table {table_name}.")
                     except Exception as seq_err:
                         print(f"[Migrate] Warning: Could not realign sequence for {table_name}: {seq_err}")
-                
+
                 tgt_conn.commit()
                 print(f"[Migrate] Successfully inserted/updated {len(rows)} rows in target.")
-                
+
         print("\n[Migrate] Migration completed successfully!")
     except Exception as e:
         tgt_conn.rollback()

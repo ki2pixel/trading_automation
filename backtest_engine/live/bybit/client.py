@@ -41,7 +41,7 @@ class BybitClient:
         req_params = params.copy() if params else {}
 
         from tenacity import Retrying, stop_after_attempt, wait_random_exponential, retry_if_exception
-        
+
         def is_temporary_error(exception: Exception) -> bool:
             if isinstance(exception, requests.exceptions.RequestException):
                 if isinstance(exception, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
@@ -69,14 +69,14 @@ class BybitClient:
                         else:
                             body_str = json.dumps(json_data) if json_data else ""
                             signature = self._sign(timestamp, body_str)
-                        
+
                         headers.update({
                             "X-BAPI-API-KEY": self.config.api_key,
                             "X-BAPI-SIGN": signature,
                             "X-BAPI-TIMESTAMP": timestamp,
                             "X-BAPI-RECV-WINDOW": self.recv_window
                         })
-                        
+
                     response = requests.request(
                         method,
                         url,
@@ -85,13 +85,13 @@ class BybitClient:
                         json=json_data if method != "GET" else None,
                         timeout=NETWORK_TIMEOUT_DEFAULT,
                     )
-                    
+
                     if response.status_code == 429 or response.status_code >= 500:
                         raise requests.exceptions.HTTPError(
                             f"Temporary error {response.status_code}",
                             response=response
                         )
-                        
+
                     response.raise_for_status()
                     return response
         except Exception as e:

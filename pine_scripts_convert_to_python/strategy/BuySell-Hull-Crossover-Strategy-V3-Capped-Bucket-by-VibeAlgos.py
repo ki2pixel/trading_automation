@@ -446,7 +446,7 @@ def run_hma_crossover_strategy(
         config.initial_capital_bucket,
         config.max_capital_bucket,
     )
-    
+
     # Track peak equity for early stopping
     peak_equity = broker.cash
     withdrawn_profit = 0.0
@@ -460,7 +460,7 @@ def run_hma_crossover_strategy(
 
     pending_order: Optional[Dict[str, Any]] = None
     trades: List[Dict[str, Any]] = []
-    
+
     from collections import defaultdict
     records: Dict[str, List[Any]] = defaultdict(list)
 
@@ -676,7 +676,7 @@ def run_hma_crossover_strategy(
         current_equity = broker.mark_to_market_equity(close_price, idx)
         if current_equity > peak_equity:
             peak_equity = current_equity
-        
+
         if early_stop_drawdown_pct is not None and early_stop_drawdown_pct > 0 and peak_equity > 0:
             drawdown_pct = (peak_equity - current_equity) / peak_equity * 100.0
             if drawdown_pct >= early_stop_drawdown_pct:

@@ -1,6 +1,14 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-15 18:08:00] - Clôture définitive de la Phase 3, versioning et audit non destructif des migrations PostgreSQL (VV-07, VV-08, VV-10, VV-13, VV-14) :
+  1. Retrait de la clé unique historique `UNIQUE (asset, strategy_name)` pour isoler correctement les timeframes sur `paper_positions` (VV-07).
+  2. Déplacement du backfill de `timeframe` après la création et le seeding de la table `paper_strategy_configs` (VV-08).
+  3. One-shot migration de timeframe : Détection de la présence de la colonne avant `ALTER TABLE` et bypass du backfill en reboot pour protéger les positions `1m` légitimes (VV-10).
+  4. Migration versionnée et audit non destructif : Table `schema_version` (Version 2) créée. Création de la table transactionnelle `paper_position_timeframe_reviews` pour auditer et lister les timeframes candidats en statut `PENDING` sans altérer les positions multi-timeframes existantes (VV-13 & VV-14).
+  5. Isolation d'information_schema via `table_schema = current_schema()` pour fiabiliser les installations isolées.
+  6. Création de scénarios de tests unitaires complets couvrant l'initialisation vierge, la migration, la résistance au redémarrage, et le mécanisme de revue non destructive avec vérification d'idempotence (`tests/test_db_setup.py`).
+  7. Réussite complète de la suite globale de tests avec 606 succès.
 - [x] [2026-07-13 10:01:00] - Correction de la régression OOM en production (Render OOM > 512MB) sur l'ouverture de marché via l'optimisation des bougies chargées, la correction du cache d'invalidation, et la mise en cache Redis des endpoints `/api/candles` et `/api/performance/metrics` (même pour les actifs avec 0 trade).
 - [x] [2026-07-12 09:37:00] - Clôture des remédiations de l'audit Paper Trading (Phase 2 à Phase 4) :
   * Phase 2 validée par tests (idempotence T212, pre-trade controls, anti-N+1).
@@ -286,3 +294,11 @@
 - [x] [2026-06-19 19:37:00] - Conception et développement de `queue_zigzag_campaign_passe2.py` pour la Passe 2 (Gestion du Risque) de la campagne d'extension de la stratégie `momentum_based_zigzag`. Verrouillage des 9 configurations d'extension validées en Passe 1 et enfilement de la recherche bayésienne sur les brackets TP/SL (initialisation des jobs SQLite).
 - [x] [2026-06-19 19:47:00] - Analyse et consignation de la Passe 2 (Gestion du Risque) de la stratégie `momentum_based_zigzag` (Campagne d'Extension) terminées. Rédaction du rapport `passe_2_signal.md` validant la sur-performance de 8 actifs sur 9 (belgbeeur et daideeur en tête avec hausses de Sharpe spectaculaires). Bypasse recommandé de la Passe 3 (Trailing Stop) et maintien de la configuration Passe 1 sans SL/TP pour beideeur.
 - [x] [2026-06-19 19:51:00] - Clôture officielle de la campagne d'extension de la stratégie `momentum_based_zigzag`. Consignation du bypass de la Passe 3 (Trailing Stop) dans `passe_3_signal.md` et mise à jour de la synthèse stratégique `synthese_strategie.md` avec l'ensemble des 19 configurations finales de production (10 baseline + 9 extension).
+
+### [2026-07-15 14:50:00] - Validation finale de la Phase 3 (Audit)
+- **VV-01 à VV-05** entièrement résolus et vérifiés.
+- Régression `Trading212Client` dans `test_paper_trading_engine.py` fixée via un patch `autouse` de classe.
+- Régression `test_evaluate_and_execute_strategies_buy_order` fixée par index d'assertion et modification de requête mockée (`timeframe`).
+- Régression `is_trading_suspended()` (Kill Switch persistant) fixée par l'ajout d'un fixture global `autouse=True` (`reset_kill_switch_global`) dans `test_signal_executor.py`.
+- **Statut final** : La commande `pytest -q tests/` s'est exécutée avec un taux de réussite de **100% (603 passed, 1 skipped)** sans crash (0 segfault Numba). 
+- Le Moteur de Paper Trading est prêt pour le déploiement. Un rapport de validation finale a été produit.

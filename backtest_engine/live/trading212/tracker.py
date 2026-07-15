@@ -22,13 +22,13 @@ class Trading212PositionTracker:
         except Exception as e:
             print(f"[PositionTracker] Error fetching positions: {e}")
             raise e
-            
+
         real_positions = []
         for pos in positions:
             if self._is_micro_position(pos):
                 continue
             real_positions.append(pos)
-                
+
         return real_positions
 
     def get_micro_positions(self) -> List[Dict[str, Any]]:
@@ -38,7 +38,7 @@ class Trading212PositionTracker:
         except Exception as e:
             print(f"[PositionTracker] Error fetching positions: {e}")
             raise e
-            
+
         micro_positions = []
         for pos in positions:
             if self._is_micro_position(pos):
@@ -50,7 +50,7 @@ class Trading212PositionTracker:
         quantity = pos.get("quantity")
         if quantity is None:
             return False
-            
+
         try:
             qty = float(quantity)
         except (ValueError, TypeError):

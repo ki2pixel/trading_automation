@@ -51,9 +51,9 @@ class SpotConversionRouter:
         try:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT client_order_id, broker_order_id, status, qty_usdc, filled_qty_eur, avg_fill_price, fee_usdc, error_message, dry_run
+                    SELECT client_order_id, broker_order_id, status, qty_usdc, filled_qty_eur, avg_fill_price, fee_usdc, error_message, dry_run, created_at
                     FROM conversion_audit_log
-                    WHERE status IN ('PENDING', 'SUBMITTED', 'PARTIAL')
+                    WHERE status IN ('PENDING', 'SUBMITTED', 'RECONCILIATION_PENDING', 'PARTIAL')
                     LIMIT 1
                 """)
                 row = cur.fetchone()
@@ -68,7 +68,8 @@ class SpotConversionRouter:
                         avg_fill_price=Decimal(str(row[5])),
                         fee_usdc=Decimal(str(row[6])),
                         error_message=row[7],
-                        dry_run=row[8]
+                        dry_run=row[8],
+                        submitted_at=row[9] if row[9] else datetime.now(timezone.utc)
                     )
                     recovered_order = self._recover_order_state(unfinished_order)
                     self._log_conversion(conn, recovered_order, dry_run=recovered_order.dry_run)
@@ -101,7 +102,7 @@ class SpotConversionRouter:
 
         # Step 3: Create and submit order
         order = ConversionOrder(qty_usdc=balance)
-        
+
         if self.dry_run:
             logger.info(
                 f"[SpotRouter] DRY-RUN: Would submit conversion order: "
@@ -120,7 +121,7 @@ class SpotConversionRouter:
         self._log_conversion(conn, order)
 
         order = self._submit_order(conn, order)
-        
+
         if order.status == ConversionOrderStatus.FILLED:
             self.accumulator.drain(conn, order.client_order_id)
             self._log_conversion(conn, order)
@@ -128,10 +129,11 @@ class SpotConversionRouter:
             ConversionOrderStatus.REJECTED,
             ConversionOrderStatus.FAILED,
             ConversionOrderStatus.SUBMITTED,
+            ConversionOrderStatus.RECONCILIATION_PENDING,
             ConversionOrderStatus.PARTIAL
         ):
             self._log_conversion(conn, order)
-        
+
         return order
 
     def _submit_order(self, conn, order: ConversionOrder) -> ConversionOrder:
@@ -142,11 +144,11 @@ class SpotConversionRouter:
         # Pre-Trade Controls check (ESMA RTS 6 compliance)
         from backtest_engine.live.controls import PreTradeController, PreTradeControlError
         from backtest_engine.live.connection import get_db_connection
-        
+
         # In actual execution, we fail fast instead of using dummy/fallback values
         nav = None
         price = None
-        
+
         try:
             with get_db_connection() as db_conn:
                 with db_conn.cursor() as cur:
@@ -154,7 +156,7 @@ class SpotConversionRouter:
                     row = cur.fetchone()
                     if row and row[0] is not None:
                         nav = Decimal(str(row[0]))
-                        
+
                     cur.execute("SELECT price FROM live_prices WHERE ticker = 'eurusd'")
                     row = cur.fetchone()
                     if row and row[0] is not None:
@@ -170,7 +172,7 @@ class SpotConversionRouter:
             order.status = ConversionOrderStatus.REJECTED
             order.error_message = f"Pre-Trade Controls Check Failed: invalid NAV ({nav}) or price ({price})"
             return order
-            
+
         try:
             ptc = PreTradeController()
             ptc.check_limits(
@@ -188,14 +190,14 @@ class SpotConversionRouter:
             return order
 
         payload = order.to_bybit_payload()
-        
+
         for attempt in range(order.max_retries):
             try:
                 order.submitted_at = datetime.now(timezone.utc)
                 order.status = ConversionOrderStatus.SUBMITTED
                 # Persist the SUBMITTED status before the network request
                 self._log_conversion(conn, order)
-                
+
                 response = self.client._request(
                     "POST",
                     "/v5/order/create",
@@ -203,12 +205,12 @@ class SpotConversionRouter:
                     signed=True
                 )
                 data = response.json()
-                
+
                 ret_code = data.get("retCode", -1)
                 if ret_code == 0:
                     result = data.get("result", {})
                     order.broker_order_id = result.get("orderId")
-                    
+
                     # Confirm execution status from the broker via reconciliation (non-presumptive)
                     logger.info(
                         f"[SpotRouter] Order submitted successfully: {order.client_order_id} "
@@ -219,7 +221,7 @@ class SpotConversionRouter:
                     error_msg = data.get("retMsg", "Unknown error")
                     order.error_message = f"retCode={ret_code}: {error_msg}"
                     order.retry_count = attempt + 1
-                    
+
                     # Check for duplicate order (idempotence check)
                     if ret_code == 110071:  # Duplicate orderLinkId
                         logger.warning(
@@ -227,12 +229,12 @@ class SpotConversionRouter:
                             f"{order.client_order_id}. Recovering state..."
                         )
                         return self._recover_order_state(order)
-                    
+
                     logger.warning(
                         f"[SpotRouter] Order rejected (attempt {attempt+1}): "
                         f"{order.error_message}"
                     )
-                    
+
             except Exception as e:
                 order.error_message = str(e)
                 order.retry_count = attempt + 1
@@ -261,7 +263,7 @@ class SpotConversionRouter:
             )
             data = response.json()
             orders = data.get("result", {}).get("list", [])
-            
+
             # 2. Si non trouvé, chercher dans l'historique (cas d'ordre déjà rempli et archivé)
             if not orders:
                 response = self.client._request(
@@ -275,12 +277,12 @@ class SpotConversionRouter:
                 )
                 data = response.json()
                 orders = data.get("result", {}).get("list", [])
-            
+
             if orders:
                 existing = orders[0]
                 bybit_status = existing.get("orderStatus", "")
                 order.broker_order_id = existing.get("orderId")
-                
+
                 if bybit_status == "Filled":
                     order.status = ConversionOrderStatus.FILLED
                     order.filled_qty_eur = Decimal(
@@ -301,20 +303,52 @@ class SpotConversionRouter:
                 elif bybit_status in ("Cancelled", "Rejected"):
                     order.status = ConversionOrderStatus.CANCELED
                 else:
-                    order.status = ConversionOrderStatus.SUBMITTED
+                    if order.submitted_at:
+                        elapsed = (datetime.now(timezone.utc) - order.submitted_at).total_seconds()
+                        if elapsed > 900:  # 15 minutes
+                            order.status = ConversionOrderStatus.FAILED
+                            order.error_message = f"TTL de réconciliation expiré (15min). Broker status was: {bybit_status}"
+                            logger.error(f"[SpotRouter] Order {order.client_order_id} failed: {order.error_message}")
+                        elif elapsed > 300:  # 5 minutes
+                            order.status = ConversionOrderStatus.RECONCILIATION_PENDING
+                            logger.error(f"[SpotRouter] ALERT: Order {order.client_order_id} status '{bybit_status}' unknown after 5m. Pending reconciliation.")
+                        elif elapsed > 60:   # 1 minute
+                            order.status = ConversionOrderStatus.RECONCILIATION_PENDING
+                            logger.warning(f"[SpotRouter] Order {order.client_order_id} status '{bybit_status}' unknown after 1m. Pending reconciliation.")
+                        else:
+                            order.status = ConversionOrderStatus.SUBMITTED
+                    else:
+                        order.status = ConversionOrderStatus.SUBMITTED
             else:
                 # Si l'ordre n'est pas trouvé chez le courtier et qu'on a eu une exception, il est FAILED
                 if order.status == ConversionOrderStatus.PENDING:
                     order.status = ConversionOrderStatus.FAILED
                     order.error_message = "Order not found on broker and submission failed."
-                    
+                elif order.status in (ConversionOrderStatus.SUBMITTED, ConversionOrderStatus.RECONCILIATION_PENDING):
+                    if order.submitted_at:
+                        elapsed = (datetime.now(timezone.utc) - order.submitted_at).total_seconds()
+                        if elapsed > 900:
+                            order.status = ConversionOrderStatus.FAILED
+                            order.error_message = "TTL de réconciliation expiré (15min). Order not found."
+                            logger.error(f"[SpotRouter] Order {order.client_order_id} failed: TTL expired.")
+                        elif elapsed > 300:
+                            order.status = ConversionOrderStatus.RECONCILIATION_PENDING
+                            logger.error(f"[SpotRouter] ALERT: Order {order.client_order_id} not found after 5m. Pending reconciliation.")
+                        elif elapsed > 60:
+                            order.status = ConversionOrderStatus.RECONCILIATION_PENDING
+                            logger.warning(f"[SpotRouter] Order {order.client_order_id} not found after 1m. Pending reconciliation.")
+                        else:
+                            order.status = ConversionOrderStatus.SUBMITTED
+                    else:
+                        order.status = ConversionOrderStatus.SUBMITTED
+
         except Exception as e:
             logger.error(f"[SpotRouter] Recovery failed: {e}")
             # Do not overwrite a prior SUBMITTED state with FAILED if we just had a temporary network issue on GET
-            if order.status not in (ConversionOrderStatus.SUBMITTED, ConversionOrderStatus.PARTIAL):
+            if order.status not in (ConversionOrderStatus.SUBMITTED, ConversionOrderStatus.RECONCILIATION_PENDING, ConversionOrderStatus.PARTIAL):
                 order.status = ConversionOrderStatus.FAILED
                 order.error_message = f"Recovery failed: {e}"
-        
+
         return order
 
     def _log_conversion(
@@ -335,14 +369,14 @@ class SpotConversionRouter:
             "dry_run": dry_run,
         }
         logger.info(f"[AUDIT] {json.dumps(log_entry)}")
-        
+
         # Persist to DB using UPSERT to prevent unique constraint violation on client_order_id
         try:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO conversion_audit_log 
+                    INSERT INTO conversion_audit_log
                     (client_order_id, broker_order_id, status, qty_usdc,
-                     filled_qty_eur, avg_fill_price, fee_usdc, 
+                     filled_qty_eur, avg_fill_price, fee_usdc,
                      error_message, dry_run, created_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (client_order_id) DO UPDATE SET

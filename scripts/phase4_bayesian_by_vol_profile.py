@@ -90,23 +90,23 @@ class ProfileObjective:
         lookback_days = trial.suggest_int("lookback_days", 10, 30)
         volatility_multiplier_enter = trial.suggest_float("volatility_multiplier_enter", 0.20, 0.60, step=0.05)
         volatility_multiplier_exit = trial.suggest_float("volatility_multiplier_exit", 0.05, 0.20, step=0.01)
-        
+
         # Constraint: exit must be strictly smaller than enter
         if volatility_multiplier_exit >= volatility_multiplier_enter:
             volatility_multiplier_exit = volatility_multiplier_enter - 0.01
-            
+
         target_daily_volatility = trial.suggest_float("target_daily_volatility", 0.008, 0.018, step=0.001)
-        
+
         stoploss_step0 = trial.suggest_float("stoploss_ladder_step0", -0.020, -0.010, step=0.001)
         stoploss_step1 = trial.suggest_float("stoploss_ladder_step1", -0.030, -0.015, step=0.001)
-        
+
         # Constraint: step1 < step0
         if stoploss_step1 >= stoploss_step0:
             stoploss_step1 = stoploss_step0 - 0.002
-            
+
         stoploss_ratio0 = trial.suggest_float("stoploss_ladder_ratio0", 0.5, 0.9, step=0.1)
         takeprofit_step0 = trial.suggest_float("takeprofit_ladder_step0", 0.010, 0.030, step=0.001)
-        
+
         params = {
             "lookback_days": int(lookback_days),
             "volatility_multiplier_enter": float(round(volatility_multiplier_enter, 4)),
@@ -118,7 +118,7 @@ class ProfileObjective:
             "stoploss_ladder_ratio0": float(round(stoploss_ratio0, 2)),
             "takeprofit_ladder_step0": float(round(takeprofit_step0, 4)),
         }
-        
+
         scores = []
         for symbol in self.tickers:
             df = get_ticker_df(symbol, self.repo_root)
@@ -142,16 +142,16 @@ class ProfileObjective:
                 sharpe = m.get("sharpe_ratio")
                 if sharpe is None or pd.isna(sharpe):
                     sharpe = -1.0
-                
+
                 # Penalize lack of trading on 2-year IS data
                 if trades < 20:
                     sharpe -= (20 - trades) * 0.1
-                    
+
                 scores.append(sharpe)
             except Exception as e:
                 logger.warning(f"Backtest failed for {symbol} in trial {trial.number}: {e}")
                 scores.append(-3.0)
-                
+
         # Return average Sharpe ratio
         return float(np.mean(scores))
 
@@ -174,13 +174,13 @@ def run_worker(profile_name: str, tickers: list[str], n_trials: int, repo_root: 
 
 def main() -> None:
     repo_root = Path("/home/kidpixel/trading_automation_v2")
-    
+
     # Clean up previous Optuna DB to prevent conflict
     db_path = repo_root / "storage/optuna_study.db"
     if db_path.exists():
         logger.info(f"Removing old Optuna DB at {db_path}...")
         db_path.unlink()
-        
+
     # Pre-load IS data for all tickers
     logger.info("Pre-loading IS canonical market data (1m)...")
     for symbol, window in IS_WINDOWS.items():
@@ -206,10 +206,10 @@ def main() -> None:
         logger.info("=" * 60)
         logger.info(f"Starting Bayesian Optimization for profile: {profile_name} ({info['description']})")
         logger.info("=" * 60)
-        
+
         tickers = info["tickers"]
         trials = info["trials"]
-        
+
         study = optuna.create_study(
             study_name=f"phase4_{profile_name}",
             storage=f"sqlite:///{repo_root}/storage/optuna_study.db",
@@ -217,7 +217,7 @@ def main() -> None:
             sampler=optuna.samplers.TPESampler(seed=42),
             load_if_exists=True
         )
-        
+
         # Enqueue baseline conservative low vol parameters as prior for low_vol
         if profile_name == "low_vol":
             prior = {
@@ -232,12 +232,12 @@ def main() -> None:
             }
             study.enqueue_trial(prior)
             logger.info(f"Enqueued conservative low vol prior for {profile_name}")
-            
+
         # Determine trials per worker dynamically
         n_workers = 8
         trials_per_worker = int(np.ceil(trials / n_workers))
         logger.info(f"Spawning {n_workers} processes with {trials_per_worker} trials each...")
-        
+
         processes = []
         for _ in range(n_workers):
             p = multiprocessing.Process(
@@ -246,14 +246,14 @@ def main() -> None:
             )
             p.start()
             processes.append(p)
-            
+
         for p in processes:
             p.join()
-        
+
         best_trial = study.best_trial
         logger.info(f"Finished {profile_name}. Best average Sharpe IS: {best_trial.value:.3f}")
         logger.info(f"Best parameters: {best_trial.params}")
-        
+
         # Run backtest for each ticker in the profile under best parameters to get detailed metrics
         best_params = best_trial.params.copy()
         # Enforce manual constraints if they were violated/adjusted
@@ -261,9 +261,9 @@ def main() -> None:
             best_params["volatility_multiplier_exit"] = best_params["volatility_multiplier_enter"] - 0.01
         if best_params.get("stoploss_ladder_step1", -0.02) >= best_params.get("stoploss_ladder_step0", -0.015):
             best_params["stoploss_ladder_step1"] = best_params["stoploss_ladder_step0"] - 0.002
-            
+
         best_params["exit_mode"] = "combined"
-        
+
         ticker_metrics = {}
         for symbol in tickers:
             df = get_ticker_df(symbol, repo_root)
@@ -286,7 +286,7 @@ def main() -> None:
                 "trades": m.get("closed_trades"),
                 "win_rate": m.get("win_rate_pct"),
             }
-            
+
         results_by_profile[profile_name] = {
             "profile_name": profile_name,
             "description": info["description"],
@@ -299,7 +299,7 @@ def main() -> None:
     out_dir = repo_root / "reports/noise_boundary_intraday/phase4_wfa_holdout_1m"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "bayesian_by_profile.json"
-    
+
     out_path.write_text(json.dumps(results_by_profile, indent=2, default=str), encoding="utf-8")
     logger.info(f"\nAll profile optimization results saved to {out_path}")
 

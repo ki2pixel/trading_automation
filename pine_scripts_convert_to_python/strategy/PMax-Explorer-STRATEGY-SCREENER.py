@@ -81,12 +81,12 @@ class PMaxExplorerConfig:
     length: int = 10
     change_atr: bool = True
     source_col: str = "hl2"
-    
+
     # Currency overrides
     asset_currency: str | None = None
     account_currency: str | None = None
     fx_rate_provider: object | None = None
-    
+
     # Backtest parameters
     max_entry_price: float = 300.0
     max_capital_bucket: float = 300.0
@@ -220,7 +220,7 @@ def pine_var(src: np.ndarray, length: int) -> np.ndarray:
     valpha = 2.0 / (length + 1)
     n = len(src)
     var_arr = np.zeros(n, dtype=np.float64)
-    
+
     vud1 = np.zeros(n, dtype=np.float64)
     vdd1 = np.zeros(n, dtype=np.float64)
     for i in range(1, n):
@@ -228,10 +228,10 @@ def pine_var(src: np.ndarray, length: int) -> np.ndarray:
             vud1[i] = src[i] - src[i-1]
         elif src[i] < src[i-1]:
             vdd1[i] = src[i-1] - src[i]
-            
+
     vud_sum = np.full(n, np.nan)
     vdd_sum = np.full(n, np.nan)
-    
+
     for i in range(8, n):
         su = 0.0
         sd = 0.0
@@ -240,20 +240,20 @@ def pine_var(src: np.ndarray, length: int) -> np.ndarray:
             sd += vdd1[i - j]
         vud_sum[i] = su
         vdd_sum[i] = sd
-        
+
     for i in range(n):
         if np.isnan(vud_sum[i]) or np.isnan(vdd_sum[i]):
             vcmo = 0.0
         else:
             denom = vud_sum[i] + vdd_sum[i]
             vcmo = (vud_sum[i] - vdd_sum[i]) / denom if denom != 0 else 0.0
-        
+
         abs_vcmo = abs(vcmo)
         prev_var = var_arr[i-1] if i > 0 else 0.0
         if np.isnan(prev_var):
             prev_var = 0.0
         var_arr[i] = (valpha * abs_vcmo * src[i]) + (1.0 - valpha * abs_vcmo) * prev_var
-        
+
     return var_arr
 
 @njit(cache=True)
@@ -280,7 +280,7 @@ def pine_zlema(src: np.ndarray, length: int) -> np.ndarray:
             zxEMAData[i] = src[i] + (src[i] - src[lag_idx])
         else:
             zxEMAData[i] = src[i]
-            
+
     return pine_ema(zxEMAData, length)
 
 @njit(cache=True)
@@ -292,24 +292,24 @@ def pine_linreg(src: np.ndarray, length: int, offset: int = 0) -> np.ndarray:
     for j in range(length):
         x_mean += x[j]
     x_mean /= length
-    
+
     x_var = 0.0
     for j in range(length):
         x_var += (x[j] - x_mean) ** 2
-        
+
     if x_var == 0:
         return res
-        
+
     for i in range(length - 1 + offset, n):
         y_sum = 0.0
         for j in range(length):
             y_sum += src[i - offset - length + 1 + j]
         y_mean = y_sum / length
-        
+
         cov = 0.0
         for j in range(length):
             cov += (x[j] - x_mean) * (src[i - offset - length + 1 + j] - y_mean)
-            
+
         b1 = cov / x_var
         b0 = y_mean - b1 * x_mean
         res[i] = b0 + b1 * (length - 1)
@@ -334,7 +334,7 @@ def compute_atr(high: np.ndarray, low: np.ndarray, close: np.ndarray, length: in
         h_pc = abs(high[i] - close[i-1])
         l_pc = abs(low[i] - close[i-1])
         tr[i] = max(h_l, h_pc, l_pc)
-        
+
     if change_atr:
         alpha = 1.0 / length
         rma = np.full(n, np.nan)
@@ -342,7 +342,7 @@ def compute_atr(high: np.ndarray, low: np.ndarray, close: np.ndarray, length: in
         for i in range(min(length, n)):
             s += tr[i]
         initial_sma = s / min(length, n)
-        
+
         if length <= n:
             rma[length - 1] = initial_sma
             for i in range(length, n):
@@ -355,38 +355,38 @@ def compute_pmax(mavg: np.ndarray, atr: np.ndarray, multiplier: float) -> Tuple[
     n = len(mavg)
     pmax = np.full(n, np.nan)
     dir_arr = np.ones(n, dtype=int)
-    
+
     longStop = np.full(n, np.nan)
     shortStop = np.full(n, np.nan)
-    
+
     # Initialize direction
     current_dir = 1
-    
+
     for i in range(n):
         if np.isnan(mavg[i]) or np.isnan(atr[i]):
             continue
-            
+
         cur_long_stop = mavg[i] - multiplier * atr[i]
         cur_short_stop = mavg[i] + multiplier * atr[i]
-        
+
         prev_long_stop = longStop[i-1] if i > 0 and not np.isnan(longStop[i-1]) else cur_long_stop
         prev_short_stop = shortStop[i-1] if i > 0 and not np.isnan(shortStop[i-1]) else cur_short_stop
-        
+
         longStop[i] = max(cur_long_stop, prev_long_stop) if mavg[i] > prev_long_stop else cur_long_stop
         shortStop[i] = min(cur_short_stop, prev_short_stop) if mavg[i] < prev_short_stop else cur_short_stop
-        
+
         # dir logic
         if i > 0:
             current_dir = dir_arr[i-1]
-            
+
         if current_dir == -1 and mavg[i] > prev_short_stop:
             current_dir = 1
         elif current_dir == 1 and mavg[i] < prev_long_stop:
             current_dir = -1
-            
+
         dir_arr[i] = current_dir
         pmax[i] = longStop[i] if current_dir == 1 else shortStop[i]
-        
+
     return pmax, dir_arr
 
 # ---------------------------------------------------------------------------
@@ -430,14 +430,14 @@ def add_pmax_explorer_features(
         # Both are available from the shared grids! Direct O(1) computation!
         out = df.copy()
         pmax, pmax_dir = compute_pmax(mavg, atr, config.multiplier)
-        
+
         out["mavg"] = mavg
         out["pmax"] = pmax
         out["pmax_dir"] = pmax_dir
 
         out["raw_long_signal"] = (out["mavg"] > out["pmax"]) & (out["mavg"].shift(1) <= out["pmax"].shift(1))
         out["raw_short_signal"] = (out["mavg"] < out["pmax"]) & (out["mavg"].shift(1) >= out["pmax"].shift(1))
-        
+
         out["long_signal"] = out["raw_long_signal"]
         out["short_signal"] = out["raw_short_signal"]
         return out
@@ -457,12 +457,12 @@ def add_pmax_explorer_features(
             return cached
 
     out = df.copy()
-    
+
     src = out[config.source_col].to_numpy(dtype=float)
     high = out["high"].to_numpy(dtype=float)
     low = out["low"].to_numpy(dtype=float)
     close = out["close"].to_numpy(dtype=float)
-    
+
     # Calculate MAvg
     if config.mav == "SMA":
         mavg = pine_sma(src, config.length)
@@ -485,10 +485,10 @@ def add_pmax_explorer_features(
 
     # Calculate ATR
     atr = compute_atr(high, low, close, config.periods, config.change_atr)
-    
+
     # Calculate PMax
     pmax, pmax_dir = compute_pmax(mavg, atr, config.multiplier)
-    
+
     out["mavg"] = mavg
     out["pmax"] = pmax
     out["pmax_dir"] = pmax_dir
@@ -498,7 +498,7 @@ def add_pmax_explorer_features(
     # crossunder(MAvg, PMax) -> sellSignallk
     out["raw_long_signal"] = (out["mavg"] > out["pmax"]) & (out["mavg"].shift(1) <= out["pmax"].shift(1))
     out["raw_short_signal"] = (out["mavg"] < out["pmax"]) & (out["mavg"].shift(1) >= out["pmax"].shift(1))
-    
+
     out["long_signal"] = out["raw_long_signal"]
     out["short_signal"] = out["raw_short_signal"]
 
@@ -516,7 +516,7 @@ def run_pmax_explorer_strategy(
     early_stop_drawdown_pct: Optional[float] = None,
     compute_full_metrics: bool = True,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    
+
     config = config or PMaxExplorerConfig()
 
     required = {"open", "high", "low", "close"}
@@ -548,7 +548,7 @@ def run_pmax_explorer_strategy(
         config.initial_capital_bucket,
         config.max_capital_bucket,
     )
-    
+
     peak_equity = broker.cash
     withdrawn_profit = 0.0
 
@@ -768,7 +768,7 @@ def run_pmax_explorer_strategy(
         current_equity = broker.mark_to_market_equity(close_price, idx)
         if current_equity > peak_equity:
             peak_equity = current_equity
-        
+
         if early_stop_drawdown_pct is not None and early_stop_drawdown_pct > 0 and peak_equity > 0:
             drawdown_pct = (peak_equity - current_equity) / peak_equity * 100.0
             if drawdown_pct >= early_stop_drawdown_pct:

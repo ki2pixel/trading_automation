@@ -231,7 +231,7 @@ def _build_state_from_broker(
         else:
             fx_arr = np.array([broker.fx_rate(timestamps[idx]) for idx in active_indices])
             price_account = close_arr[active_indices] * fx_arr
-        
+
         side_mult = np.sign(pos_qty[active_indices])
         open_pnl[active_indices] = (price_account - pos_avg[active_indices]) * np.abs(pos_qty[active_indices]) * side_mult * broker.config.point_value
 
@@ -276,7 +276,7 @@ def run_smart_trader_geometric(
     overrides.fx_rate_provider = fx_rate_provider
 
     bars = _to_strategy_ohlcv(data)
-    
+
     default_slots = [
         {"variable": "Ceil angle", "condition": ">", "threshold": 0.0, "apply_to": "Long entry"},
         {"variable": "Flr angle", "condition": "<", "threshold": 0.0, "apply_to": "Short entry"},
@@ -291,7 +291,7 @@ def run_smart_trader_geometric(
         min_short_entry_slots=overrides.min_short_entry_slots or 1,
         slots=overrides.slots if overrides.slots is not None else default_slots
     )
-    
+
     # Run core geometric signal logic
     df = data.copy()
     df = add_smart_trader_geometric_features(df, config)
@@ -463,7 +463,7 @@ def run_smart_trader_geometric(
     raw_trades = broker.closed_trades_frame()
     trades = _normalize_trades(raw_trades, bars)
     state = _build_state_from_broker(broker, bars, timestamps, close_arr)
-    
+
     # Merge core indicator variables into state for viewer indicators
     if 'Ceil distance' in df.columns:
         state['Ceil distance'] = df['Ceil distance'].to_numpy()
@@ -542,7 +542,7 @@ def vectorbt_prescan(
     workers: int = 1,
 ) -> list[Any]:
     """Pre-scan stub for Smart Trader Geometric.
-    
+
     Skipped vectorbt pre-scan as parameters space is fast enough for Numba + Optuna.
     """
     _write_prescan_report(output_dir, "skipped", None, {})

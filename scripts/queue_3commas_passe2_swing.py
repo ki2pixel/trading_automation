@@ -63,7 +63,7 @@ def main():
     queued_count = 0
     for symbol, tf_str, ma_type1, ma_length1, ma_type2, ma_length2 in targets:
         tf_min = timeframe_to_minutes(tf_str)
-        
+
         fixed_overrides = {
             "trail_stop": False,
             "use_safety_stop": False,
@@ -121,7 +121,7 @@ def main():
                 "rawIterations": raw_iterations
             }
         )
-        
+
         store.add(job)
         queued_count += 1
 

@@ -328,7 +328,7 @@ def _build_state_from_broker(
         else:
             fx_arr = np.array([broker.fx_rate(timestamps[idx]) for idx in active_indices])
             price_account = close_arr[active_indices] * fx_arr
-        
+
         side_mult = np.sign(pos_qty[active_indices])
         open_pnl[active_indices] = (price_account - pos_avg[active_indices]) * np.abs(pos_qty[active_indices]) * side_mult * broker.config.point_value
 

@@ -34,12 +34,12 @@ def test_suggest_parameters_constraints():
         ParameterGridSpec("stoploss_ladder_step0", "numeric", (-0.02, -0.002)),
         ParameterGridSpec("stoploss_ladder_step1", "numeric", (-0.03, -0.005)),
     ]
-    
+
     study = optuna.create_study()
     trial = study.ask()
-    
+
     params = _suggest_parameters(trial, specs, strategy="noise_boundary_intraday")
-    
+
     assert params["volatility_multiplier_exit"] < params["volatility_multiplier_enter"]
     assert params["stoploss_ladder_step1"] < params["stoploss_ladder_step0"]
     assert validate_noise_boundary_constraints(params) == True

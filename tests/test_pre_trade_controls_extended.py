@@ -39,7 +39,7 @@ def test_bybit_config_failsafe_live_hash_mismatch():
     """
     key = "somelivekey"
     correct_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
-    
+
     with patch.dict(os.environ, {
         "BYBIT_ENV": "live",
         "BYBIT_LIVE_API_KEY": key,
@@ -60,7 +60,7 @@ def test_bybit_config_failsafe_live_success():
     """
     key = "somelivekey"
     correct_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
-    
+
     with patch.dict(os.environ, {
         "BYBIT_ENV": "live",
         "BYBIT_LIVE_API_KEY": key,
@@ -97,7 +97,7 @@ def test_t212_config_failsafe_live_hash_mismatch():
     """
     secret = "somelivesecret"
     correct_hash = hashlib.sha256(secret.encode("utf-8")).hexdigest()
-    
+
     with patch.dict(os.environ, {
         "T212_ENV": "live",
         "T212_LIVE_API_KEY_ID": "somekeyid",

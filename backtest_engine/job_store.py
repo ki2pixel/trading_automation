@@ -97,7 +97,7 @@ class SQLiteOptimizerJobStore:
         self._max_jobs = max(1, int(max_jobs))
         self._ttl_seconds = ttl_seconds if ttl_seconds is None else max(1, int(ttl_seconds))
         self._lock = RLock()
-        
+
         # Load HMAC secret for job signing
         self._hmac_secret = os.getenv("JOB_STORE_HMAC_SECRET")
         if not self._hmac_secret:
@@ -178,21 +178,21 @@ class SQLiteOptimizerJobStore:
             row = conn.execute("SELECT * FROM optimizer_jobs WHERE id = ?", (job_id,)).fetchone()
             if row is None:
                 raise KeyError(job_id)
-                
+
             self._verify_job_signature(row)
-            
+
             request_json = row["request_json"]
             status = row["status"]
             output_dir = row["output_dir"]
             created_at = row["created_at"]
-            
+
             if "request" in updates:
                 request_json = _json_dump(updates["request"])
             if "status" in updates:
                 status = str(updates["status"])
             if "output_dir" in updates:
                 output_dir = str(updates["output_dir"]) if updates["output_dir"] else None
-                
+
             new_signature = calculate_job_signature(
                 job_id=job_id,
                 created_at=created_at,
@@ -214,7 +214,7 @@ class SQLiteOptimizerJobStore:
                     values.append(1 if value else 0)
                 else:
                     values.append(deepcopy(value))
-            
+
             assignments.append("signature = ?")
             values.append(new_signature)
             assignments.append("updated_at = ?")
@@ -256,9 +256,9 @@ class SQLiteOptimizerJobStore:
             if row is None:
                 conn.commit()
                 return None
-                
+
             self._verify_job_signature(row)
-            
+
             new_sig = calculate_job_signature(
                 job_id=row["id"],
                 created_at=row["created_at"],
@@ -267,7 +267,7 @@ class SQLiteOptimizerJobStore:
                 output_dir=row["output_dir"],
                 secret=self._hmac_secret
             )
-            
+
             conn.execute(
                 """
                 UPDATE optimizer_jobs
@@ -377,7 +377,7 @@ class SQLiteOptimizerJobStore:
     def _connect(self) -> sqlite3.Connection:
         encryption_key = os.getenv("SQLITE_ENCRYPTION_KEY")
         use_sqlcipher = False
-        
+
         if encryption_key:
             try:
                 from sqlcipher3 import dbapi2 as sqlcipher
@@ -395,9 +395,9 @@ class SQLiteOptimizerJobStore:
             conn = sqlcipher_db.connect(self._storage_path, timeout=30.0, isolation_level=None)
         else:
             conn = sqlite3.connect(self._storage_path, timeout=30.0, isolation_level=None)
-            
+
         conn.row_factory = sqlite3.Row
-        
+
         if use_sqlcipher and encryption_key:
             conn.execute(f"PRAGMA key = '{encryption_key}'")
 

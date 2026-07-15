@@ -40,7 +40,7 @@ class TrendTypeConfigOverrides:
     adx_lim: float | None = None
     smooth: int | None = None
     signal_mode: str | None = None
-    
+
     max_entry_price: float | None = None
     max_capital_bucket: float | None = None
     initial_capital_bucket: float | None = None
@@ -227,7 +227,7 @@ def _build_state_from_broker(
         else:
             fx_arr = np.array([broker.fx_rate(timestamps[idx]) for idx in active_indices])
             price_account = close_arr[active_indices] * fx_arr
-        
+
         side_mult = np.sign(pos_qty[active_indices])
         open_pnl[active_indices] = (price_account - pos_avg[active_indices]) * np.abs(pos_qty[active_indices]) * side_mult * broker.config.point_value
 
@@ -278,7 +278,7 @@ def run_trend_type(
     config = _apply_overrides(config, overrides)
 
     bars = _to_strategy_ohlcv(data)
-    
+
     # Vectorized execution
     raw_state, _ = module.run_trend_type_strategy(bars, config)
 
@@ -561,11 +561,11 @@ def _process_prescan_batch(args):
         short_exits=short_exits,
         freq=f"{prescan_timeframe}min",
     )
-    
+
     ret_series = pf.total_return()
     if not isinstance(ret_series, pd.Series):
         ret_series = pd.Series([ret_series], index=tt.state.columns)
-        
+
     return ret_series
 
 
@@ -578,8 +578,8 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
-    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres 
-    de Trend Type (atr_len, atr_ma_len, adx_len, di_len, adx_lim, smooth) 
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les paramètres
+    de Trend Type (atr_len, atr_ma_len, adx_len, di_len, adx_lim, smooth)
     avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging

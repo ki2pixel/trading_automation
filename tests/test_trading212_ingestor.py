@@ -217,7 +217,7 @@ def test_resolver_dynamic_fallback(mock_get_instruments, mock_client, tmp_path):
     # Given: Dummy instruments cache and resolver
     cache_file = str(tmp_path / "instruments.json")
     resolver = Trading212TickerResolver(mock_client, cache_paths=[cache_file])
-    
+
     mock_get_instruments.return_value = [
         {"ticker": "NOTd1_EQ", "name": "Novartis", "isin": "CH0012005267", "currencyCode": "EUR"}
     ]
@@ -253,9 +253,9 @@ def test_bootstrapper_all_held(mock_client):
     # Given: Portfolio has all 21 micro positions already opened
     resolver = Trading212TickerResolver(mock_client)
     bootstrapper = Trading212Bootstrapper(mock_client, resolver)
-    
+
     target_tickers = bootstrapper.get_target_tickers()
-    
+
     # Mock positions returns all targets
     mock_positions = [{"instrument": {"ticker": ticker}, "quantity": 0.0001} for ticker in target_tickers]
     mock_client.get_positions = MagicMock(return_value=mock_positions)
@@ -274,10 +274,10 @@ def test_bootstrapper_missing_placed(mock_client):
     # Given: Portfolio is missing SAPd_EQ, no pending order
     resolver = Trading212TickerResolver(mock_client)
     bootstrapper = Trading212Bootstrapper(mock_client, resolver)
-    
+
     target_tickers = bootstrapper.get_target_tickers()
     assert "SAPd_EQ" in target_tickers
-    
+
     # Mock positions returns all targets EXCEPT SAPd_EQ
     mock_positions = [{"instrument": {"ticker": ticker}, "quantity": 0.0001} for ticker in target_tickers if ticker != "SAPd_EQ"]
     mock_client.get_positions = MagicMock(return_value=mock_positions)
@@ -297,12 +297,12 @@ def test_bootstrapper_pending_skipped(mock_client):
     # Given: Portfolio is missing SAPd_EQ, but a pending buy order exists
     resolver = Trading212TickerResolver(mock_client)
     bootstrapper = Trading212Bootstrapper(mock_client, resolver)
-    
+
     target_tickers = bootstrapper.get_target_tickers()
-    
+
     mock_positions = [{"instrument": {"ticker": ticker}, "quantity": 0.0001} for ticker in target_tickers if ticker != "SAPd_EQ"]
     mock_client.get_positions = MagicMock(return_value=mock_positions)
-    
+
     # Pending order exists for SAPd_EQ
     mock_orders = [{"ticker": "SAPd_EQ", "side": "BUY", "status": "NEW"}]
     mock_client.get_pending_orders = MagicMock(return_value=mock_orders)
@@ -324,7 +324,7 @@ def test_ingestor_success(mock_client, tmp_path):
     # Given: Price ingestor with dummy cache path and mock positions
     cache_file = str(tmp_path / "prices.json")
     ingestor = Trading212PriceIngestor(mock_client, cache_path=cache_file)
-    
+
     mock_positions = [
         {"instrument": {"ticker": "SAPd_EQ"}, "currentPrice": 185.5},
         {"instrument": {"ticker": "TIMd_EQ"}, "price": 25.2}
@@ -346,7 +346,7 @@ def test_ingestor_empty(mock_client, tmp_path):
     # Given: Price ingestor and empty positions return
     cache_file = str(tmp_path / "prices.json")
     ingestor = Trading212PriceIngestor(mock_client, cache_path=cache_file)
-    
+
     mock_client.get_positions = MagicMock(return_value=[])
 
     # When: Running poll
@@ -361,7 +361,7 @@ def test_ingestor_ignores_unauthorized(mock_client, tmp_path):
     # Given: Price ingestor with mock positions including an unauthorized one
     cache_file = str(tmp_path / "prices.json")
     ingestor = Trading212PriceIngestor(mock_client, cache_path=cache_file)
-    
+
     mock_positions = [
         {"instrument": {"ticker": "SAPd_EQ"}, "currentPrice": 185.5},
         {"instrument": {"ticker": "SAP_US_EQ"}, "price": 149.6}
@@ -386,7 +386,7 @@ def test_ingestor_ignores_unauthorized(mock_client, tmp_path):
 def test_tracker_filtering(mock_client):
     # Given: Portfolio has real positions and micro monitoring positions
     tracker = Trading212PositionTracker(mock_client)
-    
+
     mock_positions = [
         {"instrument": {"ticker": "SAPd_EQ"}, "quantity": 10.0},
         {"instrument": {"ticker": "TIMd_EQ"}, "quantity": 0.0001},
@@ -403,7 +403,7 @@ def test_tracker_filtering(mock_client):
     assert len(real_pos) == 2
     assert real_pos[0]["instrument"]["ticker"] == "SAPd_EQ"
     assert real_pos[1]["instrument"]["ticker"] == "EVDd_EQ"
-    
+
     # Then: Micro positions filter matches quantity threshold (<= 0.0001)
     assert len(micro_pos) == 2
     assert micro_pos[0]["instrument"]["ticker"] == "TIMd_EQ"
@@ -435,12 +435,12 @@ def test_ingestor_graceful_shutdown(mock_client, tmp_path):
     def mock_poll():
         ingestor._running = False
         return original_poll()
-        
+
     ingestor.poll_and_cache = mock_poll
 
     # start_loop should terminate immediately after one poll
     ingestor.start_loop(interval_seconds=1)
-    
+
     # Then: Loop stops cleanly without hanging
     assert ingestor._running is False
 
@@ -450,20 +450,20 @@ def test_ingestor_graceful_shutdown(mock_client, tmp_path):
 def test_run_ingestor_web_app(mock_get_db_conn, mock_get_redis):
     from run_ingestor import health_check, get_prices
     import run_ingestor
-    
+
     mock_get_redis.return_value = None
     mock_get_db_conn.side_effect = Exception("DB disabled in tests")
-    
+
     # Given: We mock run_ingestor's ingestor instance
     mock_ing = MagicMock()
     mock_ing.read_cache.return_value = {"AAPL": 150.0}
     run_ingestor.t212_ingestor = mock_ing
-    
+
     # When: Calling health_check
     resp_health = health_check()
     # Then: Health is OK
     assert resp_health == {"status": "healthy"}
-    
+
     # When: Calling get_prices
     resp_prices = get_prices()
     # Then: Prices are returned
@@ -497,9 +497,9 @@ def test_tracker_env_threshold(mock_client):
 def test_bootstrapper_adaptive_retry_precision(mock_place, mock_client):
     resolver = Trading212TickerResolver(mock_client)
     bootstrapper = Trading212Bootstrapper(mock_client, resolver)
-    
+
     from requests.exceptions import HTTPError
-    
+
     # 1st response: min-quantity-exceeded
     resp_min_qty = MagicMock()
     resp_min_qty.status_code = 400
@@ -508,7 +508,7 @@ def test_bootstrapper_adaptive_retry_precision(mock_place, mock_client):
         "detail": "must trade at least 0.04016064"
     }
     err_min_qty = HTTPError(response=resp_min_qty)
-    
+
     # 2nd response: quantity-precision-mismatch
     resp_precision = MagicMock()
     resp_precision.status_code = 400
@@ -517,19 +517,19 @@ def test_bootstrapper_adaptive_retry_precision(mock_place, mock_client):
         "detail": "invalid quantity precision 3"
     }
     err_precision = HTTPError(response=resp_precision)
-    
+
     # 3rd response: success
     resp_success = {"id": 999, "status": "NEW"}
-    
+
     mock_place.side_effect = [err_min_qty, err_precision, resp_success]
-    
+
     # When: we place adaptive market order
     res = bootstrapper._place_adaptive_market_order("TW10d_EQ", 0.0001)
-    
+
     # Then: it succeeds and returns the success dict after 3 calls
     assert res == resp_success
     assert mock_place.call_count == 3
-    
+
     mock_place.assert_any_call("TW10d_EQ", 0.0001)
     mock_place.assert_any_call("TW10d_EQ", 0.04016164)
     mock_place.assert_any_call("TW10d_EQ", 0.041)
@@ -593,19 +593,19 @@ def test_ingestor_postgres_write(mock_get_db_conn, mock_client):
         mock_get_db_conn.reset_mock()
         mock_cur.execute.reset_mock()
         mock_conn.commit.reset_mock()
-        
+
         # When: writing price updates to cache
         prices = {"AAPL": 150.0, "MSFT": 300.0}
         ingestor._write_cache(prices)
-        
+
         # Then: it writes to PostgreSQL
         assert mock_get_db_conn.call_count == 1
         assert mock_cur.execute.call_count == 5
-        
+
         # Verify the UPSERT statement is formatted correctly
         call_args_list = mock_cur.execute.call_args_list
         assert len(call_args_list) == 5
-        
+
         # Check first query
         first_query = call_args_list[0][0][0]
         first_params = call_args_list[0][0][1]
@@ -613,7 +613,7 @@ def test_ingestor_postgres_write(mock_get_db_conn, mock_client):
         assert "ON CONFLICT (ticker)" in first_query
         assert "DO UPDATE SET price = EXCLUDED.price" in first_query
         assert first_params == ("aapl", 150.0)
-        
+
         # And connection commits
         mock_conn.commit.assert_called_once()
 
@@ -623,28 +623,28 @@ def test_ingestor_postgres_write(mock_get_db_conn, mock_client):
 def test_run_ingestor_postgres_read(mock_get_db_conn, mock_get_redis):
     import run_ingestor
     from run_ingestor import get_prices
-    
+
     # Ensure Redis client is None (fallback to DB)
     mock_get_redis.return_value = None
-    
+
     # Mock ingestor fallback just in case
     mock_ing = MagicMock()
     mock_ing.read_cache.return_value = {"AAPL": 150.0}
     run_ingestor.t212_ingestor = mock_ing
-    
+
     # Case 1: DATABASE_URL is set, DB query succeeds
     mock_conn = MagicMock()
     mock_cur = MagicMock()
     mock_cur.fetchall.return_value = [("AAPL", 155.0), ("MSFT", 305.0)]
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
     mock_get_db_conn.return_value.__enter__.return_value = mock_conn
-    
+
     with patch.dict(os.environ, {"DATABASE_URL": "postgresql://mock_url"}):
         res = get_prices()
         assert res == {"AAPL": 155.0, "MSFT": 305.0}
         mock_get_db_conn.assert_called_once()
         mock_cur.execute.assert_called_once_with("SELECT ticker, price FROM live_prices")
-        
+
     # Case 2: DATABASE_URL is set, but DB query fails (should fallback to cache)
     mock_get_db_conn.reset_mock()
     mock_get_db_conn.side_effect = Exception("DB error")

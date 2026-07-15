@@ -61,7 +61,7 @@ def main() -> int:
         title=f"Optimization Heatmap: {args.z}",
         aspect="auto"
     )
-    
+
     out_path = Path(args.output)
     fig.write_html(str(out_path))
     print(f"Heatmap successfully written to {out_path}")

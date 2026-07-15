@@ -16,7 +16,7 @@ class TestOptimizerSharpeConstraint(unittest.TestCase):
             },
             index=dates,
         )
-        
+
         parameters = {
             "lookback_days": 5,
             "volatility_multiplier_enter": 2.0,
@@ -24,7 +24,7 @@ class TestOptimizerSharpeConstraint(unittest.TestCase):
             "target_daily_volatility": 0.01,
             "exit_mode": "time_only",
         }
-        
+
         row, is_eligible, is_skipped = _evaluate_hma_parameters(
             data=data,
             symbol="TEST",
@@ -36,7 +36,7 @@ class TestOptimizerSharpeConstraint(unittest.TestCase):
             score_metric="total_net_pnl",
             min_closed_trades=0,
         )
-        
+
         # Since no trades were closed, Sharpe is None / 0, and it should be marked ineligible with status INELIGIBLE_LOW_SHARPE
         self.assertEqual(row["status"], "INELIGIBLE_LOW_SHARPE")
         self.assertIsNone(row["score"])

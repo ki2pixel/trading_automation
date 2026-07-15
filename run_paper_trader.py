@@ -46,12 +46,12 @@ class JSONFormatter(logging.Formatter):
 def setup_siem_logging():
     audit_logger = logging.getLogger("trading_audit")
     audit_logger.setLevel(logging.INFO)
-    
+
     if audit_logger.handlers:
         return audit_logger
-        
+
     log_path = os.getenv("TRADING_AUDIT_LOG_PATH", "/var/log/trading_audit.log")
-    
+
     try:
         # Test write access to directory
         dir_name = os.path.dirname(log_path) or "."
@@ -61,7 +61,7 @@ def setup_siem_logging():
         fallback_path = "./trading_audit.log"
         print(f"[SECURITY] Permission denied or directory missing for {log_path}. Falling back to: {fallback_path}")
         handler = logging.FileHandler(fallback_path, encoding="utf-8")
-        
+
     handler.setFormatter(JSONFormatter())
     audit_logger.addHandler(handler)
     return audit_logger
@@ -270,15 +270,16 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         key = f"rate_limit:{client_ip}:{path}"
 
-        from backtest_engine.live.connection import get_redis_client
-        redis_client = get_redis_client()
-        
+        from backtest_engine.live.connection import get_async_redis_client
+        redis_client = get_async_redis_client()
+
         if redis_client:
             try:
-                current_requests = redis_client.incr(key)
+                # Execution with 2.0s timeout to prevent blocking the event loop
+                current_requests = await asyncio.wait_for(redis_client.incr(key), timeout=2.0)
                 if current_requests == 1:
-                    redis_client.expire(key, self.window_seconds)
-                
+                    await asyncio.wait_for(redis_client.expire(key, self.window_seconds), timeout=2.0)
+
                 if current_requests > self.rate_limit:
                     logging.getLogger("trading_audit").warning(
                         f"Rate limit exceeded: IP={client_ip}, path={path}, requests={current_requests}, limit={self.rate_limit}"
@@ -290,7 +291,7 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
             except Exception as e:
                 # Fail open to prevent complete outage if Redis is down
                 logger.warning(f"[RateLimiter] Redis error: {e}")
-                
+
         return await call_next(request)
 
 
@@ -302,7 +303,7 @@ kill_switch_listener = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global background_task, keepalive_task, engine, kill_switch_listener
-    
+
     # Run DB schema check/seed
     print("[PaperTrader] Initializing database...")
     await asyncio.to_thread(init_db)
@@ -330,16 +331,16 @@ async def lifespan(app: FastAPI):
             engine.start_loop_async(interval_seconds=polling_interval)
         )
         print("[PaperTrader] Started background async engine task.")
-    
+
     # Start database keep-alive heartbeat task
     from backtest_engine.live.connection import run_postgres_keep_alive_task
     keepalive_task = asyncio.create_task(
         run_postgres_keep_alive_task()
     )
     print("[PaperTrader] Started background async PostgreSQL keep-alive task.")
-    
+
     yield
-    
+
     # Shutdown: close asyncpg pool first (API endpoints stop using it)
     await close_async_pool()
 
@@ -397,9 +398,9 @@ app.include_router(paper_trading_router)
 def safe_error_response(exc: Exception, request: Request) -> JSONResponse:
     correlation_id = str(uuid.uuid4())
     logger.exception(f"Unhandled exception occurred. Reference: {correlation_id} | Path: {request.url.path}")
-    
+
     is_debug = os.getenv("DEBUG", "false").lower() == "true"
-    
+
     if not is_debug:
         return JSONResponse(
             status_code=500,
@@ -550,10 +551,10 @@ app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 def main():
     global engine
     engine = PaperTradingEngine()
-    
+
     port = int(os.getenv("PORT", "8081")) # Different default port to not clash if run locally with ingestor
     host = os.getenv("HOST", "0.0.0.0")
-    
+
     print(f"[PaperTrader] Starting Paper Trading Web Server on {host}:{port}...")
     uvicorn.run(app, host=host, port=port, log_level="info")
 

@@ -87,4 +87,8 @@ scratch/
 # ZenFlow
 .zenflow/*
 
+# ZenCoder settings
+.zencoder/
+
+
 

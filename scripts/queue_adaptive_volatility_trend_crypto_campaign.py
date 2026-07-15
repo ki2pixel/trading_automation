@@ -24,10 +24,10 @@ def parse_eligible_targets(report_path: Path) -> List[Tuple[str, str]]:
     """
     Parcourt le rapport de screening crypto et extrait les couples (symbole, timeframe)
     éligibles associés à la stratégie 'adaptive_volatility_trend'.
-    
+
     Args:
         report_path: Chemin absolu vers le rapport de screening.
-        
+
     Returns:
         Une liste de tuples (symbole, timeframe).
     """
@@ -89,10 +89,10 @@ def parse_eligible_targets(report_path: Path) -> List[Tuple[str, str]]:
 def timeframe_to_minutes(tf_str: str) -> int:
     """
     Convertit un timeframe textuel (ex: '15min', '1h') en nombre de minutes.
-    
+
     Args:
         tf_str: Chaîne de caractères représentant le timeframe.
-        
+
     Returns:
         La valeur équivalente en minutes.
     """
@@ -112,10 +112,10 @@ def calculate_bayesian_iterations(canonical_iterations: int) -> int:
     """
     Calcule le nombre d'itérations maximales pour l'optimisation bayésienne
     avec un coefficient multiplicateur de 0.0256 clampé entre 1000 et 24000.
-    
+
     Args:
         canonical_iterations: Le nombre de combinaisons de la grille.
-        
+
     Returns:
         Le nombre de runs alloués.
     """
@@ -197,7 +197,7 @@ def main() -> None:
     for symbol, tf_str in targets:
         try:
             tf_min = timeframe_to_minutes(tf_str)
-            
+
             # Construction du payload de requête
             request_payload = {
                 "strategy": "adaptive_volatility_trend",
@@ -236,7 +236,7 @@ def main() -> None:
                     "rawIterations": raw_iterations
                 }
             )
-            
+
             # Ajout en BDD (le statut par défaut sera 'queued')
             store.add(job)
             queued_count += 1

@@ -32,7 +32,7 @@ class Trading212TickerResolver:
         """Loads instruments from cache or fetches from API if cache is stale or missing."""
         cache_path = self.get_instruments_cache_path()
         now = time.time()
-        
+
         # Check if cache exists and is fresh (< 1 hour old)
         if not force_refresh and os.path.exists(cache_path):
             mtime = os.path.getmtime(cache_path)
@@ -71,11 +71,11 @@ class Trading212TickerResolver:
         # 1. First check the static mapping
         if asset in self.STATIC_MAPPING:
             return self.STATIC_MAPPING[asset]
-            
+
         # 2. Dynamic lookup fallback using cache
         if not self.instruments:
             self._load_instruments()
-            
+
         # Standard cleaning of queries (removing suffixes like .DE, deeur, etc.)
         query = asset.lower()
         for suffix in [".de", ".co", ".mc", "deeur", "iteur", "nleur", "freur", "beeur"]:
@@ -90,7 +90,7 @@ class Trading212TickerResolver:
             name = inst.get("name", "").lower()
             short_name = inst.get("shortName", "").lower()
             isin = inst.get("isin", "").lower()
-            
+
             # Prioritize exact ticker/isin matches
             if query == ticker or query == short_name or query == isin:
                 matches.append((100, inst))
@@ -100,12 +100,12 @@ class Trading212TickerResolver:
                 if inst.get("currencyCode") == "EUR":
                     score += 10
                 matches.append((score, inst))
-                
+
         if matches:
             # Sort by score descending, then by ticker
             matches.sort(key=lambda x: (-x[0], x[1].get("ticker")))
             best = matches[0][1]
-            
+
             # Currency guard: reject non-target-currency instruments
             account_currency = os.getenv("T212_ACCOUNT_CURRENCY", "EUR").upper()
             inst_currency = best.get("currencyCode", "").upper()
@@ -115,9 +115,9 @@ class Trading212TickerResolver:
                     f"has currency {inst_currency}, expected {account_currency}. "
                     f"Aborting to respect single-currency account constraint."
                 )
-            
+
             resolved = best.get("ticker")
             print(f"[TickerResolver] Dynamic mapping fallback: {asset} -> {resolved}")
             return resolved
-            
+
         raise ValueError(f"Could not resolve Trading 212 ticker for asset: {asset}")

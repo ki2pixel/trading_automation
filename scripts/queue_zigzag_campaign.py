@@ -43,11 +43,11 @@ def parse_eligible_targets(report_path: Path) -> list[tuple[str, str]]:
             parts = [p.strip() for p in line.split("|")[1:-1]]
             if not parts or parts[0].startswith("---") or parts[0].startswith(":-") or "Symbole" in parts[0]:
                 continue
-            
+
             symbol = parts[0].replace("**", "").strip()
             timeframe = parts[1].replace("**", "").strip()
             strategy = parts[2].replace("`", "").strip()
-            
+
             if strategy == "momentum_based_zigzag":
                 ex_match = get_excluded_match(symbol)
                 if not ex_match:
@@ -129,7 +129,7 @@ def main() -> None:
     queued_count = 0
     for symbol, tf_str in targets:
         tf_min = timeframe_to_minutes(tf_str)
-        
+
         # Payload de requête
         request_payload: dict[str, Any] = {
             "strategy": "momentum_based_zigzag",
@@ -168,7 +168,7 @@ def main() -> None:
                 "rawIterations": raw_iterations
             }
         )
-        
+
         store.add(job)
         queued_count += 1
 

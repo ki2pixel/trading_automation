@@ -22,9 +22,9 @@ def test_pre_trade_controls():
         max_asset_pct_nav=Decimal("0.30"),
         price_collar_pct=Decimal("0.03")
     )
-    
+
     current_nav = Decimal("10000.0")
-    
+
     # 1. Valid order
     ptc.check_limits(
         ticker="AAPL",
@@ -34,7 +34,7 @@ def test_pre_trade_controls():
         current_position_qty=Decimal("0"),
         reference_price=Decimal("150.0")
     )
-    
+
     # 2. Volumetric violation (order is 15% of NAV > 10% allowed)
     with pytest.raises(PreTradeControlError) as exc_info:
         ptc.check_limits(
@@ -46,7 +46,7 @@ def test_pre_trade_controls():
             reference_price=Decimal("150.0")
         )
     assert "Volumetric Limit Violated" in str(exc_info.value)
-    
+
     # 3. Notional cumulative violation (total exposure is 45% of NAV > 30% allowed)
     with pytest.raises(PreTradeControlError) as exc_info:
         ptc.check_limits(
@@ -80,35 +80,35 @@ async def test_kill_switch_trigger():
     Then it must set trading suspension and cancel Bybit & Trading 212 orders.
     """
     set_trading_suspended(False)
-    
+
     mock_engine = MagicMock()
     mock_bybit = MagicMock()
     mock_t212 = MagicMock()
     mock_engine.bybit_client = mock_bybit
     mock_engine.t212_client = mock_t212
-    
+
     mock_t212.get_pending_orders.return_value = [
         {"orderId": "order-123", "ticker": "AAPL"},
         {"orderId": "order-456", "ticker": "MSFT"}
     ]
-    
+
     mock_redis = AsyncMock()
-    
+
     try:
         with patch("redis.asyncio.from_url", return_value=mock_redis):
             listener = KillSwitchListener(mock_engine, redis_url="redis://localhost:6379")
             await listener.trigger_kill()
-            
+
             assert is_trading_suspended() is True
-            mock_redis.set.assert_called_with("trading:suspended", "true")
-            
+            mock_redis.set.assert_called_with("kill_switch:confirmed", "true", ex=60)
+
             mock_bybit._request.assert_called_with(
                 "POST",
                 "/v5/order/cancel-all",
                 json_data={"category": "spot"},
                 signed=True
             )
-            
+
             mock_t212.get_pending_orders.assert_called_once()
             mock_t212.cancel_order.assert_any_call("order-123")
             mock_t212.cancel_order.assert_any_call("order-456")
@@ -122,23 +122,33 @@ def test_fastapi_rate_limiting():
     When multiple requests are made
     Then it must return 429 after exceeding limits.
     """
-    mock_redis = MagicMock()
-    mock_redis.incr.side_effect = [1, 2, 100]
-    
+    class MockAsyncRedis:
+        def __init__(self):
+            self.calls = 0
+        async def incr(self, key):
+            self.calls += 1
+            if self.calls == 1: return 1
+            if self.calls == 2: return 2
+            return 100
+        async def expire(self, key, time):
+            pass
+
+    mock_redis = MockAsyncRedis()
+
     client = TestClient(app)
-    
-    with patch("backtest_engine.live.connection.get_redis_client", return_value=mock_redis):
+
+    with patch("backtest_engine.live.connection.get_async_redis_client", return_value=mock_redis):
         # /health is public and exempt from auth/rate-limiting
         response = client.get("/health")
         assert response.status_code == 200
-        
+
         # /api/strategy-configs is rate-limited (and auth-limited, returning 401 but not 429 initially)
         response = client.get("/api/strategy-configs")
         assert response.status_code == 401
-        
+
         response = client.get("/api/strategy-configs")
         assert response.status_code == 401
-        
+
         response = client.get("/api/strategy-configs")
         assert response.status_code == 429
-        assert "Too many requests" in response.json()["detail"]
+        assert "Rate limit exceeded" in response.json().get("error", "") or "Too many requests" in response.json().get("detail", "")

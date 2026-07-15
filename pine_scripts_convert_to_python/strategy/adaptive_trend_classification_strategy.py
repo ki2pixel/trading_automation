@@ -16,7 +16,7 @@ class AdaptiveTrendClassificationStrategyConfig(BaseModel):
     robustness: Literal["Narrow", "Medium", "Wide"] = "Medium"
     Long_threshold: float = 0.1
     Short_threshold: float = -0.1
-    
+
     ema_len: int = 28
     ema_w: float = 1.0
     hull_len: int = 28
@@ -29,9 +29,9 @@ class AdaptiveTrendClassificationStrategyConfig(BaseModel):
     lsma_w: float = 1.0
     kama_len: int = 28
     kama_w: float = 1.0
-    
+
     signal_mode: Literal["Close", "Live"] = "Close"
-    
+
     enable_stop_loss: bool = False
     stop_loss_pct: float = 0.0
     enable_take_profit: bool = False
@@ -39,14 +39,14 @@ class AdaptiveTrendClassificationStrategyConfig(BaseModel):
     enable_trailing_stop: bool = False
     trail_profit_pct: float = 0.0
     trail_loss_pct: float = 0.0
-    
+
     allocator_config: Dict[str, Any] = Field(default_factory=dict)
     enable_pyramiding: bool = False
     max_pyramid_layers: int = 1
 
 def run_adaptive_trend_classification_strategy(df: pd.DataFrame, config: AdaptiveTrendClassificationStrategyConfig) -> Tuple[pd.DataFrame, pd.DataFrame]:
     close = df['close']
-    
+
     # Compute vectorized signals using our IndicatorFactory
     atc = AdaptiveTrend.run(
         close,
@@ -56,25 +56,25 @@ def run_adaptive_trend_classification_strategy(df: pd.DataFrame, config: Adaptiv
         wma_len=config.wma_len, wma_w=config.wma_w, dema_len=config.dema_len, dema_w=config.dema_w,
         lsma_len=config.lsma_len, lsma_w=config.lsma_w, kama_len=config.kama_len, kama_w=config.kama_w
     )
-    
+
     # Convert vectors to arrays
     direction = atc.direction.to_numpy()
-    
+
     # Generate entry and exit signals
     # direction == 1 -> Long
     # direction == -1 -> Short
     direction_shifted = np.roll(direction, 1)
     direction_shifted[0] = 0
-    
+
     long_entry = (direction == 1) & (direction_shifted != 1)
     short_entry = (direction == -1) & (direction_shifted != -1)
-    
+
     long_exit = short_entry.copy()
     short_exit = long_entry.copy()
-    
+
     df['long_entry'] = long_entry
     df['short_entry'] = short_entry
     df['long_exit'] = long_exit
     df['short_exit'] = short_exit
-    
+
     return pd.DataFrame(index=df.index), pd.DataFrame()

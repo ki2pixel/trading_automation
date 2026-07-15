@@ -15,11 +15,11 @@ from backtest_engine.live.bybit.ingestor import BybitPriceIngestor
 
 def test_accumulator_deposit_decimal_only():
     accumulator = AccumulatorBuffer(threshold=Decimal("15.00"))
-    
+
     # Passing float should raise TypeError
     with pytest.raises(TypeError):
         accumulator.deposit(conn=None, amount=15.0)  # type: ignore
-        
+
     with pytest.raises(TypeError):
         accumulator.deposit(conn=None, amount="15.00")  # type: ignore
 
@@ -35,23 +35,23 @@ def test_accumulator_threshold_trigger():
     conn_mock = MagicMock()
     cur_mock = MagicMock()
     conn_mock.cursor.return_value.__enter__.return_value = cur_mock
-    
+
     accumulator = AccumulatorBuffer(threshold=Decimal("15.00"))
-    
+
     # 1. Deposit 10 USDC (below threshold)
     cur_mock.fetchone.return_value = (Decimal("10.00"),)
     balance = accumulator.deposit(conn_mock, Decimal("10.00"))
     assert balance == Decimal("10.00")
-    
+
     should_trigger, current = accumulator.should_trigger(conn_mock)
     assert should_trigger is False
     assert current == Decimal("10.00")
-    
+
     # 2. Deposit another 10 USDC (total 20 USDC, above threshold)
     cur_mock.fetchone.return_value = (Decimal("20.00"),)
     balance = accumulator.deposit(conn_mock, Decimal("10.00"))
     assert balance == Decimal("20.00")
-    
+
     should_trigger, current = accumulator.should_trigger(conn_mock)
     assert should_trigger is True
     assert current == Decimal("20.00")
@@ -77,12 +77,12 @@ def test_margin_simulator_no_positions():
             ]
         }
     }
-    
+
     sim = UTAMarginSimulator(client_mock)
     state = sim.fetch_margin_state()
     assert state.total_equity == Decimal("10000.00")
     assert state.total_maintenance_margin == Decimal("0.00")
-    
+
     # Pre-trade check should be safe since there are no open positions (MM = 0)
     result = sim.check_conversion_safety(Decimal("5000.00"))
     assert result.is_safe is True
@@ -104,7 +104,7 @@ def test_margin_simulator_safe():
             ]
         }
     }
-    
+
     sim = UTAMarginSimulator(client_mock)
     # Check conversion of 1000 USDC
     # post_equity = 9000, required_min = 2000 * 1.2 = 2400.
@@ -129,7 +129,7 @@ def test_margin_simulator_unsafe_blocks():
             ]
         }
     }
-    
+
     sim = UTAMarginSimulator(client_mock)
     # Check conversion of 1000 USDC
     # post_equity = 4000, required_min = 4000 * 1.2 = 4800.
@@ -143,7 +143,7 @@ def test_margin_simulator_unsafe_blocks():
 def test_margin_check_with_volatile_drop():
     client_mock = MagicMock()
     client_mock.config.base_currency = "USDC"
-    
+
     # 30% drop simulation (equity goes from 10000 to 7000, while MM stays at 5000)
     client_mock.get_account_summary.return_value = {
         "retCode": 0,
@@ -157,14 +157,14 @@ def test_margin_check_with_volatile_drop():
             ]
         }
     }
-    
+
     sim = UTAMarginSimulator(client_mock)
     # post_equity = 7000 - 15 = 6985. required_min = 5000 * 1.2 = 6000.
     # 6985 > 6000 -> Safe but headroom is tight (985)
     result = sim.check_conversion_safety(Decimal("15.00"))
     assert result.is_safe is True
     assert result.headroom == Decimal("985.00")
-    
+
     # Converting 1200 USDC:
     # post_equity = 7000 - 1200 = 5800. required_min = 6000.
     # 5800 < 6000 -> Unsafe!
@@ -179,7 +179,7 @@ def test_margin_check_with_volatile_drop():
 def test_spot_router_payload_structure():
     order = ConversionOrder(qty_usdc=Decimal("150.00"))
     payload = order.to_bybit_payload()
-    
+
     assert payload["category"] == "spot"
     assert payload["symbol"] == "EURUSDC"
     assert payload["side"] == "Buy"
@@ -194,10 +194,10 @@ def test_spot_router_dry_run():
     cur_mock = MagicMock()
     conn_mock.cursor.return_value.__enter__.return_value = cur_mock
     cur_mock.fetchone.return_value = None
-    
+
     accumulator_mock = MagicMock()
     accumulator_mock.should_trigger.return_value = (True, Decimal("20.00"))
-    
+
     margin_sim_mock = MagicMock()
     margin_sim_mock.is_locked = False
     margin_sim_mock.check_conversion_safety.return_value = MarginCheckResult(
@@ -208,13 +208,13 @@ def test_spot_router_dry_run():
         headroom=Decimal("0"),
         reason=""
     )
-    
+
     client_mock = MagicMock()
-    
+
     router = SpotConversionRouter(
         client_mock, accumulator_mock, margin_sim_mock, dry_run=True
     )
-    
+
     # We patch get_db_connection to return valid NAV and Price for PTC check
     with patch("backtest_engine.live.connection.get_db_connection") as mock_db_conn:
         mock_conn_inner = MagicMock()
@@ -225,9 +225,9 @@ def test_spot_router_dry_run():
             (Decimal("100000.00"),), # NAV
             (Decimal("1.08"),),      # Price eurusd
         ]
-        
+
         order = router.try_convert(conn_mock)
-        
+
     assert order is not None
     assert order.status == ConversionOrderStatus.FILLED
     assert order.qty_usdc == Decimal("20.00")
@@ -242,10 +242,10 @@ def test_spot_router_idempotent_recovery():
     cur_mock = MagicMock()
     conn_mock.cursor.return_value.__enter__.return_value = cur_mock
     cur_mock.fetchone.return_value = None
-    
+
     accumulator_mock = MagicMock()
     accumulator_mock.should_trigger.return_value = (True, Decimal("20.00"))
-    
+
     margin_sim_mock = MagicMock()
     margin_sim_mock.is_locked = False
     margin_sim_mock.check_conversion_safety.return_value = MarginCheckResult(
@@ -256,7 +256,7 @@ def test_spot_router_idempotent_recovery():
         headroom=Decimal("0"),
         reason=""
     )
-    
+
     client_mock = MagicMock()
     # Simulate API returns 110071 (duplicate orderLinkId) on post
     response_post_mock = MagicMock()
@@ -264,7 +264,7 @@ def test_spot_router_idempotent_recovery():
         "retCode": 110071,
         "retMsg": "Duplicate orderLinkId"
     }
-    
+
     # Simulate realtime order query returns the filled order details
     response_get_mock = MagicMock()
     response_get_mock.json.return_value = {
@@ -280,13 +280,13 @@ def test_spot_router_idempotent_recovery():
             ]
         }
     }
-    
+
     client_mock._request.side_effect = [response_post_mock, response_get_mock]
-    
+
     router = SpotConversionRouter(
         client_mock, accumulator_mock, margin_sim_mock, dry_run=False
     )
-    
+
     # We patch get_db_connection to return valid NAV and Price for PTC check
     with patch("backtest_engine.live.connection.get_db_connection") as mock_db_conn:
         mock_conn_inner = MagicMock()
@@ -297,15 +297,15 @@ def test_spot_router_idempotent_recovery():
             (Decimal("100000.00"),), # NAV
             (Decimal("1.08"),),      # Price eurusd
         ]
-        
+
         order = router.try_convert(conn_mock)
-        
+
     assert order is not None
     assert order.status == ConversionOrderStatus.FILLED
     assert order.broker_order_id == "bybit_order_123"
     assert order.filled_qty_eur == Decimal("18.50")
     assert order.avg_fill_price == Decimal("1.08")
-    
+
     # Real order fill drains the accumulator
     accumulator_mock.drain.assert_called_once_with(conn_mock, order.client_order_id)
 
@@ -317,11 +317,11 @@ def test_spot_router_idempotent_recovery():
 def test_usdc_migration_symbol_resolution():
     client_mock = MagicMock()
     client_mock.config.base_currency = "USDC"
-    
+
     with patch.dict("os.environ", {"BYBIT_ASSETS": "LTC,DOT,BTC"}):
         ingestor = BybitPriceIngestor(client_mock)
         assert ingestor.symbols == ["LTCUSDC", "DOTUSDC", "BTCUSDC"]
-        
+
     client_mock.config.base_currency = "USDT"
     with patch.dict("os.environ", {"BYBIT_ASSETS": "LTC,DOT"}):
         ingestor = BybitPriceIngestor(client_mock)
@@ -332,12 +332,12 @@ def test_no_float_in_critical_path():
     # Grep-like test to verify that the conversion package does not contain 'float('
     import os
     import re
-    
+
     conversion_dir = os.path.join(
         os.path.dirname(__file__), "../backtest_engine/live/bybit/conversion"
     )
     float_pattern = re.compile(r"\bfloat\(")
-    
+
     for root, _, files in os.walk(conversion_dir):
         for file in files:
             if file.endswith(".py"):

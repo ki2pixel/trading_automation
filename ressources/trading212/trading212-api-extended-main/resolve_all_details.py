@@ -27,9 +27,9 @@ ASSET_CANDIDATES = {
 def main():
     with open("/tmp/t212_instruments.json", "r") as f:
         instruments = json.load(f)
-        
+
     inst_map = {inst["ticker"]: inst for inst in instruments}
-    
+
     print("Resolved mappings with details:")
     print("-" * 80)
     for asset, tickers in ASSET_CANDIDATES.items():
@@ -40,6 +40,6 @@ def main():
                 print(f"  Ticker: {ticker:12} | Name: {inst.get('name'):35} | Currency: {inst.get('currencyCode'):4} | ISIN: {inst.get('isin')}")
             else:
                 print(f"  Ticker: {ticker:12} | [NOT FOUND IN INSTRUMENTS]")
-                
+
 if __name__ == "__main__":
     main()

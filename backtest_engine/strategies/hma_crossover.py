@@ -148,12 +148,12 @@ def run_hma_crossover(
 
     bars = BaseStrategyRunner._to_strategy_ohlcv(data)
     state, trades = module.run_hma_crossover_strategy(
-        bars, 
+        bars,
         config,
         early_stop_drawdown_pct=overrides.early_stop_drawdown_pct,
         compute_full_metrics=compute_full_metrics,
     )
-    
+
     if compute_full_metrics:
         metrics, equity_curve = compute_metrics(
             MetricsInput(
@@ -171,10 +171,10 @@ def run_hma_crossover(
         metrics = {"closed_trades": len(trades)}
         if fast_score_metric:
             score = compute_fast_score(
-                trades, 
-                fast_score_metric, 
-                state=state, 
-                initial_capital=initial_capital, 
+                trades,
+                fast_score_metric,
+                state=state,
+                initial_capital=initial_capital,
                 timeframe_minutes=timeframe_minutes,
                 bars=bars,
             )
@@ -274,7 +274,7 @@ def vectorbt_prescan(
     progress_callback: Callable[[int, int], None] | None = None,
     workers: int = 1,
 ) -> list[Any]:
-    """Préalablement à l'optimisation bayésienne, scanne rapidement les longueurs 
+    """Préalablement à l'optimisation bayésienne, scanne rapidement les longueurs
     de moyennes mobiles avec VectorBT pour restreindre les bornes d'exploration.
     """
     import logging
@@ -295,7 +295,7 @@ def vectorbt_prescan(
         try:
             import vectorbt as vbt
             import gc
-            
+
             # 1. Temporal Downsampling & Slicing (Piste C)
             prescan_timeframe = timeframe_minutes
             if int(timeframe_minutes) == 1:
@@ -326,7 +326,7 @@ def vectorbt_prescan(
                 max_combos=20000,
                 strategy_name="HMA"
             )
-            
+
             fast_windows = np.array(downsampled["fast"])
             slow_windows = np.array(downsampled["slow"])
 
@@ -335,10 +335,10 @@ def vectorbt_prescan(
             ma_np = all_ma.ma.to_numpy(dtype=float)
             if ma_np.ndim == 1:
                 ma_np = ma_np.reshape(-1, 1)
-            
+
             # Creer une table de correspondance window -> index
             window_to_idx = {w: idx for idx, w in enumerate(fast_windows)}
-            
+
             # Generer toutes les combinaisons de deux fenetres (fast < slow)
             combos = [(fast_windows[i], fast_windows[j]) for i in range(len(fast_windows)) for j in range(i + 1, len(fast_windows))]
 

@@ -14,10 +14,10 @@ def test_job_signature_validation(tmp_path):
     """
     db_path = tmp_path / "jobs.sqlite3"
     secret = "my_super_secret_hmac_key"
-    
+
     with patch.dict(os.environ, {"JOB_STORE_HMAC_SECRET": secret}):
         store = SQLiteOptimizerJobStore(storage_path=db_path, ttl_seconds=None)
-        
+
         # 1. Create a job
         job = OptimizerJob(
             id="job-1",
@@ -26,40 +26,40 @@ def test_job_signature_validation(tmp_path):
             status="PENDING"
         )
         store.add(job)
-        
+
         # Verify it can be fetched successfully (signature is verified and matches)
         fetched = store.get("job-1")
         assert fetched is not None
         assert fetched.status == "PENDING"
-        
+
         # 2. Claim the job (this atomically changes status to IN_PROGRESS and recalculates signature)
         claimed = store.claim_next(worker_id="worker-abc")
         assert claimed is not None
         assert claimed.status == "IN_PROGRESS"
-        
+
         # Verify from database directly that the status is updated and signature is changed
         with sqlite3.connect(db_path) as conn:
             row = conn.execute("SELECT status, signature FROM optimizer_jobs WHERE id = 'job-1'").fetchone()
             assert row[0] == "IN_PROGRESS"
             sig_after_claim = row[1]
             assert sig_after_claim is not None
-            
+
         # 3. Simulate database tampering (modify the status without updating the signature)
         with sqlite3.connect(db_path) as conn:
             conn.execute("UPDATE optimizer_jobs SET status = 'FAILED' WHERE id = 'job-1'")
-            
+
         # Try to load the tampered job and verify it raises JobIntegrityError
         with pytest.raises(JobIntegrityError) as exc_info:
             store.get("job-1")
         assert "signature mismatch" in str(exc_info.value)
-        
+
         # Restore status to let it pass
         with sqlite3.connect(db_path) as conn:
             conn.execute("UPDATE optimizer_jobs SET status = 'IN_PROGRESS' WHERE id = 'job-1'")
-            
+
         # Verify we can fetch it again
         assert store.get("job-1") is not None
-        
+
         # 4. Perform an update using the store interface and verify the signature updates
         store.update("job-1", status="FINISHED", error="None")
         with sqlite3.connect(db_path) as conn:
@@ -76,7 +76,7 @@ def test_sqlite_encryption_and_sqlcipher_handling(tmp_path):
     Then it should attempt to load sqlcipher3 and enforce PRAGMA keys or fallback safely in dev.
     """
     db_path = tmp_path / "jobs_encrypted.sqlite3"
-    
+
     # 1. Dev environment fallback check
     with patch.dict(os.environ, {"SQLITE_ENCRYPTION_KEY": "some-key", "ENVIRONMENT": "development"}):
         # Should not raise exception, but fallback with warning (tested implicitly by succeeding)
@@ -84,7 +84,7 @@ def test_sqlite_encryption_and_sqlcipher_handling(tmp_path):
         job = OptimizerJob(id="job-dev", created_at=100.0, request={})
         store.add(job)
         assert store.get("job-dev") is not None
-            
+
     # 2. Prod environment fail-fast check
     with patch.dict(os.environ, {"SQLITE_ENCRYPTION_KEY": "some-key", "ENVIRONMENT": "production", "JOB_STORE_HMAC_SECRET": "some-hmac-secret"}):
         # We mock that importing sqlcipher3 fails by patching sys.modules or raising ImportError on import
@@ -108,7 +108,7 @@ def test_environment_failsafe():
 
     live_key = "live_api_key_secret_12345"
     demo_key = "demo_api_key_secret_abcde"
-    
+
     live_hash = hashlib.sha256(live_key.encode("utf-8")).hexdigest()
     demo_hash = hashlib.sha256(demo_key.encode("utf-8")).hexdigest()
 
@@ -168,7 +168,7 @@ def test_environment_failsafe():
         config = Trading212Config()
         with pytest.raises(ValueError) as exc_info:
             config.validate()
-        assert "Live API key/secret detected in Demo environment" in str(exc_info.value)
+        assert "Live API key/secret detected in Demo/Testnet environment" in str(exc_info.value)
 
 
 def test_trading212_idempotency_and_reconciliation():
@@ -181,11 +181,18 @@ def test_trading212_idempotency_and_reconciliation():
     from backtest_engine.live.trading212.config import Trading212Config
     from unittest.mock import MagicMock
     import requests
+    import hashlib
+
+    demo_key = "secret"
+    demo_hash = hashlib.sha256(demo_key.encode("utf-8")).hexdigest()
 
     with patch.dict(os.environ, {
         "T212_API_KEY_ID": "id",
-        "T212_API_SECRET": "secret",
-        "T212_ENV": "demo"
+        "T212_API_SECRET": demo_key,
+        "T212_DEMO_API_SECRET": "",
+        "T212_LIVE_API_SECRET": "",
+        "T212_ENV": "demo",
+        "EXPECTED_T212_DEMO_KEY_HASH": demo_hash
     }):
         config = Trading212Config()
         client = Trading212Client(config)
@@ -219,8 +226,15 @@ def test_trading212_idempotency_and_reconciliation():
             with patch.object(client, "get_positions", return_value=[]):
                 res1 = client.place_market_order("AAPL_US_EQ", 1.5)
                 assert res1["id"] == 111
-                mock_redis.set.assert_called_with("lock:t212:order:AAPL_US_EQ", "locked", ex=15, nx=True)
-                mock_redis.delete.assert_called_with("lock:t212:order:AAPL_US_EQ")
+
+                # Lock should be created using client_order_id (UUID), not ticker
+                from unittest.mock import ANY
+                mock_redis.set.assert_called_with(ANY, "locked", ex=15, nx=True)
+                args, kwargs = mock_redis.set.call_args
+                assert args[0].startswith("lock:t212:order:")
+
+                # Check delete call also used the UUID
+                mock_redis.delete.assert_called_with(args[0])
 
         with pytest.raises(ValueError) as exc_info:
             client.place_market_order("AAPL_US_EQ", 1.5)

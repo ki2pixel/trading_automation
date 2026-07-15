@@ -10,6 +10,14 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-15 18:05:00] - Clôture définitive de la Phase 3, versioning et audit non destructif des migrations PostgreSQL (VV-07, VV-08, VV-10, VV-13, VV-14) :
+  1. Correction VV-07 (Isolation Timeframe) : Retrait de la réintroduction de la clé unique historique `UNIQUE (asset, strategy_name)` sur `paper_positions` pour garantir l'isolation par timeframe.
+  2. Correction VV-08 (Init Database Vierge) : Déplacement du backfill de `timeframe` après la création et le seeding de la table `paper_strategy_configs`.
+  3. Correction VV-10 (One-Shot & Reboot-Resistant Backfill) : Le backfill n'est exécuté que si la colonne `timeframe` vient d'être créée (one-shot), préservant les positions légitimes `1m` créées post-migration lors des redémarrages.
+  4. Correction VV-13 & VV-14 (Audit non destructif et Table de Revue) : Introduction d'une table `schema_version` (Version 2) et d'une table `paper_position_timeframe_reviews` pour auditer sans modifier les positions multi-timeframes suspectes. Celles-ci conservent leur timeframe d'origine mais déclenchent une revue `PENDING` listant les timeframes candidats.
+  5. Sécurité multi-schémas : Ajout de `table_schema = current_schema()` aux contrôles `information_schema` pour fiabiliser les installations dans les schémas non publics (tests).
+  6. Tests d'intégration : Enrichissement de `tests/test_db_setup.py` pour valider l'initialisation vierge, le backfill, la résistance au redémarrage, la non-mutation des positions et la création d'entrées de revue dans la table d'audit.
+  7. Suite de tests verte à 100% (606 succès, 1 ignoré).
 - [2026-07-13 10:01:00] - Résolution de la régression OOM en production (Render OOM > 512MB) :
   1. Optimisation et mise en cache Redis d'actifs avec 0 transaction dans `/api/performance/metrics`.
   2. Résolution du Case Mismatch de suppression de cache dans `signal_executor.py`.

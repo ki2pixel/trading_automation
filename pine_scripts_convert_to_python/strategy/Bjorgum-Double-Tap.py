@@ -49,19 +49,19 @@ def _compute_bjorgum_signals_numba(
     for i in range(n):
         hbar_i = is_hbar[i]
         lbar_i = is_lbar[i]
-        
+
         dir_prev = dir_val
         if hbar_i:
             dir_val = 1
         elif lbar_i:
             dir_val = 0
-            
+
         dirUp = (dir_val != dir_prev) and (dir_val == 1)
         dirDn = (dir_val != dir_prev) and (dir_val == 0)
-        
+
         setUp = hbar_i and (dir_val == 1)
         setDn = lbar_i and (dir_val == 0)
-        
+
         # Append logic
         if dirUp:
             if num_logs < 5:
@@ -96,36 +96,36 @@ def _compute_bjorgum_signals_numba(
             if logs_val[num_logs - 1] < piv_highs[i]:
                 logs_idx[num_logs - 1] = i
                 logs_val[num_logs - 1] = piv_highs[i]
-                
+
         if setDn and num_logs > 0:
             if logs_val[num_logs - 1] > piv_lows[i]:
                 logs_idx[num_logs - 1] = i
                 logs_val[num_logs - 1] = piv_lows[i]
-                
+
         # Evaluate patterns
         if num_logs >= 5:
             x1 = logs_idx[0]
             y1 = logs_val[0]
-            
+
             x2 = logs_idx[1]
             y2 = logs_val[1]
-            
+
             x3 = logs_idx[2]
             y3 = logs_val[2]
-            
+
             x4 = logs_idx[3]
             y4 = logs_val[3]
             traded4 = logs_traded[3]
-            
+
             traded = (traded4 == 1)
             height = (y2 + y4) / 2.0 - y3
-            
+
             _high = y2 + height * (tol / 100.0)
             _low = y2 - height * (tol / 100.0)
-            
+
             close_i = closes[i]
             close_prev = closes[i-1] if i > 0 else closes[0]
-            
+
             # Double Top (m=1)
             if dShort and not traded:
                 if y1 < y3 and y4 <= _high and y4 >= _low and close_i < y3 and close_prev >= y3:
@@ -134,7 +134,7 @@ def _compute_bjorgum_signals_numba(
                     pattern_tp[i] = y3 - height * (fib / 100.0)
                     y6 = max(y2, y4)
                     pattern_sl[i] = y6 - height * (stopPer / 100.0)
-                    
+
             # Double Bottom (m=-1)
             if dLong and not traded and not short_signal[i]:
                 if y1 > y3 and y4 >= _high and y4 <= _low and close_i > y3 and close_prev <= y3:
@@ -190,13 +190,13 @@ class BjorgumDoubleTapConfig:
     fib: float = 100.0
     stopPer: float = 0.0
     offset: int = 30
-    
+
     # Trailing Stop Parameters
     atrStop: bool = False
     atrLength: int = 14
     atrMult: float = 1.0
     lookback: int = 5
-    
+
     # V3 - capped bucket model
     max_entry_price: float = 300.0
     max_capital_bucket: float = 300.0
@@ -324,7 +324,7 @@ def add_bjorgum_double_tap_features(
 
     out = df.copy()
     n = len(out)
-    
+
     highs = out["high"].to_numpy(dtype=float)
     lows = out["low"].to_numpy(dtype=float)
     closes = out["close"].to_numpy(dtype=float)
@@ -371,22 +371,22 @@ def add_bjorgum_double_tap_features(
         # ATR Calculation
         prev_closes = np.roll(closes, 1)
         prev_closes[0] = closes[0]
-        
+
         tr1 = highs - lows
         tr2 = np.abs(highs - prev_closes)
         tr3 = np.abs(lows - prev_closes)
         tr = np.maximum(tr1, np.maximum(tr2, tr3))
-        
+
         tr_series = pd.Series(tr)
         atr = tr_series.ewm(alpha=1.0 / config.atrLength, adjust=False).mean().to_numpy()
-        
+
         # sLow and sHigh (trailing stops)
         lows_series = pd.Series(lows)
         highs_series = pd.Series(highs)
-        
+
         s_low = lows_series.rolling(config.lookback, min_periods=1).min().to_numpy() - (atr * config.atrMult)
         s_high = highs_series.rolling(config.lookback, min_periods=1).max().to_numpy() + (atr * config.atrMult)
-        
+
         piv_highs = highs_series.rolling(config.length, min_periods=1).max().to_numpy()
         piv_lows = lows_series.rolling(config.length, min_periods=1).min().to_numpy()
 
@@ -480,7 +480,7 @@ def run_bjorgum_double_tap_strategy(
         config.initial_capital_bucket,
         config.max_capital_bucket,
     )
-    
+
     peak_equity = broker.cash
     withdrawn_profit = 0.0
 
@@ -492,10 +492,10 @@ def run_bjorgum_double_tap_strategy(
 
     pending_order: Optional[Dict[str, Any]] = None
     trades: List[Dict[str, Any]] = []
-    
+
     from collections import defaultdict
     records: Dict[str, List[Any]] = defaultdict(list)
-    
+
     # Intrabar trade active tracking state
     trade_sl = np.nan
     trade_tp = np.nan
@@ -628,7 +628,7 @@ def run_bjorgum_double_tap_strategy(
         entry_price = float(fill.price) if fill is not None else float(fill_price)
         entry_index = fill_index
         entry_bar_number = fill_bar_number
-        
+
         trade_sl = signal_sl
         trade_tp = signal_tp
         trailing_active = False
@@ -698,12 +698,12 @@ def run_bjorgum_double_tap_strategy(
     high_arr = out["high"].to_numpy(dtype=float)
     low_arr = out["low"].to_numpy(dtype=float)
     close_arr = out["close"].to_numpy(dtype=float)
-    
+
     if config.execute_on_next_bar:
         fill_price_arr = out[config.next_bar_execution_price_col].to_numpy(dtype=float)
     else:
         fill_price_arr = close_arr
-        
+
     long_signal_arr = out["long_signal"].to_numpy(dtype=bool)
     short_signal_arr = out["short_signal"].to_numpy(dtype=bool)
     pattern_tp_arr = out["pattern_tp"].to_numpy(dtype=float)
@@ -736,7 +736,7 @@ def run_bjorgum_double_tap_strategy(
         current_equity = broker.mark_to_market_equity(close_price, idx)
         if current_equity > peak_equity:
             peak_equity = current_equity
-        
+
         if early_stop_drawdown_pct is not None and early_stop_drawdown_pct > 0 and peak_equity > 0:
             drawdown_pct = (peak_equity - current_equity) / peak_equity * 100.0
             if drawdown_pct >= early_stop_drawdown_pct:
@@ -772,7 +772,7 @@ def run_bjorgum_double_tap_strategy(
 
         # 2. Intrabar Stop/Limit hit checking
         intrabar_exit_triggered = False
-        
+
         if in_long:
             if config.atrStop:
                 if not trailing_active and high_price >= trade_tp:
@@ -780,10 +780,10 @@ def run_bjorgum_double_tap_strategy(
                     trade_sl = s_low_arr[bar_number]
                 if trailing_active:
                     trade_sl = max(trade_sl, s_low_arr[bar_number])
-            
+
             hit_sl = low_price <= trade_sl
             hit_tp = False if config.atrStop else (high_price >= trade_tp)
-            
+
             if hit_sl or hit_tp:
                 intrabar_exit_triggered = True
                 if hit_sl and hit_tp:
@@ -801,7 +801,7 @@ def run_bjorgum_double_tap_strategy(
                     fill_info = same_bar_fill
                 in_long = False
                 flat = True
-                
+
         elif in_short:
             if config.atrStop:
                 if not trailing_active and low_price <= trade_tp:
@@ -809,10 +809,10 @@ def run_bjorgum_double_tap_strategy(
                     trade_sl = s_high_arr[bar_number]
                 if trailing_active:
                     trade_sl = min(trade_sl, s_high_arr[bar_number])
-                    
+
             hit_sl = high_price >= trade_sl
             hit_tp = False if config.atrStop else (low_price <= trade_tp)
-            
+
             if hit_sl or hit_tp:
                 intrabar_exit_triggered = True
                 if hit_sl and hit_tp:

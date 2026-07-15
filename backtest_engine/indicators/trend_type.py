@@ -24,25 +24,25 @@ def apply_trend_type(
     tr2 = (high - close.shift(1)).abs()
     tr3 = (low - close.shift(1)).abs()
     tr = np.maximum(tr1, np.maximum(tr2, tr3))
-    
+
     atr = tr.ewm(alpha=1/atr_len, adjust=False).mean()
     atr_ma = atr.rolling(window=atr_ma_len).mean()
 
     # 2. Native ADX / DI calculations
     up = high - high.shift(1)
     down = low.shift(1) - low
-    
+
     plus_dm = np.where((up > down) & (up > 0), up, 0.0)
     minus_dm = np.where((down > up) & (down > 0), down, 0.0)
-    
+
     # Convert numpy arrays back to DataFrame for ewm
     plus_dm_df = pd.DataFrame(plus_dm, index=high.index, columns=high.columns)
     minus_dm_df = pd.DataFrame(minus_dm, index=high.index, columns=high.columns)
-    
+
     trur = tr.ewm(alpha=1/di_len, adjust=False).mean()
     plus_di = 100 * plus_dm_df.ewm(alpha=1/di_len, adjust=False).mean() / trur
     minus_di = 100 * minus_dm_df.ewm(alpha=1/di_len, adjust=False).mean() / trur
-    
+
     sum_di = plus_di + minus_di
     dx = 100 * (plus_di - minus_di).abs() / np.where(sum_di == 0, 1.0, sum_di)
     adx = dx.ewm(alpha=1/adx_len, adjust=False).mean()
@@ -61,13 +61,13 @@ def apply_trend_type(
         [0.0, 2.0, -2.0],
         default=np.nan
     )
-    
+
     # 5. Smoothing
     trend_df = pd.DataFrame(trend_type, index=close.index, columns=close.columns)
     if smooth > 1:
         smoothed = trend_df.rolling(window=smooth).mean()
         trend_type = np.round(smoothed / 2.0) * 2.0
-    
+
     return np.asarray(trend_type, dtype=np.float64)
 
 TrendType = vbt.IndicatorFactory(

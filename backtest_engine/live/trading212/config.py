@@ -21,12 +21,12 @@ class Trading212Config:
             self.dotenv_path = dotenv_path
 
         self._load_dotenv()
-        
+
         if env is not None:
             self.env = env.lower()
         else:
             self.env = os.getenv("T212_ENV", "demo").lower()
-        
+
         if self.env == "live":
             self.api_key_id = os.getenv("T212_LIVE_API_KEY_ID") or os.getenv("T212_API_KEY_ID")
             self.api_secret = os.getenv("T212_LIVE_API_SECRET") or os.getenv("T212_API_SECRET")
@@ -35,7 +35,7 @@ class Trading212Config:
             self.api_key_id = os.getenv("T212_DEMO_API_KEY_ID") or os.getenv("T212_API_KEY_ID")
             self.api_secret = os.getenv("T212_DEMO_API_SECRET") or os.getenv("T212_API_SECRET")
             self.base_url = "https://demo.trading212.com"
-            
+
         # Try fallbacks for single account keys if any
         if not self.api_key_id:
             self.api_key_id = os.getenv("T212_API_KEY")
@@ -68,7 +68,7 @@ class Trading212Config:
         key_hash = hashlib.sha256(key_to_hash.encode("utf-8")).hexdigest()
         expected_live_hash = os.getenv("EXPECTED_T212_LIVE_KEY_HASH")
         expected_demo_hash = os.getenv("EXPECTED_T212_DEMO_KEY_HASH")
-        
+
         if self.env == "live":
             if not expected_live_hash:
                 raise ValueError("[Failsafe] CRITICAL: EXPECTED_T212_LIVE_KEY_HASH is not set in a Live environment! This is strictly forbidden.")
@@ -77,5 +77,9 @@ class Trading212Config:
             if key_hash != expected_live_hash:
                 raise ValueError("[Failsafe] CRITICAL: Trading 212 API key/secret does not match EXPECTED_T212_LIVE_KEY_HASH in Live environment! Shutting down immediately.")
         else:
+            if not expected_demo_hash:
+                raise ValueError("[Failsafe] CRITICAL: EXPECTED_T212_DEMO_KEY_HASH is not set in a Demo/Testnet environment! This is strictly forbidden.")
             if expected_live_hash and key_hash == expected_live_hash:
-                raise ValueError("[Failsafe] CRITICAL: Trading 212 Live API key/secret detected in Demo environment! Shutting down immediately.")
+                raise ValueError("[Failsafe] CRITICAL: Trading 212 Live API key/secret detected in Demo/Testnet environment! Shutting down immediately.")
+            if key_hash != expected_demo_hash:
+                raise ValueError("[Failsafe] CRITICAL: Trading 212 API key/secret does not match EXPECTED_T212_DEMO_KEY_HASH in Demo/Testnet environment! Shutting down immediately.")

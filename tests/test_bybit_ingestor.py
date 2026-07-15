@@ -42,7 +42,7 @@ class TestBybitIngestor(unittest.TestCase):
     def test_signature_generation(self):
         timestamp = "1672531200000"
         query_str = "category=spot&symbol=LTCUSDT"
-        
+
         # Expected signature generated via HMAC-SHA256
         # string to sign = timestamp + api_key + recv_window + query_str
         # = "1672531200000" + "test_key" + "5000" + "category=spot&symbol=LTCUSDT"
@@ -54,7 +54,7 @@ class TestBybitIngestor(unittest.TestCase):
             expected_raw.encode("utf-8"),
             hashlib.sha256
         ).hexdigest()
-        
+
         sig = self.client._sign(timestamp, query_str)
         self.assertEqual(sig, expected_sig)
 
@@ -66,7 +66,7 @@ class TestBybitIngestor(unittest.TestCase):
         mock_request.return_value = mock_resp
 
         self.client.get_account_summary()
-        
+
         mock_request.assert_called_once()
         args, kwargs = mock_request.call_args
         headers = kwargs.get("headers", {})
@@ -88,7 +88,7 @@ class TestBybitIngestor(unittest.TestCase):
             }
         }
         self.client.get_klines = MagicMock(return_value=mock_klines)
-        
+
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cur
@@ -100,7 +100,7 @@ class TestBybitIngestor(unittest.TestCase):
 
         # Check call order
         self.assertEqual(mock_cur.execute.call_count, 2)
-        
+
         # Verify first call is the oldest candle (reversing is working)
         first_call_args = mock_cur.execute.call_args_list[0][0]
         self.assertEqual(first_call_args[1][0], "ltcusdt")
@@ -121,7 +121,7 @@ class TestBybitIngestor(unittest.TestCase):
             }
         }
         self.client.get_ticker_price = MagicMock(return_value=mock_ticker)
-        
+
         # Mock recent klines
         mock_klines = {
             "result": {
@@ -163,7 +163,7 @@ class TestBybitIngestor(unittest.TestCase):
             unittest.mock.ANY,
             ("ltcusdt", Decimal("102.5"))
         )
-        
+
         # 2. Update candle
         mock_cur.execute.assert_any_call(
             unittest.mock.ANY,
@@ -175,10 +175,10 @@ class TestBybitIngestor(unittest.TestCase):
         with patch.dict("os.environ", {"BYBIT_API_KEY": "", "BYBIT_API_SECRET": "", "BYBIT_DEMO_API_KEY": "", "BYBIT_DEMO_API_SECRET": ""}):
             config = BybitConfig()
             client = BybitClient(config)
-            
+
             # Check that validation does not raise ValueError
             config.validate()
-            
+
             # Check that a signed request raises ValueError
             with self.assertRaises(ValueError) as ctx:
                 client.get_account_summary()

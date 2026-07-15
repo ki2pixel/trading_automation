@@ -27,12 +27,12 @@ def check_parquet_history_years(file_path: Path) -> float:
             return 0.0
         first_ts = df_time["d"].iloc[0]
         last_ts = df_time["d"].iloc[-1]
-        
+
         # Convert to tz-naive if tz-aware
         if hasattr(first_ts, "tzinfo") and first_ts.tzinfo is not None:
             first_ts = first_ts.tz_localize(None)
             last_ts = last_ts.tz_localize(None)
-            
+
         days = (last_ts - first_ts).days
         return days / 365.25
     except Exception as e:
@@ -44,30 +44,30 @@ def normalize_and_save_dataframe(df: pd.DataFrame, symbol: str, output_path: Pat
     """Clean, normalize and serialize a DataFrame to Parquet format."""
     # Ensure canonical columns exist
     df = df.dropna(subset=["timestamp", "open", "high", "low", "close"])
-    
+
     # 1. Price validation
     df["high"] = df[["open", "high", "low", "close"]].max(axis=1)
     df["low"] = df[["open", "high", "low", "close"]].min(axis=1)
-    
+
     # 2. Keep volume as float
     df["volume"] = df["volume"].astype(float).fillna(0.0)
-    
+
     # 3. Add symbol column
     df["symbol"] = symbol
-    
+
     # 4. Remove duplicate timestamps (keep the last one)
     df = df.drop_duplicates(subset=["timestamp"], keep="last")
-    
+
     # 5. Sort by timestamp ascending
     df = df.sort_values(by="timestamp").reset_index(drop=True)
-    
+
     # 6. Reorder columns to match canonical schema:
     # timestamp, open, high, low, close, volume, symbol
     df = df[["timestamp", "open", "high", "low", "close", "volume", "symbol"]]
-    
+
     # 7. Write to Parquet using pyarrow engine and snappy compression
     df.to_parquet(output_path, engine="pyarrow", compression="snappy", index=False)
-    
+
     return len(df)
 
 
@@ -75,11 +75,11 @@ def process_altcoin_file(args: Tuple[Path, Path, str]) -> Dict[str, Any]:
     """Process a single altcoin Parquet file from spot directory."""
     input_path, output_dir, symbol = args
     output_path = output_dir / f"{symbol}.parquet"
-    
+
     try:
         # Load parquet
         df = pd.read_parquet(input_path)
-        
+
         # Rename columns: d -> timestamp, o/h/l/c/v -> open/high/low/close/volume
         df = df.rename(columns={
             "d": "timestamp",
@@ -89,13 +89,13 @@ def process_altcoin_file(args: Tuple[Path, Path, str]) -> Dict[str, Any]:
             "c": "close",
             "v": "volume"
         })
-        
+
         # Convert timestamp to UTC-naive
         if df["timestamp"].dt.tz is not None:
             df["timestamp"] = df["timestamp"].dt.tz_localize(None)
-            
+
         final_len = normalize_and_save_dataframe(df, symbol, output_path)
-        
+
         return {
             "symbol": symbol,
             "status": "success",
@@ -165,7 +165,7 @@ def main() -> None:
         output_path = output_dir / f"{symbol}.parquet"
 
         print(f"\nProcessing priority asset: {symbol.upper()}...")
-        
+
         # Load CSV if exists
         csv_df = pd.DataFrame()
         if csv_path.exists():
@@ -201,7 +201,7 @@ def main() -> None:
         # Fusion
         print(f"  Fusing datasets...")
         fused_df = pd.concat([csv_df, spot_df], ignore_index=True)
-        
+
         # Normalize and Save
         total_rows = normalize_and_save_dataframe(fused_df, symbol, output_path)
         print(f"  Saved {total_rows:,} rows to {output_path}.")
@@ -220,10 +220,10 @@ def main() -> None:
         # Skip already processed priority assets
         if stem_upper in ["BTCUSDT", "ETHUSDT"]:
             continue
-            
+
         history_years = check_parquet_history_years(file_path)
         symbol = stem_upper.lower()
-        
+
         if history_years >= 3.0:
             print(f"  [KEEP] {stem_upper} - History: {history_years:.2f} years (>= 3 years)")
             altcoin_tasks.append((file_path, output_dir, symbol))
@@ -235,18 +235,18 @@ def main() -> None:
     if altcoin_tasks:
         print(f"Starting conversion using up to {args.workers} workers...")
         start_time = time.time()
-        
+
         with ProcessPoolExecutor(max_workers=args.workers) as executor:
             results = list(executor.map(process_altcoin_file, altcoin_tasks))
-            
+
         elapsed = time.time() - start_time
         print(f"Conversion of altcoins completed in {elapsed:.2f} seconds.")
-        
+
         # Print summary
         success_count = sum(1 for r in results if r["status"] == "success")
         error_count = sum(1 for r in results if r["status"] == "error")
         total_rows_altcoins = sum(r["rows"] for r in results if r["status"] == "success")
-        
+
         print(f"Successfully processed: {success_count} assets ({total_rows_altcoins:,} rows)")
         if error_count > 0:
             print(f"Failed assets: {error_count}")

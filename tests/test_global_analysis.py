@@ -13,23 +13,23 @@ class TestGlobalAnalysis(unittest.TestCase):
             repo_root = Path(tmp).resolve()
             output_dir = "reports/local_optimizer"
             strategy = "hma_crossover"
-            
+
             # Setup folders for multiple symbols: BTCUSDT and ETHUSDT
             strategy_dir = repo_root / output_dir / strategy
-            
+
             btc_dir = strategy_dir / "BTCUSDT"
             eth_dir = strategy_dir / "ETHUSDT"
-            
+
             # BTC has 2 runs with different scores (10.0 and 25.0)
             btc_run1 = btc_dir / "T20240101_120000"
             btc_run2 = btc_dir / "T20240101_130000"
             btc_run1.mkdir(parents=True)
             btc_run2.mkdir(parents=True)
-            
+
             # ETH has 1 run
             eth_run1 = eth_dir / "T20240101_140000"
             eth_run1.mkdir(parents=True)
-            
+
             # Write recommendations and config for BTC run1
             with open(btc_run1 / "recommendations.json", "w", encoding="utf-8") as f:
                 json.dump({
@@ -52,7 +52,7 @@ class TestGlobalAnalysis(unittest.TestCase):
                 }, f)
             with open(btc_run1 / "optimization_config.json", "w", encoding="utf-8") as f:
                 json.dump({"timeframe_minutes": 15}, f)
-                
+
             # Write recommendations and config for BTC run2 (better score!)
             with open(btc_run2 / "recommendations.json", "w", encoding="utf-8") as f:
                 json.dump({
@@ -75,7 +75,7 @@ class TestGlobalAnalysis(unittest.TestCase):
                 }, f)
             with open(btc_run2 / "optimization_config.json", "w", encoding="utf-8") as f:
                 json.dump({"timeframe_minutes": 60}, f)
-                
+
             # Write recommendations and config for ETH run1
             with open(eth_run1 / "recommendations.json", "w", encoding="utf-8") as f:
                 json.dump({
@@ -101,22 +101,22 @@ class TestGlobalAnalysis(unittest.TestCase):
 
             # Generate global analysis
             res = generate_global_analysis(repo_root, strategy, output_dir)
-            
+
             # Assert return API paths are correct
             self.assertEqual(res, {
                 "parquet": f"/api/global-analysis/{strategy}/global_summary.parquet",
                 "html": f"/api/global-analysis/{strategy}/global_summary.html"
             })
-            
+
             # Verify Parquet file existence and content
             parquet_path = strategy_dir / "global_summary.parquet"
             self.assertTrue(parquet_path.exists())
-            
+
             # Load Parquet using pandas and assert shape and sorted symbols
             df = pd.read_parquet(parquet_path)
             self.assertEqual(len(df), 2)
             self.assertEqual(list(df["SYMBOL"]), ["BTCUSDT", "ETHUSDT"])
-            
+
             # BTC should have picked btc_run2 (better score: 25.0 vs 10.0)
             btc_row = df[df["SYMBOL"] == "BTCUSDT"].iloc[0]
             self.assertEqual(btc_row["TIMEFRAME"], 60)
@@ -124,7 +124,7 @@ class TestGlobalAnalysis(unittest.TestCase):
             self.assertEqual(btc_row["BEST_FAST_LEN"], 4)
             self.assertEqual(btc_row["SWEET_SPOT_FAST_LEN"], "[3, 5]")
             self.assertEqual(btc_row["CONF_FAST_LEN"], 0.9)
-            
+
             # ETH should match eth_run1 values
             eth_row = df[df["SYMBOL"] == "ETHUSDT"].iloc[0]
             self.assertEqual(eth_row["TIMEFRAME"], 240)
@@ -137,7 +137,7 @@ class TestGlobalAnalysis(unittest.TestCase):
             html_path = strategy_dir / "global_summary.html"
             self.assertTrue(html_path.exists())
             html_content = html_path.read_text(encoding="utf-8")
-            
+
             self.assertIn("<h1>Synthèse Globale Optimizer — hma_crossover</h1>", html_content)
             self.assertIn("BTCUSDT", html_content)
             self.assertIn("ETHUSDT", html_content)
@@ -156,10 +156,10 @@ class TestGlobalAnalysis(unittest.TestCase):
             strategy_dir = repo_root / "reports/local_optimizer/hma_crossover"
             btc_dir = strategy_dir / "BTCUSDT"
             btc_dir.mkdir(parents=True)
-            
+
             # Create an empty directory with no T-prefixed runs
             (btc_dir / "not_a_run").mkdir()
-            
+
             with self.assertRaises(ValueError):
                 generate_global_analysis(repo_root, "hma_crossover")
 
@@ -169,17 +169,17 @@ class TestGlobalAnalysis(unittest.TestCase):
             output_dir = "reports/local_optimizer"
             strategy = "hma_crossover"
             strategy_dir = repo_root / output_dir / strategy
-            
+
             btc_dir = strategy_dir / "BTCUSDT"
             btc_run1 = btc_dir / "T20240101_120000"
             btc_run2 = btc_dir / "T20240101_130000"
             btc_run1.mkdir(parents=True)
             btc_run2.mkdir(parents=True)
-            
+
             # BTC run1 has bad/corrupted JSON file
             with open(btc_run1 / "recommendations.json", "w", encoding="utf-8") as f:
                 f.write("{invalid json...")
-            
+
             # BTC run2 has perfectly valid JSON
             with open(btc_run2 / "recommendations.json", "w", encoding="utf-8") as f:
                 json.dump({
@@ -205,7 +205,7 @@ class TestGlobalAnalysis(unittest.TestCase):
             # Execution should succeed due to resilience skipping btc_run1 and using btc_run2
             res = generate_global_analysis(repo_root, strategy, output_dir)
             self.assertIn("parquet", res)
-            
+
             df = pd.read_parquet(strategy_dir / "global_summary.parquet")
             self.assertEqual(len(df), 1)
             self.assertEqual(df.iloc[0]["SYMBOL"], "BTCUSDT")

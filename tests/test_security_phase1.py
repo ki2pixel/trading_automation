@@ -207,7 +207,7 @@ class TestCSRFProtection:
         mock_conn.transaction = MagicMock()
         mock_transaction = AsyncMock()
         mock_conn.transaction.return_value = mock_transaction
-        
+
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=False)
 
@@ -226,7 +226,7 @@ class TestCSRFProtection:
             "password": "test_password"
         })
         assert login_resp.status_code == 200
-        
+
         # After login, we can fetch the actual active csrftoken cookie
         csrf_token = client.cookies.get("csrftoken")
         assert csrf_token is not None
