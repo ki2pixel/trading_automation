@@ -1,8 +1,8 @@
 // UI and formatting utilities
 
-export const formatCurrency = (val) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(val);
-export const formatPercent = (val) => new Intl.NumberFormat('fr-FR', { style: 'percent', minimumFractionDigits: 2 }).format(val);
-export const formatUSDT = (val) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) + ' USDT';
+export const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' }).format(val);
+export const formatPercent = (val) => new Intl.NumberFormat('en-US', { style: 'percent', minimumFractionDigits: 2 }).format(val);
+export const formatUSDT = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val).replace('$', '') + ' USDT';
 export const formatCrypto = (val, symbol) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) + ' ' + symbol.toUpperCase();
 export const formatAmountForAsset = (asset, value) => {
     if (!asset) return formatCurrency(value);
@@ -10,6 +10,8 @@ export const formatAmountForAsset = (asset, value) => {
     if (upperAsset.endsWith('USDT') || upperAsset.endsWith('USDC')) {
         const symbol = upperAsset.endsWith('USDT') ? 'USDT' : 'USDC';
         return formatCrypto(value, symbol);
+    } else if (upperAsset.includes('USD')) {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
     }
     return formatCurrency(value);
 };

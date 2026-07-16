@@ -6,6 +6,23 @@ let cachedCsrfToken = null;
 // Global fetch reference for interceptor
 const originalFetch = window.fetch;
 
+// Helper to verify same-origin destinations
+function isSameOrigin(url) {
+    if (typeof url !== 'string') {
+        return false;
+    }
+    // Relative URLs are always same-origin
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('//')) {
+        return true;
+    }
+    try {
+        const targetUrl = new URL(url, window.location.href);
+        return targetUrl.origin === window.location.origin;
+    } catch (e) {
+        return false;
+    }
+}
+
 // Helper to get or retrieve CSRF token asynchronously
 export async function ensureCsrfToken() {
     if (cachedCsrfToken) return cachedCsrfToken;
@@ -24,7 +41,7 @@ export async function ensureCsrfToken() {
 // Global fetch interceptor to handle session expiration (401), network errors, 500/503 and CSRF tokens
 window.fetch = async function(url, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method) && url !== '/api/csrf-token') {
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method) && url !== '/api/csrf-token' && isSameOrigin(url)) {
         const csrf = await ensureCsrfToken();
         options.headers = options.headers || {};
         if (options.headers instanceof Headers) {
@@ -38,16 +55,34 @@ window.fetch = async function(url, options = {}) {
     try {
         response = await originalFetch(url, options);
     } catch (netError) {
-        showError("Impossible de contacter le serveur. Veuillez vérifier votre connexion réseau.", netError);
+        showError("Unable to contact the server. Please check your network connection.", netError);
         throw netError;
     }
     
     if (response.status === 401) {
         window.location.href = '/login.html';
+    } else if (response.status === 403) {
+        showError("Access denied or CSRF token invalid/expired (403). Please refresh the page.");
+    } else if (response.status === 422) {
+        try {
+            const errData = await response.clone().json();
+            let errMsg = "Data validation error (422).";
+            if (errData && errData.detail) {
+                if (typeof errData.detail === 'string') {
+                    errMsg += ` Detail: ${errData.detail}`;
+                } else if (Array.isArray(errData.detail)) {
+                    const details = errData.detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join(', ');
+                    errMsg += ` Details: ${details}`;
+                }
+            }
+            showError(errMsg);
+        } catch (e) {
+            showError("Data validation error (422).");
+        }
     } else if (response.status === 500) {
-        showError("Une erreur interne est survenue sur le serveur (500).");
+        showError("An internal server error occurred (500).");
     } else if (response.status === 503) {
-        showError("Le service est temporairement indisponible (503).");
+        showError("The service is temporarily unavailable (503).");
     }
     
     return response;
@@ -70,7 +105,7 @@ export async function getConfigs() {
 }
 
 export async function updateConfig(id, payload) {
-    return await fetch(`/api/configs/${id}`, {
+    return await fetch(`/api/configs/${encodeURIComponent(id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -78,20 +113,24 @@ export async function updateConfig(id, payload) {
 }
 
 export async function toggleConfig(id, is_active) {
-    return await fetch(`/api/configs/${id}/toggle`, {
+    return await fetch(`/api/configs/${encodeURIComponent(id)}/toggle`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active })
     });
 }
 
-export async function getTransactions(limit = 50, offset = 0) {
-    const res = await fetch(`/api/transactions?limit=${limit}&offset=${offset}`);
+export async function getTransactions(limit = 50, offset = 0, cursorTimestamp = null) {
+    let url = `/api/transactions?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`;
+    if (cursorTimestamp) {
+        url += `&cursor_timestamp=${encodeURIComponent(cursorTimestamp)}`;
+    }
+    const res = await fetch(url);
     return await res.json();
 }
 
 export async function getEvaluations(limit = 100, offset = 0) {
-    const res = await fetch(`/api/evaluations?limit=${limit}&offset=${offset}`);
+    const res = await fetch(`/api/evaluations?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`);
     return await res.json();
 }
 
@@ -120,11 +159,11 @@ export async function resumeTrading() {
 }
 
 export async function getPerformanceMetrics(ticker) {
-    const res = await fetch(`/api/performance/metrics?ticker=${ticker}`);
+    const res = await fetch(`/api/performance/metrics?ticker=${encodeURIComponent(ticker)}`);
     return await res.json();
 }
 
 export async function getCandles(ticker) {
-    const res = await fetch(`/api/candles?ticker=${ticker}`);
+    const res = await fetch(`/api/candles?ticker=${encodeURIComponent(ticker)}`);
     return await res.json();
 }

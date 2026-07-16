@@ -92,38 +92,9 @@ if not PAPER_TRADER_PASSWORD and not is_testing:
 if is_testing and not PAPER_TRADER_PASSWORD:
     PAPER_TRADER_PASSWORD = "test_password"
 
-# HMAC Secret for session token signing (separate from user password)
-HMAC_SECRET = os.getenv("HMAC_SECRET")
-if not HMAC_SECRET and not is_testing:
-    if is_production:
-        raise ValueError(
-            "Configuration Error: HMAC_SECRET environment variable is missing! "
-            "This is required in production. Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
-        )
-    else:
-        HMAC_SECRET = secrets.token_hex(32)
-        logger.warning("[CONFIG] HMAC_SECRET not set — auto-generated for dev. Set HMAC_SECRET in production.")
-
-# Fallback for testing environment
-if is_testing and not HMAC_SECRET:
-    HMAC_SECRET = secrets.token_hex(32)
-
-def create_session_token(username: str, expires: int, secret: str) -> str:
-    message = f"{username}:{expires}".encode("utf-8")
-    sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
-    return f"{username}:{expires}:{sig}"
-
-def verify_session_token(token: str, secret: str) -> bool:
-    try:
-        username, expires_str, sig = token.split(":", 2)
-        expires = int(expires_str)
-        if expires < time.time():
-            return False
-        message = f"{username}:{expires_str}".encode("utf-8")
-        expected_sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(sig, expected_sig)
-    except Exception:
-        return False
+# HMAC Secret for session token signing and verify helpers from api router
+from backtest_engine.live.paper_trading.api import create_session_token, verify_session_token, get_hmac_secret
+HMAC_SECRET = get_hmac_secret()
 
 class CookieSessionAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -138,8 +109,8 @@ class CookieSessionAuthMiddleware(BaseHTTPMiddleware):
         session_token = request.cookies.get("paper_trader_session")
 
         authenticated = False
-        if session_token and HMAC_SECRET:
-            authenticated = verify_session_token(session_token, HMAC_SECRET)
+        if session_token:
+            authenticated = verify_session_token(session_token, get_hmac_secret())
 
         if not authenticated:
             # For API requests, return JSON 401
@@ -224,7 +195,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 path="/",
                 httponly=True,  # JS cannot read this cookie directly
                 secure=is_prod,
-                samesite="lax"
+                samesite="strict"
             )
 
 
@@ -268,7 +239,15 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
-        key = f"rate_limit:{client_ip}:{path}"
+        
+        if path == "/api/login":
+            key = f"rate_limit:login:{client_ip}"
+            limit = 5
+            window = 300
+        else:
+            key = f"rate_limit:{client_ip}:{path}"
+            limit = self.rate_limit
+            window = self.window_seconds
 
         from backtest_engine.live.connection import get_async_redis_client
         redis_client = get_async_redis_client()
@@ -278,11 +257,11 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
                 # Execution with 2.0s timeout to prevent blocking the event loop
                 current_requests = await asyncio.wait_for(redis_client.incr(key), timeout=2.0)
                 if current_requests == 1:
-                    await asyncio.wait_for(redis_client.expire(key, self.window_seconds), timeout=2.0)
+                    await asyncio.wait_for(redis_client.expire(key, window), timeout=2.0)
 
-                if current_requests > self.rate_limit:
+                if current_requests > limit:
                     logging.getLogger("trading_audit").warning(
-                        f"Rate limit exceeded: IP={client_ip}, path={path}, requests={current_requests}, limit={self.rate_limit}"
+                        f"Rate limit exceeded: IP={client_ip}, path={path}, requests={current_requests}, limit={limit}"
                     )
                     return JSONResponse(
                         content={"detail": "Too many requests. Please try again later."},
@@ -424,95 +403,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             content={"detail": exc.detail}
         )
     return safe_error_response(exc, request)
-@app.get("/api/csrf-token")
-def get_csrf_token(request: Request, response: Response):
-    token = request.cookies.get("csrftoken")
-    if not token:
-        token = secrets.token_hex(32)
-        is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
-        response.set_cookie(
-            key="csrftoken",
-            value=token,
-            max_age=30 * 24 * 3600,
-            path="/",
-            httponly=True,
-            secure=is_prod,
-            samesite="lax"
-        )
-    return {"csrf_token": token}
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-@app.post("/api/login")
-async def login(request: Request):
-    content_type = request.headers.get("content-type", "")
-    username = None
-    password = None
-    is_form = False
-
-    if "application/x-www-form-urlencoded" in content_type:
-        is_form = True
-        import urllib.parse
-        body_bytes = await request.body()
-        body_str = body_bytes.decode("utf-8")
-        form_data = urllib.parse.parse_qs(body_str)
-        username = form_data.get("username", [None])[0]
-        password = form_data.get("password", [None])[0]
-    else:
-        try:
-            payload = await request.json()
-            username = payload.get("username")
-            password = payload.get("password")
-        except Exception:
-            return JSONResponse(
-                content={"status": "error", "message": "Invalid request body"},
-                status_code=400
-            )
-
-    expected_user = os.getenv("PAPER_TRADER_USER", "admin")
-    expected_password = os.getenv("PAPER_TRADER_PASSWORD") or PAPER_TRADER_PASSWORD
-
-    user_ok = hmac.compare_digest(username or "", expected_user)
-    pass_ok = hmac.compare_digest(password or "", expected_password)
-    if not (user_ok and pass_ok):
-        if is_form:
-            return RedirectResponse(url="/login.html?error=true", status_code=303)
-        return JSONResponse(
-            content={"status": "error", "message": "Invalid username or password"},
-            status_code=401
-        )
-
-    expires = int(time.time()) + 30 * 24 * 3600
-    token = create_session_token(username, expires, HMAC_SECRET)
-
-    is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
-
-    if is_form:
-        response = RedirectResponse(url="/", status_code=303)
-    else:
-        response = JSONResponse(content={"status": "success", "message": "Logged in successfully"})
-
-    response.set_cookie(
-        key="paper_trader_session",
-        value=token,
-        max_age=30 * 24 * 3600,
-        expires=expires,
-        path="/",
-        domain=None,
-        secure=is_prod,
-        httponly=True,
-        samesite="lax"
-    )
-    return response
-
-@app.post("/api/logout")
-@app.get("/api/logout")
-def logout():
-    response = RedirectResponse(url="/login.html", status_code=307)
-    response.delete_cookie(key="paper_trader_session", path="/")
-    return response
 
 @app.get("/health")
 @app.head("/health")

@@ -1,6 +1,12 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-16 19:29:00] - Exécution et validation de la remédiation globale du module frontend de Paper Trading et de sa liaison backend (P1, P2, P3) :
+  - **Phase 1 (Sécurité & Fiabilité)** : Sécurisation du stockage des identifiants d'API, routage des cookies CSRF, correction du cas NaN du Profit Factor (rendu '∞'), résolution des conditions de concurrence graphiques et thread-safety sur FailoverRedisClient.
+  - **Phase 2 (Accès & Standardisation)** : Remplacement des tags close par des boutons sémantiques, outlines focus-visible CSS, heartbeat Price Feed aria-labels, traduction i18n en Technical English, détection visuelle Stale/Offline de graphique, et déconnexion via POST.
+  - **Phase 3 (Refactoring & Optimisation)** : Refactoring d'app.js en modules ES (`dashboard.js`, `configs.js`, `logs.js`), gestion de visibilité d'onglet pour stopper le polling, et pagination par curseur pour les transactions.
+  - **Validation** : 613/613 tests unitaires et Playwright passés avec succès.
+- [x] [2026-07-16 19:04:00] - Consolidation et rédaction du Rapport d'Audit Global du Frontend Paper Trading (`docs/audit/audit_paper_trading_frontend_global_2026-07-16.md`), unifiant de manière structurée les constats, la cartographie du code réel, le catalogue complet des 32 anomalies qualifiées (SEC, FIN, PERF, ACC, DT), les protocoles de validation et le plan de remédiation priorisé (P1/P2/P3).
 - [x] [2026-07-15 18:44:30] - Stabilisation du Kill Switch distribué du Paper Trader :
   1. État Redis JSON canonique, persistant et isolé par environnement ; compatibilité fail-closed avec la clé historique `trading:suspended`.
   2. Synchronisation des transitions `KILL`, `SUSPEND` et `RESUME`, avec annulation des ordres et confirmations Redis namespacées.

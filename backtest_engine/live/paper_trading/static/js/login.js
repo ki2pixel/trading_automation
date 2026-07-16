@@ -2,7 +2,7 @@
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('error') === 'true') {
     const errorAlert = document.getElementById('errorAlert');
-    errorAlert.textContent = 'Identifiant ou mot de passe incorrect.';
+    errorAlert.textContent = 'Invalid username or password.';
     errorAlert.style.display = 'block';
 }
 
@@ -19,7 +19,7 @@ if (loginForm) {
     
     errorAlert.style.display = 'none';
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Connexion...';
+    submitBtn.textContent = 'Logging in...';
     
     try {
         const response = await fetch('/api/login', {
@@ -37,16 +37,16 @@ if (loginForm) {
             window.location.href = '/';
         } else {
             const data = await response.json();
-            errorAlert.textContent = data.message || 'Identifiant ou mot de passe incorrect.';
+            errorAlert.textContent = data.message || 'Invalid username or password.';
             errorAlert.style.display = 'block';
             passwordInput.value = '';
         }
     } catch (err) {
-        errorAlert.textContent = 'Erreur de connexion au serveur. Veuillez réessayer.';
+        errorAlert.textContent = 'Server connection error. Please try again.';
         errorAlert.style.display = 'block';
     } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Se connecter';
+        submitBtn.textContent = 'Log In';
     }
 });
 }

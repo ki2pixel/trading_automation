@@ -9,6 +9,7 @@ let currentAsset = null;
 
 // Local caching for chart transactions
 let cachedTransactions = null;
+let chartRequestId = 0;
 
 export function invalidateChartCache() {
     cachedTransactions = null;
@@ -23,21 +24,32 @@ export async function loadChart(ticker, forceRefresh = false) {
             placeholder.innerHTML = `
                 <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--danger)" stroke-width="1.5" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                 <p style="color: var(--danger); font-weight: bold; margin-top: 10px;">Lightweight Charts CDN Offline</p>
-                <p style="font-size: 13px; max-width: 400px; text-align: center;">Impossible de charger la librairie de graphiques depuis le CDN (unpkg.com). Veuillez vérifier votre connexion Internet.</p>
+                <p style="font-size: 13px; max-width: 400px; text-align: center;">Unable to load the charts library from the CDN (unpkg.com). Please check your internet connection.</p>
             `;
         }
         document.getElementById('analytics-grid').style.display = 'none';
         document.getElementById('price-chart').style.display = 'none';
         const selector = document.getElementById('asset-selector');
         if (selector) selector.disabled = true;
-        showError("Impossible de charger la librairie de graphiques (CDN hors-ligne).");
+        showError("Unable to load the charts library (CDN offline).");
         return;
     }
+
+    const requestId = ++chartRequestId;
+    const chartContainer = document.getElementById('price-chart');
+    if (chartContainer) chartContainer.classList.remove('outdated');
 
     if (!ticker) {
         document.getElementById('analytics-grid').style.display = 'none';
         document.getElementById('chart-placeholder').style.display = 'flex';
-        document.getElementById('price-chart').style.display = 'none';
+        const placeholder = document.getElementById('chart-placeholder');
+        if (placeholder) {
+            placeholder.innerHTML = `
+                <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--text-muted)" stroke-width="1.5" fill="none"><path d="M3 3v18h18"></path><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path></svg>
+                <p>Select an asset from the list above to view price chart, trades history, and equity curve comparison.</p>
+            `;
+        }
+        if (chartContainer) chartContainer.style.display = 'none';
         currentAsset = null;
         return;
     }
@@ -46,7 +58,7 @@ export async function loadChart(ticker, forceRefresh = false) {
     document.getElementById('price-chart').style.display = 'block';
     document.getElementById('analytics-grid').style.display = 'grid';
     
-    const chartContainer = document.getElementById('price-chart');
+
     
     // Recreate chart only if asset changed or if forced
     if (currentChart && (currentAsset !== ticker || forceRefresh)) {
@@ -123,9 +135,23 @@ export async function loadChart(ticker, forceRefresh = false) {
     try {
         // Fetch candles
         const candlesData = await getCandles(ticker);
+        if (requestId !== chartRequestId) return;
         
         if (candlesData.length === 0) {
             console.warn("No candle data fetched for active asset", ticker);
+            document.getElementById('price-chart').style.display = 'none';
+            const placeholder = document.getElementById('chart-placeholder');
+            if (placeholder) {
+                placeholder.style.display = 'flex';
+                placeholder.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--danger)" stroke-width="1.5" fill="none"><path d="M3 3v18h18"></path><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path></svg>
+                    <p style="color: var(--danger); font-weight: bold; margin-top: 10px;">Stale Market Data</p>
+                    <p style="font-size: 13px; max-width: 400px; text-align: center;">No price candles available for ${ticker}. The feed may be inactive or offline.</p>
+                `;
+            }
+            if (candleSeries) candleSeries.setData([]);
+            if (equitySeries) equitySeries.setData([]);
+            if (bhSeries) bhSeries.setData([]);
             return;
         }
         
@@ -137,11 +163,13 @@ export async function loadChart(ticker, forceRefresh = false) {
             txData = cachedTransactions;
         } else {
             txData = await getTransactions(5000, 0); // Get enough transactions for markers
+            if (requestId !== chartRequestId) return;
             cachedTransactions = txData;
         }
         
         // Fetch performance metrics from backend API
         const perfData = await getPerformanceMetrics(ticker);
+        if (requestId !== chartRequestId) return;
         
         // Set curves on chart
         equitySeries.setData(perfData.strategy_curve);
@@ -149,7 +177,11 @@ export async function loadChart(ticker, forceRefresh = false) {
         
         // Render KPI metrics cards
         document.getElementById('analytic-winrate').textContent = formatPercent(perfData.win_rate);
-        document.getElementById('analytic-profitfactor').textContent = perfData.profit_factor === 'Infinity' ? '∞' : parseFloat(perfData.profit_factor).toFixed(2);
+        
+        const pf = perfData.profit_factor;
+        document.getElementById('analytic-profitfactor').textContent = 
+            (pf === null || pf === undefined || pf === 'Infinity' || pf === Infinity) ? '∞' : Number(pf).toFixed(2);
+            
         document.getElementById('analytic-maxdd').textContent = perfData.max_drawdown.toFixed(2) + '%';
         document.getElementById('analytic-currentdd').textContent = perfData.current_drawdown.toFixed(2) + '%';
         
@@ -202,8 +234,25 @@ export async function loadChart(ticker, forceRefresh = false) {
         });
         
         candleSeries.setMarkers(uniqueMarkers);
-        
-    } catch(err) {
-        showError("Une erreur est survenue lors de la génération du graphique de performance.", err);
+
+    } catch (e) {
+        if (requestId !== chartRequestId) return;
+        console.error("Error loading chart data", e);
+        if (currentChart && chartContainer) {
+            chartContainer.classList.add('outdated');
+        } else {
+            if (chartContainer) chartContainer.style.display = 'none';
+            const placeholder = document.getElementById('chart-placeholder');
+            if (placeholder) {
+                placeholder.style.display = 'flex';
+                placeholder.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--danger)" stroke-width="1.5" fill="none"><path d="M3 3v18h18"></path><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path></svg>
+                    <p style="color: var(--danger); font-weight: bold; margin-top: 10px;">Error Loading Data</p>
+                    <p style="font-size: 13px; max-width: 400px; text-align: center;">Failed to load data for ${ticker}. Please check console or network connection.</p>
+                `;
+            }
+        }
+        showError("Failed to load financial metrics for " + ticker);
+        return;
     }
 }

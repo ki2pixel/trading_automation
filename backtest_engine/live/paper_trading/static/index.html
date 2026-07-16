@@ -31,12 +31,12 @@
                 </a>
                 <a href="#evaluations" class="nav-item" data-target="evaluations">
                     <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    Évaluations
+                    Evaluations
                 </a>
-                <a href="/api/logout" class="nav-item" style="margin-top: 2rem; color: #ef4444;">
+                <button type="button" id="btn-logout" class="nav-item btn-logout-sidebar" style="margin-top: 2rem; color: #ef4444; background: none; border: none; width: 100%; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 10px 16px;">
                     <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-                    Déconnexion
-                </a>
+                    Logout
+                </button>
             </nav>
         </aside>
 
@@ -321,9 +321,9 @@
                         </tbody>
                     </table>
                     <div class="pagination-controls" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
-                        <button id="btn-eval-prev" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">&larr; Précédent</button>
+                        <button id="btn-eval-prev" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">&larr; Previous</button>
                         <span id="txt-eval-page" style="color: var(--text-muted); align-self: center; font-size: 0.9rem;">Page 1</span>
-                        <button id="btn-eval-next" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">Suivant &rarr;</button>
+                        <button id="btn-eval-next" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">Next &rarr;</button>
                     </div>
                 </div>
             </section>
@@ -333,7 +333,7 @@
     <!-- Edit Modal -->
     <div id="edit-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-content glass-panel">
-            <span class="close-modal">&times;</span>
+            <button type="button" class="close-modal" aria-label="Close modal">&times;</button>
             <h3 id="modal-title">Edit Configuration</h3>
             <form id="config-form">
                 <input type="hidden" id="edit-id">
@@ -370,7 +370,7 @@
     <!-- Panic Close All Confirmation Modal -->
     <div id="panic-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="panic-modal-title">
         <div class="modal-content glass-panel confirmation-panel">
-            <span class="close-modal" id="close-panic-modal">&times;</span>
+            <button type="button" class="close-modal" id="close-panic-modal" aria-label="Close modal">&times;</button>
             <div class="alert-icon-container">
                 <svg viewBox="0 0 24 24" width="48" height="48" stroke="#ef4444" stroke-width="2" fill="none"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
             </div>
@@ -395,7 +395,7 @@
 
     <div id="resume-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="resume-modal-title">
         <div class="modal-content glass-panel confirmation-panel resume-confirmation-panel">
-            <span class="close-modal" id="close-resume-modal">&times;</span>
+            <button type="button" class="close-modal" id="close-resume-modal" aria-label="Close modal">&times;</button>
             <h3 id="resume-modal-title">Resume Trading?</h3>
             <p class="modal-warning-text" id="resume-modal-message">Confirm that open orders and positions have been reconciled before resuming strategy evaluations.</p>
             <div class="double-confirm-container">

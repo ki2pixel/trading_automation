@@ -45,15 +45,21 @@ class KillSwitchStatus:
         }
 
 
+import threading
+
+_trading_suspended_lock = threading.Lock()
+
 def is_trading_suspended() -> bool:
     """Return the local Kill Switch state."""
-    return _trading_suspended
+    with _trading_suspended_lock:
+        return _trading_suspended
 
 
 def set_trading_suspended(value: bool) -> None:
     """Set the local Kill Switch state."""
     global _trading_suspended
-    _trading_suspended = value
+    with _trading_suspended_lock:
+        _trading_suspended = value
 
 
 def _normalize_namespace(value: str) -> str:

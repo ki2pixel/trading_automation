@@ -150,6 +150,8 @@ def test_frontend_modal_accessibility(live_server):
         context = browser.new_context()
         page = context.new_page()
 
+        page.on('console', lambda msg: print('PAGE CONSOLE:', msg.text))
+        page.on('pageerror', lambda err: print('PAGE ERROR:', err))
         # Login
         page.goto(f"{live_server}/login.html")
         page.wait_for_selector("#username")

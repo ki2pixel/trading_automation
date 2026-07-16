@@ -553,7 +553,12 @@ def test_stale_redis_price_resolution():
         "price": "150.00",
         "timestamp": stale_time
     })
-    redis_client_mock.get.return_value = stale_payload
+    
+    def mock_redis_get(key):
+        if "kill_switch" in key or "trading:suspended" in key:
+            return None
+        return stale_payload
+    redis_client_mock.get = MagicMock(side_effect=mock_redis_get)
 
     conn_mock = MagicMock()
     cur_mock = MagicMock()
@@ -619,12 +624,18 @@ def test_connection_singletons_thread_safety():
     """
     import threading
     import os
-    from backtest_engine.live.connection import get_db_pool, get_redis_client
+    from unittest.mock import patch
     import backtest_engine.live.connection as connection
 
     # Reset singleton states
     original_db_pool = connection._db_pool
     original_redis_client = connection._redis_client
+
+    # Stop all global patches to allow testing the real get_redis_client
+    patch.stopall()
+
+    # Re-import unpatched functions
+    from backtest_engine.live.connection import get_db_pool, get_redis_client
 
     connection._db_pool = None
     connection._redis_client = None

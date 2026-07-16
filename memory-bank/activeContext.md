@@ -1,15 +1,21 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Aucun (toutes les remédiations de l'audit backend et frontend sont validées avec succès).
+- Finalisation et validation de l'intégralité du plan de remédiation frontend Paper Trading.
 
 ## Prochaines Étapes
-- Suivi en production du comportement de la plateforme.
+- Monitoring en production du Paper Trading dashboard et de sa liaison backend.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-16 19:29:00] - Exécution et validation finale de la remédiation globale du module frontend de Paper Trading et de sa couche de liaison backend :
+  1. Phase 1 (Sécurité & Fiabilité) : Résolution de la faille de stockage des identifiants d'API, routage des jetons CSRF, gestion du cas NaN du Profit Factor, élimination des conditions de concurrence graphiques et thread-safety de FailoverRedisClient.
+  2. Phase 2 (Accès & Standardisation) : Remplacement des tags de fermeture par des boutons sémantiques, intégration des focus-visible outlines CSS, heartbeat Price Feed aria-labels, traduction i18n en Technical English, détection et affichage visuel du statut Stale/Offline de graphique, et déconnexion sécurisée via POST.
+  3. Phase 3 (Refactoring & Optimisation) : Refactoring de `app.js` en sous-modules ES (`dashboard.js`, `configs.js`, `logs.js`), gestion de la visibilité d'onglet pour stopper le polling, et implémentation de la pagination par curseur pour les transactions (API backend & navigation frontend).
+  4. Tests unitaires et E2E (Playwright) : Passage au vert de 100 % des tests unitaires et d'intégration (613/613 passés).
+- [2026-07-16 19:04:00] - Unification et rédaction du Rapport d'Audit Global du Frontend Paper Trading (`docs/audit/audit_paper_trading_frontend_global_2026-07-16.md`), consolidant les analyses, la cartographie du code réel, le catalogue complet de 32 anomalies qualifiées (SEC, FIN, PERF, ACC, DT), les protocoles de validation et la feuille de route priorisée (P1, P2, P3).
 - [2026-07-15 18:44:30] - Stabilisation du Kill Switch distribué du Paper Trader : état Redis JSON canonique et namespacé par environnement, compatibilité fail-closed avec `trading:suspended`, commandes Pub/Sub `KILL`/`SUSPEND`/`RESUME`, contrôle distribué dans `SignalExecutor`, endpoints de statut et de reprise sécurisée, et interface dashboard de reprise avec confirmation de réconciliation. Validation : 10 tests ciblés passés, compilation Python, vérification syntaxique JavaScript, diagnostics IDE et `git diff --check` sans erreur. Aucune tâche active.
 - [2026-07-15 18:05:00] - Clôture définitive de la Phase 3, versioning et audit non destructif des migrations PostgreSQL (VV-07, VV-08, VV-10, VV-13, VV-14) :
   1. Correction VV-07 (Isolation Timeframe) : Retrait de la réintroduction de la clé unique historique `UNIQUE (asset, strategy_name)` sur `paper_positions` pour garantir l'isolation par timeframe.

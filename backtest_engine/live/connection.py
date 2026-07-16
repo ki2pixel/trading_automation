@@ -398,24 +398,26 @@ class FailoverRedisClient:
             
         self._active_client = self._primary_client
         self._is_failed_over = False
+        self._failover_lock = threading.Lock()
 
     def _failover(self, error: Exception) -> None:
         if self._secondary_client is None:
             raise error
             
-        if self._is_failed_over:
-            raise error
+        with self._failover_lock:
+            if self._is_failed_over:
+                raise error
+                
+            print(f"[FailoverRedisClient] Primary Redis client encountered error: {error}. Failing over to secondary client.")
+            self._active_client = self._secondary_client
+            self._is_failed_over = True
             
-        print(f"[FailoverRedisClient] Primary Redis client encountered error: {error}. Failing over to secondary client.")
-        self._active_client = self._secondary_client
-        self._is_failed_over = True
-        
-        try:
-            self._secondary_client.ping()
-            print("[FailoverRedisClient] Secondary Redis client connected successfully.")
-        except Exception as ping_err:
-            print(f"[FailoverRedisClient] Secondary Redis client ping failed: {ping_err}")
-            raise ping_err
+            try:
+                self._secondary_client.ping()
+                print("[FailoverRedisClient] Secondary Redis client connected successfully.")
+            except Exception as ping_err:
+                print(f"[FailoverRedisClient] Secondary Redis client ping failed: {ping_err}")
+                raise ping_err
 
     def pipeline(self, *args: Any, **kwargs: Any) -> FailoverPipeline:
         return FailoverPipeline(self, *args, **kwargs)

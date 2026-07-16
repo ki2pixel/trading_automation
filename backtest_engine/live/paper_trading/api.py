@@ -4,11 +4,15 @@ import asyncio
 import logging
 import collections
 import threading
+import secrets
+import time
+import hmac
+import hashlib
 from datetime import timezone, datetime
 from decimal import Decimal
 import asyncpg
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 from typing import Any
 from backtest_engine.live.utils import is_crypto_asset
@@ -187,17 +191,34 @@ async def get_positions():
 
 
 @router.get("/transactions")
-async def get_transactions(limit: int = 50, offset: int = 0):
+async def get_transactions(limit: int = 50, offset: int = 0, cursor_timestamp: str | None = None):
     pool = await _get_pool()
     try:
         limit = min(max(1, limit), 10000)
         offset = max(0, offset)
+        cursor_dt = None
+        if cursor_timestamp:
+            try:
+                dt_str = cursor_timestamp
+                if dt_str.endswith("Z"):
+                    dt_str = dt_str[:-1] + "+00:00"
+                cursor_dt = datetime.fromisoformat(dt_str)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid cursor_timestamp format")
+
         async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
-                "FROM paper_transactions ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
-                limit, offset
-            )
+            if cursor_dt is not None:
+                rows = await conn.fetch(
+                    "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
+                    "FROM paper_transactions WHERE timestamp < $1 ORDER BY timestamp DESC LIMIT $2",
+                    cursor_dt, limit
+                )
+            else:
+                rows = await conn.fetch(
+                    "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
+                    "FROM paper_transactions ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
+                    limit, offset
+                )
             return [
                 {
                     "id": r["id"],
@@ -890,3 +911,151 @@ async def resume_trading():
         "message": "Trading resumed",
         "kill_switch": kill_switch_status.as_dict(),
     }
+
+
+# --- Authentication Helpers and Endpoints ---
+
+_hmac_secret: str | None = None
+_hmac_lock = threading.Lock()
+
+def get_hmac_secret() -> str:
+    global _hmac_secret
+    if _hmac_secret is None:
+        with _hmac_lock:
+            if _hmac_secret is None:
+                secret = os.getenv("HMAC_SECRET")
+                if not secret:
+                    import sys
+                    is_testing = "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST") is not None
+                    is_production = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+                    if is_production and not is_testing:
+                        raise ValueError("Configuration Error: HMAC_SECRET environment variable is missing!")
+                    else:
+                        secret = secrets.token_hex(32)
+                        os.environ["HMAC_SECRET"] = secret
+                _hmac_secret = secret
+    return _hmac_secret
+
+def create_session_token(username: str, expires: int, secret: str) -> str:
+    message = f"{username}:{expires}".encode("utf-8")
+    sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    return f"{username}:{expires}:{sig}"
+
+def verify_session_token(token: str, secret: str) -> bool:
+    try:
+        username, expires_str, sig = token.split(":", 2)
+        expires = int(expires_str)
+        if expires < time.time():
+            return False
+        message = f"{username}:{expires_str}".encode("utf-8")
+        expected_sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig, expected_sig)
+    except Exception:
+        return False
+
+def get_paper_trader_credentials() -> tuple[str, str]:
+    user = os.getenv("PAPER_TRADER_USER", "admin")
+    pwd = os.getenv("PAPER_TRADER_PASSWORD")
+    if not pwd:
+        import sys
+        is_testing = "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST") is not None
+        if is_testing:
+            pwd = "test_password"
+        else:
+            raise ValueError("Configuration Error: PAPER_TRADER_PASSWORD environment variable is missing!")
+    return user, pwd
+
+@router.get("/csrf-token")
+def get_csrf_token(request: Request, response: Response):
+    token = request.cookies.get("csrftoken")
+    if not token:
+        token = secrets.token_hex(32)
+        is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+        response.set_cookie(
+            key="csrftoken",
+            value=token,
+            max_age=30 * 24 * 3600,
+            path="/",
+            httponly=True,
+            secure=is_prod,
+            samesite="strict"
+        )
+    return {"csrf_token": token}
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@router.post("/login")
+async def login(request: Request):
+    content_type = request.headers.get("content-type", "")
+    username = None
+    password = None
+    is_form = False
+
+    if "application/x-www-form-urlencoded" in content_type:
+        is_form = True
+        import urllib.parse
+        body_bytes = await request.body()
+        body_str = body_bytes.decode("utf-8")
+        form_data = urllib.parse.parse_qs(body_str)
+        username = form_data.get("username", [None])[0]
+        password = form_data.get("password", [None])[0]
+    else:
+        try:
+            payload = await request.json()
+            username = payload.get("username")
+            password = payload.get("password")
+        except Exception:
+            return JSONResponse(
+                content={"status": "error", "message": "Invalid request body"},
+                status_code=400
+            )
+
+    try:
+        expected_user, expected_password = get_paper_trader_credentials()
+    except ValueError as e:
+        return JSONResponse(
+            content={"status": "error", "message": str(e)},
+            status_code=500
+        )
+
+    user_ok = hmac.compare_digest(username or "", expected_user)
+    pass_ok = hmac.compare_digest(password or "", expected_password)
+    if not (user_ok and pass_ok):
+        if is_form:
+            return RedirectResponse(url="/login.html?error=true", status_code=303)
+        return JSONResponse(
+            content={"status": "error", "message": "Invalid username or password"},
+            status_code=401
+        )
+
+    expires = int(time.time()) + 30 * 24 * 3600
+    token = create_session_token(username, expires, get_hmac_secret())
+
+    is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+
+    if is_form:
+        response = RedirectResponse(url="/", status_code=303)
+    else:
+        response = JSONResponse(content={"status": "success", "message": "Logged in successfully"})
+
+    response.set_cookie(
+        key="paper_trader_session",
+        value=token,
+        max_age=30 * 24 * 3600,
+        expires=expires,
+        path="/",
+        domain=None,
+        secure=is_prod,
+        httponly=True,
+        samesite="strict"
+    )
+    return response
+
+@router.post("/logout")
+@router.get("/logout")
+def logout():
+    response = RedirectResponse(url="/login.html", status_code=307)
+    response.delete_cookie(key="paper_trader_session", path="/")
+    return response
