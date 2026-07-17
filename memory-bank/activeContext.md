@@ -2,6 +2,7 @@
 
 ## Focus Actuel
 - Déploiement des remédiations frontend Paper Trading (23 anomalies) sur staging Render, puis production.
+- [2026-07-17] - Exécution du workflow Docs Updater : correction README (8→16 stratégies), création `docs/live_and_paper_trading/signal_executor.md`, mise à jour `docs/live_and_paper_trading/README.md` (références audits), correction commentaire `strategy_registry.py`.
 
 ## Prochaines Étapes
 - Vérification manuelle / Playwright (smoke tests) du dashboard post-remédiation.

@@ -154,7 +154,7 @@ class StrategyRegistry:
         return list(cls._registry.keys())
 
 
-# Static Registration of all 8 strategies
+# Static Registration of all 16 strategies
 StrategyRegistry.register(
     StrategyInfo(
         name="hma_crossover",

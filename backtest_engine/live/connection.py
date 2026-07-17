@@ -588,5 +588,15 @@ def get_async_redis_client():
                         kwargs["username"] = redis_user
                     if redis_password:
                         kwargs["password"] = redis_password
+                    if redis_url.startswith("rediss://"):
+                        redis_ssl_cert = os.getenv("REDIS_SSL_CERT")
+                        redis_ssl_key = os.getenv("REDIS_SSL_KEY")
+                        redis_ssl_ca = os.getenv("REDIS_SSL_CA")
+                        if redis_ssl_cert and redis_ssl_key:
+                            kwargs["ssl_certfile"] = redis_ssl_cert
+                            kwargs["ssl_keyfile"] = redis_ssl_key
+                        if redis_ssl_ca:
+                            kwargs["ssl_ca_certs"] = redis_ssl_ca
+                            kwargs["ssl_cert_reqs"] = "required"
                     _async_redis_client = aioredis.from_url(redis_url, **kwargs)
     return _async_redis_client

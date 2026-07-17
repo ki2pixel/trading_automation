@@ -1,6 +1,10 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-17] - Exécution du workflow Docs Updater (audit structurel, metrique, correction documentation) :
+  **Audit** : cloc (55 fichiers Python core, 7 301 LOC; 292 MD, 38 424 LOC), radon (complexité moyenne D, 23 fonctions score E/F), grep TODO/FIXME (26 occurrences), find fichiers modifiés récents.
+  **Corrections** : README.md 8→16 stratégies, strategy_registry.py commentaire 8→16, création signal_executor.md (complexité F documentée), ajout références audits backend/frontend 2026-07-17 dans live_and_paper_trading/README.md.
+  **Fichiers** : 4 modifiés + 1 créé.
 - [x] [2026-07-17] - Remédiation frontend Paper Trading (23 anomalies, 4 phases) :
   **Phase 1 (Critiques)** : A-01 SSE auth handling (circuit breaker + auth-check via /api/status/heartbeat, redirection /login.html si 401), A-02 RedisRateLimiterMiddleware fail-open (try-except sur get_async_redis_client init), A-03 invalidation cache perf_metrics:{asset} après panic close (best-effort, 500ms timeout).
   **Phase 2 (Hautes)** : A-04 suppression @router.get("/logout") (CSRF logout), A-05 timeout AbortController 15s sur window.fetch, A-06 retry CSRF sur 403 avec flag _csrfRetried, A-07 triggerImmediateRefresh: if (isLoading) return.

@@ -86,7 +86,7 @@ Le **Backtest Engine** est le cœur d'analyse quantitative écrit en Python. Il 
 
 ### Fonctionnalités principales
 
-- **8 stratégies intégrées** : HMA Crossover, Adaptive Volatility Trend (AVT), Range Filter, 3Commas Bot, PMax Explorer, Bjorgum Double Tap, Noise Boundary Intraday et [Cybernetic Trading](./docs/strategies/cybernetic_hilbert.md).
+- **16 stratégies intégrées** : HMA Crossover, Adaptive Volatility Trend (AVT), Range Filter, 3Commas Bot, PMax Explorer, Bjorgum Double Tap, Noise Boundary Intraday, [Cybernetic Trading](./docs/strategies/cybernetic_hilbert.md), MSL Friendly Trend, Trend Type Indicator, Adaptive Trend Classification, Smart Trader Geometric, Pivot Breakout Retest, Momentum-based ZigZag, [HMM Regime Filter](./docs/strategies/hmm_regime_filter.md) et [Lorentzian Classification](./docs/strategies/lorentzian_classification.md).
 - **Optimisation multi-cœurs** :
   - *Grid Search* (recherche exhaustive sur grille) avec déduplication active des paramètres inactifs.
   - *Bayesian Optimization* (Tree-structured Parzen Estimator via Optuna TPE) pour converger rapidement vers les meilleures configurations en limitant les itérations, avec arrêt dynamique sur convergence.
@@ -212,5 +212,5 @@ Pour naviguer facilement dans les modules, utilisez le tableau récapitulatif de
 | **Backtest Engine** | [Quickstart](./docs/backtester/backtest-engine/quickstart.md) · [Configuration](./docs/backtester/backtest-engine/configuration.md) · [Runner](./docs/backtester/backtest-engine/runner.md) · [Optimization](./docs/backtester/backtest-engine/optimization.md) · [Global Analysis](./docs/backtester/backtest-engine/global-analysis.md) · [Walk-Forward](./docs/backtester/backtest-engine/walk-forward.md) · [Job Store](./docs/backtester/backtest-engine/job-store.md) · [Viewer](./docs/backtester/backtest-engine/viewer.md) · [Performance](./docs/backtester/backtest-engine/performance.md) · [Datasets canoniques](./docs/backtester/backtest-engine/canonical-datasets.md) · [CLI Reference](./docs/backtester/backtest-engine/cli-reference.md) · [Roadmap Multi-devises](./docs/backtester/backtest-engine/currency-conversion-roadmap.md) · [Dépannage](./docs/backtester/backtest-engine/troubleshooting.md) |
 | **VectorBT Bridge** | [Rapport d'Audit](./docs/backtester/vectorbt/vectorbt_audit_report.md) · [Guide d'utilisation](./docs/backtester/vectorbt/README.md) · [Pre-Scan VectorBT](./docs/backtester/vectorbt/vectorbt_prescan.md) |
 | **Launcher** | [Utilisation](./docs/backtester/launcher/utilisation.md) · [Configuration](./docs/backtester/launcher/configuration.md) · [Lanceurs graphiques](./docs/backtester/launcher/desktop-launchers.md) |
-| **Live & Paper Trading** | [Architecture](./docs/live_and_paper_trading/README.md) · [Guide de déploiement](./docs/live_and_paper_trading/deployment_guide.md) |
+| **Live & Paper Trading** | [Architecture](./docs/live_and_paper_trading/README.md) · [Guide de déploiement](./docs/live_and_paper_trading/deployment_guide.md) · [SignalExecutor](./docs/live_and_paper_trading/signal_executor.md) |
 | **Architecture** | [Architecture globale](./docs/backtester/architecture.md) |

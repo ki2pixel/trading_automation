@@ -285,7 +285,7 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
                     )
             except Exception as e:
                 # Fail open to prevent complete outage if Redis is down
-                logger.warning(f"[RateLimiter] Redis error: {e}")
+                logger.warning(f"[RateLimiter] Redis error ({type(e).__name__}): {e}")
 
         return await call_next(request)
 

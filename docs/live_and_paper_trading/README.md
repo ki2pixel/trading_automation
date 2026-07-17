@@ -156,7 +156,7 @@ session = HTTP(
 ### 1. Séparation Infrastructure vs Logique Métier (Single Responsibility)
 Pour garantir la robustesse et la testabilité du moteur, la logique d'exécution a été scindée en deux modules distincts :
 *   **Orchestration de boucle (`engine.py`)** : Il gère les aspects d'infrastructure comme la planification du cycle de 60 secondes, les configurations de connexion à Redis et PostgreSQL, et le démarrage des clients brokers.
-*   **Exécuteur Métier (`signal_executor.py`)** : Il contient la logique pure de trading. Il effectue l'évaluation des signaux, le calcul du NAV, la mise à jour des positions en mémoire, et l'orchestration des fermetures de positions. Cette séparation permet de tester la logique de trading de manière isolée avec des objets simulés (mocks).
+*   **Exécuteur Métier (`signal_executor.py`)** : Il contient la logique pure de trading. Il effectue l'évaluation des signaux, le calcul du NAV, la mise à jour des positions en mémoire, et l'orchestration des fermetures de positions. Cette séparation permet de tester la logique de trading de manière isolée avec des objets simulés (mocks). Guide technique détaillé: **[SignalExecutor](signal_executor.md)**.
 
 ### 2. Gestion Concurrente et Pool Asynchrone (Performance DB)
 La base de données PostgreSQL subit des accès concurrents importants de la part des API FastAPI et des workers synchrones :
@@ -213,4 +213,14 @@ if micro_position_missing:
 ## The Golden Rule
 
 > **Règle d'or** : Ne laissez jamais un système de trading décider d'une taille de transaction sans une validation active de ses contraintes de liquidité; la gestion du risque doit valider chaque quantité calculée avant la transmission de l'ordre.
+
+---
+
+## Audits de Sécurité et Remédiations
+
+Le moteur de Paper Trading a fait l'objet d'audits de sécurité systématiques documentés:
+
+- **[Audit Backend (39 anomalies, 2026-07-17)](../audit/paper-trading-backend-2026-07-17.md)** — Kill Switch zombie, double entrée SignalExecutor, idempotence spot_router, race condition accumulator, rate limiting, timeouts Redis/DB, TTL margin_simulator, lock T212, anti-dérive scheduler.
+- **[Audit Frontend (23 anomalies, 2026-07-17)](../audit/paper-trading-frontend-2026-07-17.md)** — SSE auth handling, RedisRateLimiterMiddleware fail-open, invalidation cache perf_metrics, CSRF logout, AbortController timeout, debounce onglets, filtre asset server-side.
+- **[Guide de Déploiement](deployment_guide.md)** — Procédure Render, variables d'environnement, configuration bi-broker.
 
