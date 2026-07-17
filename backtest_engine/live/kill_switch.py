@@ -356,6 +356,7 @@ class KillSwitchListener:
 
     async def _listen_loop(self) -> None:
         while self._running:
+            self.redis_client = None
             try:
                 self.redis_client = aioredis.from_url(
                     self.redis_url,
@@ -374,13 +375,24 @@ class KillSwitchListener:
                         await self._handle_command(message.get("data"))
                     await asyncio.sleep(0.1)
             except asyncio.CancelledError:
-                break
+                logger.info("[KillSwitch] Listener task cancelled. Exiting.")
+                return
             except (RedisError, OSError) as exc:
+                if not self._running:
+                    return
                 logger.info("[KillSwitch] Redis connection lost (%s). Reconnecting in 5 seconds...", exc)
                 await asyncio.sleep(5)
             except Exception as exc:
+                if not self._running:
+                    return
                 logger.exception("[KillSwitch] Unexpected listener error: %s. Retrying in 5 seconds...", exc)
                 await asyncio.sleep(5)
+            finally:
+                if self.redis_client is not None:
+                    try:
+                        await self.redis_client.aclose()
+                    except Exception:
+                        pass
 
     async def _handle_command(self, raw_command: Any) -> None:
         if not isinstance(raw_command, str):
@@ -408,6 +420,8 @@ class KillSwitchListener:
         except KillSwitchStateError:
             logger.exception("[KillSwitch] Failed to persist distributed emergency suspension")
 
+        cancel_failures: list[str] = []
+
         if self.engine and getattr(self.engine, "bybit_client", None):
             try:
                 logger.info("[KillSwitch] Cancelling all Bybit Spot orders...")
@@ -419,7 +433,8 @@ class KillSwitchListener:
                     signed=True,
                 )
                 logger.info("[KillSwitch] All Bybit Spot orders successfully cancelled.")
-            except Exception:
+            except Exception as e:
+                cancel_failures.append(f"Bybit: {e}")
                 logger.exception("[KillSwitch] Failed to cancel Bybit orders")
 
         if self.engine and getattr(self.engine, "t212_client", None):
@@ -432,8 +447,19 @@ class KillSwitchListener:
                         logger.info("[KillSwitch] Cancelling Trading 212 order: %s...", order_id)
                         await asyncio.to_thread(self.engine.t212_client.cancel_order, order_id)
                 logger.info("[KillSwitch] All Trading 212 open orders successfully cancelled.")
-            except Exception:
+            except Exception as e:
+                cancel_failures.append(f"T212: {e}")
                 logger.exception("[KillSwitch] Failed to cancel Trading 212 orders")
 
         await asyncio.to_thread(_write_confirmation)
-        logger.info("[KillSwitch] Emergency suspension confirmed and propagated.")
+
+        # C2-FIX: CRITICAL alert if cancel operations failed while state is suspended
+        if cancel_failures:
+            logger.critical(
+                "[KillSwitch] EMERGENCY: Trading suspended but %d cancel operation(s) failed: %s. "
+                "MANUAL INTERVENTION REQUIRED.",
+                len(cancel_failures),
+                "; ".join(cancel_failures),
+            )
+        else:
+            logger.info("[KillSwitch] Emergency suspension confirmed and propagated.")

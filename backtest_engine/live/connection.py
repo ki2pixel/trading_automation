@@ -29,6 +29,8 @@ try:
 except ImportError:
     pass
 
+from backtest_engine.live.utils import NETWORK_TIMEOUT_DEFAULT
+
 # PostgreSQL Pool (Synchronous — psycopg2)
 _db_pool: Optional[pool.ThreadedConnectionPool] = None
 
@@ -120,9 +122,10 @@ async def close_async_pool() -> None:
         print("[ConnectionManager] asyncpg Pool closed.")
 
 _db_pool_lock = threading.Lock()
+_db_pool_semaphore: Optional[threading.Semaphore] = None
 
 def get_db_pool() -> Optional[pool.ThreadedConnectionPool]:
-    global _db_pool
+    global _db_pool, _db_pool_semaphore
     if _db_pool is None:
         with _db_pool_lock:
             if _db_pool is None:
@@ -132,6 +135,7 @@ def get_db_pool() -> Optional[pool.ThreadedConnectionPool]:
                         min_conn = int(os.getenv("DB_POOL_MIN", "2"))
                         max_conn = int(os.getenv("DB_POOL_MAX", "5"))
                         _db_pool = pool.ThreadedConnectionPool(min_conn, max_conn, db_url)
+                        _db_pool_semaphore = threading.Semaphore(max_conn)
                         print(f"[ConnectionManager] PostgreSQL ThreadedConnectionPool initialized (min={min_conn}, max={max_conn})")
                     except Exception as e:
                         print(f"[ConnectionManager] Failed to initialize PostgreSQL pool: {e}")
@@ -140,45 +144,56 @@ def get_db_pool() -> Optional[pool.ThreadedConnectionPool]:
 @contextmanager
 def get_db_connection() -> Generator[psycopg2.extensions.connection, None, None]:
     """Context manager for obtaining a database connection from the pool."""
-    pool = get_db_pool()
-    if not pool:
+    pool_obj = get_db_pool()
+    if not pool_obj:
         raise RuntimeError("[ConnectionManager] ThreadedConnectionPool is uninitialized. Refusing to fallback to direct unmanaged connections to prevent DB exhaustion.")
 
-    conn = pool.getconn()
-    if conn.closed:
-        try:
-            pool.putconn(conn, close=True)
-        except Exception:
-            pass
-        conn = pool.getconn()
+    # A4-FIX: Timeout on connection acquisition to prevent indefinite blocking
+    acquire_timeout = float(os.getenv("DB_POOL_ACQUIRE_TIMEOUT", "10"))
+    if _db_pool_semaphore and not _db_pool_semaphore.acquire(timeout=acquire_timeout):
+        raise RuntimeError(
+            f"[ConnectionManager] Failed to acquire DB connection within {acquire_timeout}s. Pool exhausted."
+        )
 
-    is_operational_error = False
     try:
-        yield conn
-    except (psycopg2.OperationalError, psycopg2.InterfaceError):
-        is_operational_error = True
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-    finally:
-        try:
-            if is_operational_error or conn.closed:
-                pool.putconn(conn, close=True)
-            else:
-                pool.putconn(conn)
-        except Exception:
+        conn = pool_obj.getconn()
+        if conn.closed:
             try:
-                conn.close()
+                pool_obj.putconn(conn, close=True)
             except Exception:
                 pass
+            conn = pool_obj.getconn()
+
+        is_operational_error = False
+        try:
+            yield conn
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            is_operational_error = True
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                if is_operational_error or conn.closed:
+                    pool_obj.putconn(conn, close=True)
+                else:
+                    pool_obj.putconn(conn)
+            except Exception:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    finally:
+        if _db_pool_semaphore:
+            _db_pool_semaphore.release()
 
 async def run_postgres_keep_alive_task(interval_seconds: int = 14400) -> None:
     """Heartbeat task to keep PostgreSQL alive on Aiven (preventing 24h idle spindown)."""
@@ -423,6 +438,8 @@ class FailoverRedisClient:
         return FailoverPipeline(self, *args, **kwargs)
 
     def __getattr__(self, name: str) -> Any:
+        # A1: Non-callable attributes (properties, etc.) are returned directly
+        # at the bottom of this method. Callables get the failover wrapper.
         attr = getattr(self._active_client, name)
         if callable(attr):
             def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -544,6 +561,9 @@ def get_redis_client() -> Optional[Union[redis.Redis, FailoverRedisClient]]:
 get_sync_connection = get_db_connection
 
 _async_redis_client = None
+# A3: threading.Lock is correct here — get_async_redis_client() is a synchronous
+# function called from both sync and async contexts. Using asyncio.Lock would
+# require `await`, making the function async and breaking sync callers.
 _async_redis_client_lock = threading.Lock()
 
 def get_async_redis_client():
@@ -555,5 +575,18 @@ def get_async_redis_client():
                 import redis.asyncio as aioredis
                 redis_url = os.getenv("REDIS_URL")
                 if redis_url:
-                    _async_redis_client = aioredis.from_url(redis_url, decode_responses=True)
+                    redis_user = os.getenv("REDIS_USER")
+                    redis_password = os.getenv("REDIS_PASSWORD")
+                    kwargs = {
+                        "decode_responses": True,
+                        "socket_timeout": NETWORK_TIMEOUT_DEFAULT,
+                        "socket_connect_timeout": NETWORK_TIMEOUT_DEFAULT,
+                        "socket_keepalive": True,
+                        "health_check_interval": 30,
+                    }
+                    if redis_user:
+                        kwargs["username"] = redis_user
+                    if redis_password:
+                        kwargs["password"] = redis_password
+                    _async_redis_client = aioredis.from_url(redis_url, **kwargs)
     return _async_redis_client

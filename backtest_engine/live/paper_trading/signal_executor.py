@@ -424,6 +424,27 @@ class SignalExecutor:
             except psycopg2.Error as db_err:
                 logger.exception("[PaperTrader] Database error batch fetching live_candles_1m")
             
+        # P2-FIX: Batch-fetch all live prices via Redis MGET before the config loop
+        live_prices_cache: Dict[str, Optional[Decimal]] = {}
+        active_asset_list = list(set(c[2].lower() for c in configs if self.is_market_open(c[2])))
+        if redis_client and active_asset_list:
+            try:
+                redis_price_keys = [f"price:{t}" for t in active_asset_list]
+                redis_values = redis_client.mget(redis_price_keys)
+                now_utc = datetime.now(timezone.utc)
+                for ticker, val in zip(active_asset_list, redis_values):
+                    if val is not None:
+                        try:
+                            data = json.loads(val)
+                            price_val = Decimal(data["price"])
+                            ts = datetime.fromisoformat(data["timestamp"])
+                            if now_utc - ts <= timedelta(minutes=3):
+                                live_prices_cache[ticker] = price_val
+                        except Exception:
+                            pass
+            except Exception:
+                logger.exception("[PaperTrader] Redis mget error for live prices batch")
+
         for config_id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params in configs:
             indicator_params = indicator_params or {}
             # Check market hours
@@ -569,25 +590,9 @@ class SignalExecutor:
                 )
                 continue
                 
-            # Fetch current live price (Redis first, then Postgres)
-            current_price = None
+            # Fetch current live price (P2-FIX: pre-batched Redis mget cache first, then Postgres)
+            current_price = live_prices_cache.get(asset.lower())
             now_utc = datetime.now(timezone.utc)
-            if redis_client:
-                try:
-                    redis_val = redis_client.get(f"price:{asset.lower()}")
-                    if redis_val is not None:
-                        try:
-                            data = json.loads(redis_val)
-                            price_val = Decimal(data["price"])
-                            ts = datetime.fromisoformat(data["timestamp"])
-                            if now_utc - ts <= timedelta(minutes=3):
-                                current_price = price_val
-                            else:
-                                logger.warning(f"[PaperTrader] Stale Redis price for {asset} (age: {(now_utc - ts).total_seconds()}s). Ignoring.")
-                        except Exception as je:
-                            logger.error(f"[PaperTrader] Failed to parse Redis price for {asset}: {je}")
-                except Exception as re:
-                    logger.exception("[PaperTrader] Redis read error")
             if current_price is None:
                 with conn.cursor() as cur:
                     cur.execute("SELECT price, updated_at FROM live_prices WHERE ticker = %s", (asset.lower(),))
@@ -786,11 +791,13 @@ class SignalExecutor:
                             # Lock the balance row first to prevent concurrent balance mutations
                             cur.execute("SELECT paper_cash_balance FROM paper_portfolio_balance WHERE source = %s FOR UPDATE", (source,))
                             
-                            # 1. Insert position
+                            # 1. Insert position with RETURNING id for intra-cycle dedup (P1-FIX)
                             cur.execute("""
                                 INSERT INTO paper_positions (asset, strategy_name, timeframe, qty, entry_price, current_price, pnl, updated_at)
                                 VALUES (%s, %s, %s, %s, %s, %s, 0, CURRENT_TIMESTAMP)
+                                RETURNING id
                             """, (asset, strategy_name, timeframe, qty, current_price, current_price))
+                            new_pos_id = cur.fetchone()[0]
                             
                             # 2. Deduct cash from correct source (deduct total cost with fee, but allocate only actual cost)
                             cur.execute("""
@@ -808,6 +815,8 @@ class SignalExecutor:
                             """, (asset, strategy_name, qty, current_price, total_buy_cost))
                             
                         conn.commit()
+                        # P1-FIX: Inject new position into local state to prevent intra-cycle duplicates
+                        active_positions[(asset.lower(), strategy_name, timeframe)] = (new_pos_id, qty, current_price)
                         if redis_client:
                             try:
                                 redis_client.delete(f"perf_metrics:{asset.lower()}")
@@ -1094,6 +1103,8 @@ class SignalExecutor:
                             """, (asset, strategy_name, qty, current_price, net_revenue))
                             
                         conn.commit()
+                        # P1-FIX: Remove position from local state to prevent intra-cycle stale reads
+                        active_positions.pop((asset.lower(), strategy_name, timeframe), None)
                         if redis_client:
                             try:
                                 redis_client.delete(f"perf_metrics:{asset.lower()}")

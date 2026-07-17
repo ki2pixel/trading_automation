@@ -50,15 +50,16 @@ class AccumulatorBuffer:
             raise ValueError("Cannot deposit non-positive amount")
 
         with conn.cursor() as cur:
+            # H1-FIX: Atomic INSERT + balance query in single CTE statement
             cur.execute("""
-                INSERT INTO conversion_accumulator (source, amount, trade_ref, created_at)
-                VALUES (%s, %s, %s, %s)
-            """, (self.source, amount, trade_ref, datetime.now(timezone.utc)))
-
-            cur.execute("""
+                WITH new_entry AS (
+                    INSERT INTO conversion_accumulator (source, amount, trade_ref, created_at)
+                    VALUES (%s, %s, %s, %s)
+                )
                 SELECT COALESCE(SUM(amount), 0) FROM conversion_accumulator
                 WHERE source = %s AND drained = FALSE
-            """, (self.source,))
+            """, (self.source, amount, trade_ref, datetime.now(timezone.utc),
+                  self.source))
             balance = Decimal(str(cur.fetchone()[0]))
 
         conn.commit()

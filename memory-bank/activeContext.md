@@ -1,20 +1,23 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Finalisation et validation de l'intégralité du plan de remédiation frontend Paper Trading.
+- Passage en production des 4 phases de remédiation du backend Paper Trading (audit 2026-07-17).
 
 ## Prochaines Étapes
-- Monitoring en production du Paper Trading dashboard et de sa liaison backend.
+- Déploiement incrémental des phases sur staging Render, puis production.
+- Exécution du plan de vérification manuel (smoke tests 30min/1h par phase).
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
-- [2026-07-16 19:29:00] - Exécution et validation finale de la remédiation globale du module frontend de Paper Trading et de sa couche de liaison backend :
-  1. Phase 1 (Sécurité & Fiabilité) : Résolution de la faille de stockage des identifiants d'API, routage des jetons CSRF, gestion du cas NaN du Profit Factor, élimination des conditions de concurrence graphiques et thread-safety de FailoverRedisClient.
-  2. Phase 2 (Accès & Standardisation) : Remplacement des tags de fermeture par des boutons sémantiques, intégration des focus-visible outlines CSS, heartbeat Price Feed aria-labels, traduction i18n en Technical English, détection et affichage visuel du statut Stale/Offline de graphique, et déconnexion sécurisée via POST.
-  3. Phase 3 (Refactoring & Optimisation) : Refactoring de `app.js` en sous-modules ES (`dashboard.js`, `configs.js`, `logs.js`), gestion de la visibilité d'onglet pour stopper le polling, et implémentation de la pagination par curseur pour les transactions (API backend & navigation frontend).
-  4. Tests unitaires et E2E (Playwright) : Passage au vert de 100 % des tests unitaires et d'intégration (613/613 passés).
+- [2026-07-17] - Exécution des 4 phases de remédiation du backend Paper Trading (39 anomalies, audit 2026-07-17) :
+  **Phase 1 (Critiques)** : Kill Switch zombie (C1 — return au lieu de break), double entrée intra-cycle SignalExecutor (P1 — RETURNING id + injection active_positions), idempotence spot_router (J1 — TTL reconciliation attempts, J2 — SUBMITTED après API call), race condition accumulator (H1 — CTE atomique), rate limiting FastAPI (Q6 — slowapi), détection production (Q3 — _is_production() centralisé), N+1 Redis (P2 — batch mget).
+  **Phase 2 (Connexions)** : Timeouts Redis async (A2 — socket_timeout/keepalive/health_check), timeout pool DB (A4 — Semaphore + DB_POOL_ACQUIRE_TIMEOUT), alerte cancel failures Kill Switch (C2 — liste + CRITICAL log), lock_timeout panic_close_all (Q2 — SET LOCAL 5s).
+  **Phase 3 (Concurrence)** : TTL margin_simulator (I1 — 300s auto-unlock), lock T212 15s→5s + existence check (K1), fcntl cache resolver (L1 — LOCK_SH/LOCK_EX + atomic rename), cohérence multi-sources ingestors (G1/N1 — PG-first, Redis pipeline, local best-effort), seuils PTC depuis env (B2 — PTC_MAX_TRADE_PCT_NAV etc.).
+  **Phase 4 (Robustesse)** : Anti-dérive scheduler (O2 — time.monotonic + remaining sleep), lazy warmup brokers (O3 — _warmup_clients()), compteur skipped cycles (O1 — alerte après 3 skips), audit DB conversions bloquées (J4 — INSERT conversion_audit_log BLOCKED), documentation threading.Lock async Redis (A3), vérification A1 (false positive).
+- **Tests** : 575 passed, 1 skipped, 0 regressions sur l'ensemble des phases.
+- **Fichiers modifiés** : 14 source + 3 test + 1 dependency + 1 .env.template.
 - [2026-07-16 19:04:00] - Unification et rédaction du Rapport d'Audit Global du Frontend Paper Trading (`docs/audit/audit_paper_trading_frontend_global_2026-07-16.md`), consolidant les analyses, la cartographie du code réel, le catalogue complet de 32 anomalies qualifiées (SEC, FIN, PERF, ACC, DT), les protocoles de validation et la feuille de route priorisée (P1, P2, P3).
 - [2026-07-15 18:44:30] - Stabilisation du Kill Switch distribué du Paper Trader : état Redis JSON canonique et namespacé par environnement, compatibilité fail-closed avec `trading:suspended`, commandes Pub/Sub `KILL`/`SUSPEND`/`RESUME`, contrôle distribué dans `SignalExecutor`, endpoints de statut et de reprise sécurisée, et interface dashboard de reprise avec confirmation de réconciliation. Validation : 10 tests ciblés passés, compilation Python, vérification syntaxique JavaScript, diagnostics IDE et `git diff --check` sans erreur. Aucune tâche active.
 - [2026-07-15 18:05:00] - Clôture définitive de la Phase 3, versioning et audit non destructif des migrations PostgreSQL (VV-07, VV-08, VV-10, VV-13, VV-14) :

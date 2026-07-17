@@ -16,13 +16,20 @@ class PreTradeController:
     """
     def __init__(
         self,
-        max_trade_pct_nav: Decimal = Decimal("0.10"),  # Max 10% NAV per trade
-        max_asset_pct_nav: Decimal = Decimal("0.30"),  # Max 30% NAV per asset
-        price_collar_pct: Decimal = Decimal("0.03")     # Max 3% price deviation
+        max_trade_pct_nav: Decimal | None = None,
+        max_asset_pct_nav: Decimal | None = None,
+        price_collar_pct: Decimal | None = None,
     ) -> None:
-        self.max_trade_pct_nav = max_trade_pct_nav
-        self.max_asset_pct_nav = max_asset_pct_nav
-        self.price_collar_pct = price_collar_pct
+        # B2-FIX: Read from environment with hardcoded fallback defaults
+        self.max_trade_pct_nav = max_trade_pct_nav or Decimal(
+            os.getenv("PTC_MAX_TRADE_PCT_NAV", "0.10")
+        )
+        self.max_asset_pct_nav = max_asset_pct_nav or Decimal(
+            os.getenv("PTC_MAX_ASSET_PCT_NAV", "0.30")
+        )
+        self.price_collar_pct = price_collar_pct or Decimal(
+            os.getenv("PTC_PRICE_COLLAR_PCT", "0.03")
+        )
 
     def check_limits(
         self,

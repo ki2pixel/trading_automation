@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import fcntl
 from typing import Dict, List, Any
 from backtest_engine.live.trading212.client import Trading212Client
 from backtest_engine.live.utils import T212_STATIC_MAPPING
@@ -39,7 +40,10 @@ class Trading212TickerResolver:
             if now - mtime < 3600:
                 try:
                     with open(cache_path, "r") as f:
+                        # L1-FIX: Shared lock for concurrent reads
+                        fcntl.flock(f.fileno(), fcntl.LOCK_SH)
                         self.instruments = json.load(f)
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
                     if self.instruments:
                         return self.instruments
                 except Exception as e:
@@ -49,10 +53,14 @@ class Trading212TickerResolver:
         print(f"[TickerResolver] Fetching and caching instruments list...")
         try:
             self.instruments = self.client.get_instruments()
-            # Ensure parent directories exist
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-            with open(cache_path, "w") as f:
+            # L1-FIX: Atomic write via temp file + rename to prevent corruption
+            tmp_path = cache_path + ".tmp"
+            with open(tmp_path, "w") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                 json.dump(self.instruments, f)
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            os.replace(tmp_path, cache_path)
             return self.instruments
         except Exception as e:
             print(f"[TickerResolver] Failed to refresh instruments list: {e}")

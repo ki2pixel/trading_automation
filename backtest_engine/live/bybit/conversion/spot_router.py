@@ -58,23 +58,51 @@ class SpotConversionRouter:
                 """)
                 row = cur.fetchone()
                 if row:
-                    logger.info(f"[SpotRouter] Found unfinished order {row[0]} in status {row[2]}. Recovering...")
+                    current_status = ConversionOrderStatus(row[2])
+                    logger.info(
+                        "[SpotRouter] Found unfinished order %s in status %s. Recovering...",
+                        row[0], current_status.value,
+                    )
                     unfinished_order = ConversionOrder(
                         client_order_id=row[0],
                         broker_order_id=row[1],
-                        status=ConversionOrderStatus(row[2]),
+                        status=current_status,
                         qty_usdc=Decimal(str(row[3])),
                         filled_qty_eur=Decimal(str(row[4])),
                         avg_fill_price=Decimal(str(row[5])),
                         fee_usdc=Decimal(str(row[6])),
                         error_message=row[7],
                         dry_run=row[8],
-                        submitted_at=row[9] if row[9] else datetime.now(timezone.utc)
+                        submitted_at=row[9] if row[9] else datetime.now(timezone.utc),
                     )
+                    # J1-FIX: Track how many times we've attempted reconciliation
+                    if current_status == ConversionOrderStatus.RECONCILIATION_PENDING:
+                        unfinished_order.reconciliation_attempts += 1
+                        if unfinished_order.reconciliation_attempts >= unfinished_order.max_reconciliation_attempts:
+                            logger.error(
+                                "[SpotRouter] Order %s exceeded max reconciliation attempts (%d). Forcing FAILED.",
+                                unfinished_order.client_order_id,
+                                unfinished_order.max_reconciliation_attempts,
+                            )
+                            unfinished_order.status = ConversionOrderStatus.FAILED
+                            unfinished_order.error_message = (
+                                f"Exceeded {unfinished_order.max_reconciliation_attempts} reconciliation attempts "
+                                f"with status {current_status.value}"
+                            )
+                            self._log_conversion(conn, unfinished_order, dry_run=unfinished_order.dry_run)
+                            return unfinished_order
                     recovered_order = self._recover_order_state(unfinished_order)
                     self._log_conversion(conn, recovered_order, dry_run=recovered_order.dry_run)
                     if recovered_order.status == ConversionOrderStatus.FILLED:
                         self.accumulator.drain(conn, recovered_order.client_order_id)
+                    elif recovered_order.status == ConversionOrderStatus.RECONCILIATION_PENDING:
+                        logger.warning(
+                            "[SpotRouter] Order %s remains in RECONCILIATION_PENDING. "
+                            "Will retry at next cycle (attempt %d/%d).",
+                            recovered_order.client_order_id,
+                            recovered_order.reconciliation_attempts,
+                            recovered_order.max_reconciliation_attempts,
+                        )
                     return recovered_order
         except Exception as e:
             logger.error(f"[SpotRouter] Failed to check/recover unfinished orders: {e}")
@@ -97,7 +125,7 @@ class SpotConversionRouter:
 
         margin_check = self.margin_sim.check_conversion_safety(balance)
         if not margin_check.is_safe:
-            self._log_blocked_conversion(balance, margin_check)
+            self._log_blocked_conversion(conn, balance, margin_check)
             return None
 
         # Step 3: Create and submit order
@@ -125,12 +153,24 @@ class SpotConversionRouter:
         if order.status == ConversionOrderStatus.FILLED:
             self.accumulator.drain(conn, order.client_order_id)
             self._log_conversion(conn, order)
+        elif order.status == ConversionOrderStatus.RECONCILIATION_PENDING:
+            # J1-FIX: Explicit retry via next cycle — Step 0 will attempt recovery
+            order.reconciliation_attempts += 1
+            if order.reconciliation_attempts >= order.max_reconciliation_attempts:
+                logger.error(
+                    "[SpotRouter] Order %s exceeded max reconciliation attempts (%d). Forcing FAILED.",
+                    order.client_order_id, order.max_reconciliation_attempts,
+                )
+                order.status = ConversionOrderStatus.FAILED
+                order.error_message = (
+                    f"Exceeded {order.max_reconciliation_attempts} reconciliation attempts"
+                )
+            self._log_conversion(conn, order)
         elif order.status in (
             ConversionOrderStatus.REJECTED,
             ConversionOrderStatus.FAILED,
             ConversionOrderStatus.SUBMITTED,
-            ConversionOrderStatus.RECONCILIATION_PENDING,
-            ConversionOrderStatus.PARTIAL
+            ConversionOrderStatus.PARTIAL,
         ):
             self._log_conversion(conn, order)
 
@@ -194,9 +234,9 @@ class SpotConversionRouter:
         for attempt in range(order.max_retries):
             try:
                 order.submitted_at = datetime.now(timezone.utc)
-                order.status = ConversionOrderStatus.SUBMITTED
-                # Persist the SUBMITTED status before the network request
-                self._log_conversion(conn, order)
+                # J2-FIX: Do NOT persist SUBMITTED before the API call.
+                # The order is already persisted as PENDING (from try_convert).
+                # Only transition to SUBMITTED after successful API response.
 
                 response = self.client._request(
                     "POST",
@@ -210,6 +250,9 @@ class SpotConversionRouter:
                 if ret_code == 0:
                     result = data.get("result", {})
                     order.broker_order_id = result.get("orderId")
+                    # J2-FIX: Transition to SUBMITTED only after confirmed API success
+                    order.status = ConversionOrderStatus.SUBMITTED
+                    self._log_conversion(conn, order)
 
                     # Confirm execution status from the broker via reconciliation (non-presumptive)
                     logger.info(
@@ -399,12 +442,34 @@ class SpotConversionRouter:
         except Exception as e:
             logger.error(f"[SpotRouter] Failed to persist audit log: {e}")
 
-    def _log_blocked_conversion(self, amount, margin_check) -> None:
-        """Log détaillé lorsqu'une conversion est bloquée par le Risk Controller."""
-        logger.warning(
-            f"[SpotRouter] CONVERSION BLOCKED: {amount} USDC. "
-            f"Reason: {margin_check.reason}. "
-            f"Equity: {margin_check.margin_state.total_equity}, "
-            f"MM: {margin_check.margin_state.total_maintenance_margin}, "
-            f"Headroom: {margin_check.headroom}"
-        )
+    def _log_blocked_conversion(self, conn, amount, margin_check) -> None:
+        """J4-FIX: Persist blocked conversion to both logger AND DB audit trail."""
+        log_entry = {
+            "event": "CONVERSION_BLOCKED",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "amount_usdc": str(amount),
+            "reason": margin_check.reason,
+            "equity": str(margin_check.margin_state.total_equity),
+            "maintenance_margin": str(margin_check.margin_state.total_maintenance_margin),
+            "headroom": str(margin_check.headroom),
+        }
+        logger.warning(f"[AUDIT] {json.dumps(log_entry)}")
+
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO conversion_audit_log
+                    (client_order_id, status, qty_usdc, error_message, dry_run, created_at)
+                    VALUES (%s, 'BLOCKED', %s, %s, FALSE, %s)
+                    """,
+                    (
+                        f"blocked-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+                        amount,
+                        margin_check.reason,
+                        datetime.now(timezone.utc),
+                    ),
+                )
+            conn.commit()
+        except Exception as e:
+            logger.error("[SpotRouter] Failed to persist blocked conversion audit: %s", e)

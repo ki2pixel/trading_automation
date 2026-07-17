@@ -229,7 +229,7 @@ def test_trading212_idempotency_and_reconciliation():
 
                 # Lock should be created using client_order_id (UUID), not ticker
                 from unittest.mock import ANY
-                mock_redis.set.assert_called_with(ANY, "locked", ex=15, nx=True)
+                mock_redis.set.assert_called_with(ANY, "locked", ex=5, nx=True)
                 args, kwargs = mock_redis.set.call_args
                 assert args[0].startswith("lock:t212:order:")
 

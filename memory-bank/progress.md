@@ -1,7 +1,13 @@
 # Suivi de Progression
 
 ## Tâches Terminées
-- [x] [2026-07-16 19:29:00] - Exécution et validation de la remédiation globale du module frontend de Paper Trading et de sa liaison backend (P1, P2, P3) :
+- [x] [2026-07-17] - Remédiation backend Paper Trading (audit 2026-07-17, 39 anomalies) — 4 phases exécutées :
+  **Phase 1 (8 anomalies critiques/hautes)** : C1 Kill Switch zombie, P1 double entrée intra-cycle, J1/J2 idempotence spot_router, H1 race condition accumulator, Q6 rate limiting slowapi, Q3 _is_production() centralisé, P2 batch Redis mget.
+  **Phase 2 (4 anomalies)** : A2 timeouts Redis async, A4 timeout pool DB, C2 alerte cancel failures, Q2 lock_timeout panic_close_all.
+  **Phase 3 (6 anomalies)** : I1 TTL margin_simulator, K1 lock T212 + existence check, L1 fcntl resolver cache, G1/N1 cohérence multi-sources ingestors, B2 seuils PTC env vars.
+  **Phase 4 (7 anomalies)** : O2 anti-dérive scheduler, O3 lazy warmup brokers, O1 skipped cycle counter, J4 audit DB conversions bloquées, A3 documentation threading.Lock, A1 false positive vérifié.
+  **Résultat** : 575 tests passés, 0 régressions. 14 fichiers source + 3 tests + 1 dependency + .env.template modifiés.
+- [x] [2026-07-16 19:29:00] - Exécution et validation finale de la remédiation globale du module frontend de Paper Trading et de sa couche liaison backend.
   - **Phase 1 (Sécurité & Fiabilité)** : Sécurisation du stockage des identifiants d'API, routage des cookies CSRF, correction du cas NaN du Profit Factor (rendu '∞'), résolution des conditions de concurrence graphiques et thread-safety sur FailoverRedisClient.
   - **Phase 2 (Accès & Standardisation)** : Remplacement des tags close par des boutons sémantiques, outlines focus-visible CSS, heartbeat Price Feed aria-labels, traduction i18n en Technical English, détection visuelle Stale/Offline de graphique, et déconnexion via POST.
   - **Phase 3 (Refactoring & Optimisation)** : Refactoring d'app.js en modules ES (`dashboard.js`, `configs.js`, `logs.js`), gestion de visibilité d'onglet pour stopper le polling, et pagination par curseur pour les transactions.

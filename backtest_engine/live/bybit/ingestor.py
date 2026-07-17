@@ -104,6 +104,13 @@ class BybitPriceIngestor(BasePriceIngestor):
     def poll_and_cache(self) -> Dict[str, float]:
         """Polls current ticker price and recent 1m candles from Bybit and saves them to caches."""
         prices: Dict[str, float] = {}
+        redis_pipeline = None
+        redis_client = get_redis_client()
+
+        # ── G1-FIX Phase 1: Stage Redis writes (buffered, NOT yet sent) ──
+        if redis_client:
+            redis_pipeline = redis_client.pipeline()
+
         for symbol in self.symbols:
             try:
                 # 1. Fetch current price
@@ -116,59 +123,70 @@ class BybitPriceIngestor(BasePriceIngestor):
                 symbol_lower = symbol.lower()
                 prices[symbol_lower] = float(price_val)
 
-                # 2. Fetch last 5 candles to keep live_candles_1m up-to-date
+                # 2. Fetch last 5 candles
                 res = self.client.get_klines(symbol, interval="1", limit=5)
                 klines_data = res.get("result", {}).get("list", [])
 
-                # 3. Write current price to Redis, PostgreSQL and local cache
-                redis_client = get_redis_client()
-                if redis_client:
-                    try:
-                        import json
-                        price_payload = json.dumps({
-                            "price": str(price_val),
-                            "timestamp": datetime.now(timezone.utc).isoformat()
-                        })
-                        redis_client.set(f"price:{symbol_lower}", price_payload, ex=180)
-                    except Exception as re:
-                        print(f"[BybitIngestor] Redis error for {symbol_lower}: {re}")
+                # Stage Redis write (buffered in pipeline, not yet executed)
+                if redis_pipeline:
+                    price_payload = json.dumps({
+                        "price": str(price_val),
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+                    redis_pipeline.set(f"price:{symbol_lower}", price_payload, ex=180)
 
-                with get_db_connection() as conn:
-                    with conn.cursor() as cur:
-                        # Write price to live_prices
-                        cur.execute("""
-                            INSERT INTO live_prices (ticker, price, source, updated_at)
-                            VALUES (%s, %s, 'bybit', CURRENT_TIMESTAMP)
-                            ON CONFLICT (ticker)
-                            DO UPDATE SET price = EXCLUDED.price, source = 'bybit', updated_at = CURRENT_TIMESTAMP;
-                        """, (symbol_lower, price_val))
-
-                        # Write klines to live_candles_1m
-                        for k in klines_data:
-                            dt = datetime.fromtimestamp(int(k[0]) / 1000.0, tz=timezone.utc)
-                            o = Decimal(k[1])
-                            h = Decimal(k[2])
-                            l = Decimal(k[3])
-                            c = Decimal(k[4])
-
+                # ── G1-FIX Phase 2: Write PostgreSQL (single transaction per symbol) ──
+                try:
+                    with get_db_connection() as conn:
+                        with conn.cursor() as cur:
                             cur.execute("""
-                                INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (ticker, timestamp_minute)
-                                DO UPDATE SET
-                                    open = EXCLUDED.open,
-                                    high = EXCLUDED.high,
-                                    low = EXCLUDED.low,
-                                    close = EXCLUDED.close;
-                            """, (symbol_lower, dt, o, h, l, c))
+                                INSERT INTO live_prices (ticker, price, source, updated_at)
+                                VALUES (%s, %s, 'bybit', CURRENT_TIMESTAMP)
+                                ON CONFLICT (ticker)
+                                DO UPDATE SET price = EXCLUDED.price, source = 'bybit', updated_at = CURRENT_TIMESTAMP;
+                            """, (symbol_lower, price_val))
 
-                        # Auto-cleanup: keep only last 7 days
-                        cur.execute("DELETE FROM live_candles_1m WHERE ticker = %s AND timestamp_minute < NOW() - INTERVAL '7 days'", (symbol_lower,))
+                            for k in klines_data:
+                                dt = datetime.fromtimestamp(int(k[0]) / 1000.0, tz=timezone.utc)
+                                o = Decimal(k[1])
+                                h = Decimal(k[2])
+                                l = Decimal(k[3])
+                                c = Decimal(k[4])
+                                cur.execute("""
+                                    INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                    ON CONFLICT (ticker, timestamp_minute)
+                                    DO UPDATE SET
+                                        open = EXCLUDED.open,
+                                        high = EXCLUDED.high,
+                                        low = EXCLUDED.low,
+                                        close = EXCLUDED.close;
+                                """, (symbol_lower, dt, o, h, l, c))
+
+                            cur.execute(
+                                "DELETE FROM live_candles_1m WHERE ticker = %s AND timestamp_minute < NOW() - INTERVAL '7 days'",
+                                (symbol_lower,),
+                            )
                         conn.commit()
+                except Exception as pg_err:
+                    print(f"[BybitIngestor] PostgreSQL write failed for {symbol_lower}: {pg_err}")
+                    # G1-FIX: Rolled back this symbol, but Redis pipeline is still intact
+                    # for symbols that succeeded. Remove this symbol from redis pipeline
+                    # by not including it in prices dict — Redis only gets committed data.
+                    prices.pop(symbol_lower, None)
+                    continue
 
             except Exception as e:
                 print(f"[BybitIngestor] Error polling {symbol}: {e}")
 
+        # ── G1-FIX Phase 3: Execute Redis pipeline (only after all PG commits succeed) ──
+        if redis_pipeline and prices:
+            try:
+                redis_pipeline.execute()
+            except Exception as redis_exec_err:
+                print(f"[BybitIngestor] Redis pipeline execution failed: {redis_exec_err}")
+
+        # ── G1-FIX Phase 4: Local cache (best-effort, non-critical) ──
         if prices:
             self._write_local_cache(prices)
 

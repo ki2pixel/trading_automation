@@ -15,9 +15,20 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 from typing import Any
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from backtest_engine.live.utils import is_crypto_asset
 
 router = APIRouter(prefix="/api")
+limiter = Limiter(key_func=get_remote_address)
+
+
+def _is_production() -> bool:
+    """Q3-FIX: Centralized production detection supporting both RENDER and ENVIRONMENT."""
+    return (
+        os.getenv("ENVIRONMENT", "").lower() == "production"
+        or os.getenv("RENDER") is not None
+    )
 
 # Global thread-safe logs buffer
 log_buffer = collections.deque(maxlen=1000)
@@ -512,7 +523,8 @@ async def get_kill_switch_state():
 
 
 @router.post("/control/panic")
-async def panic_close_all():
+@limiter.limit("3/minute")
+async def panic_close_all(request: Request):
     from backtest_engine.live.kill_switch import KillSwitchStateError, suspend_trading
 
     try:
@@ -531,6 +543,8 @@ async def panic_close_all():
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
+                # Q2-FIX: Prevent indefinite lock wait on FOR UPDATE
+                await conn.execute("SET LOCAL lock_timeout = '5000'")
                 # 1. Lock all balance rows first (consistent with signal_executor lock ordering)
                 await conn.execute("SELECT 1 FROM paper_portfolio_balance WHERE source = 'trading212' FOR UPDATE")
                 await conn.execute("SELECT 1 FROM paper_portfolio_balance WHERE source = 'bybit' FOR UPDATE")
@@ -894,7 +908,8 @@ def _compute_performance_metrics_sync(initial_capital: float, candles: list, txs
 
 
 @router.post("/control/resume")
-async def resume_trading():
+@limiter.limit("3/minute")
+async def resume_trading(request: Request):
     from backtest_engine.live.kill_switch import KillSwitchStateError, resume_trading as resume_kill_switch
 
     try:
@@ -927,8 +942,7 @@ def get_hmac_secret() -> str:
                 if not secret:
                     import sys
                     is_testing = "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST") is not None
-                    is_production = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
-                    if is_production and not is_testing:
+                    if _is_production() and not is_testing:
                         raise ValueError("Configuration Error: HMAC_SECRET environment variable is missing!")
                     else:
                         secret = secrets.token_hex(32)
@@ -970,7 +984,7 @@ def get_csrf_token(request: Request, response: Response):
     token = request.cookies.get("csrftoken")
     if not token:
         token = secrets.token_hex(32)
-        is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+        is_prod = _is_production()
         response.set_cookie(
             key="csrftoken",
             value=token,
@@ -987,6 +1001,7 @@ class LoginRequest(BaseModel):
     password: str
 
 @router.post("/login")
+@limiter.limit("10/minute")
 async def login(request: Request):
     content_type = request.headers.get("content-type", "")
     username = None
@@ -1033,7 +1048,7 @@ async def login(request: Request):
     expires = int(time.time()) + 30 * 24 * 3600
     token = create_session_token(username, expires, get_hmac_secret())
 
-    is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+    is_prod = _is_production()
 
     if is_form:
         response = RedirectResponse(url="/", status_code=303)

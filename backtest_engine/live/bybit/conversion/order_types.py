@@ -57,6 +57,8 @@ class ConversionOrder:
     error_message: Optional[str] = None
     retry_count: int = 0
     max_retries: int = 3
+    reconciliation_attempts: int = 0  # J1-FIX: track recovery retries
+    max_reconciliation_attempts: int = 10  # hard limit before forced FAILED
 
     def to_bybit_payload(self) -> dict:
         """

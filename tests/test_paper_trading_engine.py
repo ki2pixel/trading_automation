@@ -137,6 +137,8 @@ class TestPaperTradingEngine:
                 return [4995.58]
             if "SELECT current_price" in last_query:
                 return [150.0]
+            if "INSERT INTO paper_positions" in last_query and "RETURNING id" in last_query:
+                return (1,)
             return None
 
         def mock_fetchall():
@@ -263,6 +265,8 @@ class TestPaperTradingEngine:
                 return [10000.0, 10000.0] # 10k cash and nav
             if "SELECT price, updated_at FROM live_prices" in last_query:
                 return (Decimal("10.0"), datetime.now(timezone.utc))
+            if "INSERT INTO paper_positions" in last_query and "RETURNING id" in last_query:
+                return (1,)  # P1-FIX: RETURNING id mock
             return None
 
         # Return mock candles (at least 15 minutes of candles)
@@ -490,6 +494,8 @@ class TestPaperTradingEngine:
                 return [10000.0, 10000.0]
             if "SELECT price, updated_at FROM live_prices" in last_query:
                 return (Decimal("10.0"), datetime.now(timezone.utc))
+            if "INSERT INTO paper_positions" in last_query and "RETURNING id" in last_query:
+                return (1,)
             return None
 
         def mock_fetchall():

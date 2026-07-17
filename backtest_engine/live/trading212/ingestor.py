@@ -93,36 +93,9 @@ class Trading212PriceIngestor(BasePriceIngestor):
         return prices
 
     def _write_cache(self, prices: Dict[str, float]) -> None:
-        """Writes price dictionary to the JSON cache file, Redis, and database."""
-        # 1. Write to local JSON file
-        try:
-            temp_path = f"{self.cache_path}.tmp"
-            os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
-            with open(temp_path, "w") as f:
-                json.dump(prices, f)
-            os.replace(temp_path, self.cache_path)
-        except Exception as e:
-            print(f"[PriceIngestor] Failed to write price cache: {e}")
-
-        # 1.5 Write to Redis (Upstash)
-        redis_client = get_redis_client()
-        if redis_client:
-            try:
-                from datetime import datetime, timezone
-                pipe = redis_client.pipeline()
-                now_str = datetime.now(timezone.utc).isoformat()
-                for ticker, price in prices.items():
-                    price_payload = json.dumps({
-                        "price": str(price),
-                        "timestamp": now_str
-                    })
-                    pipe.set(f"price:{ticker.lower()}", price_payload, ex=180)
-                pipe.execute()
-                print(f"[PriceIngestor] Successfully published {len(prices)} prices to Redis.")
-            except Exception as e:
-                print(f"[PriceIngestor] Failed to write to Redis cache: {e}")
-
-        # 2. Write to PostgreSQL (from connection pool)
+        """Writes price dictionary to DB, Redis, and local JSON (in consistency order)."""
+        # ── N1-FIX Phase 1: PostgreSQL (must succeed first, single transaction) ──
+        pg_succeeded = False
         try:
             try:
                 with get_db_connection() as conn:
@@ -136,7 +109,6 @@ class Trading212PriceIngestor(BasePriceIngestor):
                                 DO UPDATE SET price = EXCLUDED.price, source = 'trading212', updated_at = CURRENT_TIMESTAMP;
                             """, (normalized_ticker, price))
 
-                            # UPSERT for 1m continuous pseudo-candles
                             cur.execute("""
                                 INSERT INTO live_candles_1m (ticker, timestamp_minute, open, high, low, close)
                                 VALUES (%s, date_trunc('minute', CURRENT_TIMESTAMP), %s, %s, %s, %s)
@@ -147,19 +119,46 @@ class Trading212PriceIngestor(BasePriceIngestor):
                                     close = EXCLUDED.close;
                             """, (normalized_ticker, price, price, price, price))
 
-                        # Auto-cleanup: keep only last 7 days
                         cur.execute("DELETE FROM live_candles_1m WHERE timestamp_minute < NOW() - INTERVAL '7 days'")
-
                         conn.commit()
+                    pg_succeeded = True
                     print(f"[PriceIngestor] Successfully updated {len(prices)} prices and 1m candles in PostgreSQL.")
             except RuntimeError as re:
                 if "DATABASE_URL not configured" in str(re):
-                    # Silently skip if DB is not configured (local cache only)
-                    pass
+                    pg_succeeded = True  # No DB = not a failure
                 else:
                     raise
         except Exception as e:
             print(f"[PriceIngestor] Failed to write to PostgreSQL cache: {e}")
+
+        # ── N1-FIX Phase 2: Redis (only after PG commits successfully) ──
+        if pg_succeeded:
+            redis_client = get_redis_client()
+            if redis_client:
+                try:
+                    from datetime import datetime, timezone
+                    pipe = redis_client.pipeline()
+                    now_str = datetime.now(timezone.utc).isoformat()
+                    for ticker, price in prices.items():
+                        price_payload = json.dumps({
+                            "price": str(price),
+                            "timestamp": now_str
+                        })
+                        pipe.set(f"price:{ticker.lower()}", price_payload, ex=180)
+                    pipe.execute()
+                    print(f"[PriceIngestor] Successfully published {len(prices)} prices to Redis.")
+                except Exception as e:
+                    print(f"[PriceIngestor] Failed to write to Redis cache: {e}")
+
+        # ── N1-FIX Phase 3: Local JSON cache (best-effort, non-critical) ──
+        try:
+            temp_path = f"{self.cache_path}.tmp"
+            os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
+            with open(temp_path, "w") as f:
+                json.dump(prices, f)
+            os.replace(temp_path, self.cache_path)
+        except Exception as e:
+            print(f"[PriceIngestor] Failed to write price cache: {e}")
 
     def read_cache(self) -> Dict[str, float]:
         """Reads cached prices from the JSON file."""

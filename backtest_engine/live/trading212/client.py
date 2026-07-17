@@ -155,9 +155,29 @@ class Trading212Client:
             print(f"[Trading212Client] WARNING: Could not connect to Redis: {e}")
             
         if redis_client:
-            lock_acquired = redis_client.set(lock_key, "locked", ex=15, nx=True)
+            # K1-FIX: Reduce TTL from 15s to 5s (sufficient for API round-trip)
+            lock_acquired = redis_client.set(lock_key, "locked", ex=5, nx=True)
             if not lock_acquired:
-                raise ValueError(f"Duplicate concurrent order blocked for ticker {ticker} (client_order_id: {client_order_id})")
+                # K1-FIX: Check if a prior order already succeeded before blocking
+                try:
+                    pending = self.get_pending_orders()
+                    existing = [
+                        o for o in pending
+                        if o.get("clientOrderId") == client_order_id
+                        or o.get("ticker") == ticker
+                    ]
+                    if existing:
+                        print(
+                            "[Trading212Client] Lock held but matching order already "
+                            "exists on broker — returning reconciled result."
+                        )
+                        return {"ticker": ticker, "quantity": quantity, "status": "FILLED", "reconciled": True}
+                except Exception:
+                    pass
+                raise ValueError(
+                    f"Duplicate concurrent order blocked for ticker {ticker} "
+                    f"(client_order_id: {client_order_id})"
+                )
                 
         try:
             # Currency validation

@@ -5,6 +5,7 @@ soustraction de collatéral AVANT émission de l'ordre de conversion.
 """
 from decimal import Decimal
 from typing import NamedTuple, Optional
+from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger("bybit.conversion")
@@ -47,6 +48,8 @@ class UTAMarginSimulator:
         self.safety_factor = safety_factor
         self._conversion_locked = False
         self._lock_reason: Optional[str] = None
+        self._lock_time: Optional[datetime] = None
+        self._lock_ttl_seconds: int = 300  # I1-FIX: 5-minute auto-unlock
 
     def fetch_margin_state(self) -> MarginState:
         """
@@ -111,6 +114,7 @@ class UTAMarginSimulator:
             logger.warning(f"[MarginSimulator] {reason}")
             self._conversion_locked = True
             self._lock_reason = reason
+            self._lock_time = datetime.now(timezone.utc)
             return MarginCheckResult(
                 is_safe=False,
                 margin_state=state,
@@ -149,6 +153,7 @@ class UTAMarginSimulator:
             logger.warning(f"[MarginSimulator] {reason}")
             self._conversion_locked = True
             self._lock_reason = reason
+            self._lock_time = datetime.now(timezone.utc)
 
         return MarginCheckResult(
             is_safe=is_safe,
@@ -161,10 +166,22 @@ class UTAMarginSimulator:
 
     @property
     def is_locked(self) -> bool:
+        if self._conversion_locked and self._lock_time:
+            elapsed = (datetime.now(timezone.utc) - self._lock_time).total_seconds()
+            if elapsed > self._lock_ttl_seconds:
+                logger.info(
+                    "[MarginSimulator] Lock TTL expired after %.0fs. Auto-unlocking (reason: %s).",
+                    elapsed, self._lock_reason,
+                )
+                self._conversion_locked = False
+                self._lock_reason = None
+                self._lock_time = None
+                return False
         return self._conversion_locked
 
     def unlock(self) -> None:
         """Déverrouillage manuel après résolution de la situation de marge."""
         self._conversion_locked = False
         self._lock_reason = None
+        self._lock_time = None
         logger.info("[MarginSimulator] Conversion lock released manually")

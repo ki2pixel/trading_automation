@@ -148,14 +148,17 @@ class TestBybitIngestor(unittest.TestCase):
         # Check prices output dict
         self.assertEqual(prices, {"ltcusdt": 102.5})
 
-        # Check Redis cache call (JSON payload with timestamp and TTL)
-        redis_set_call = mock_redis.set.call_args
+        # Check Redis pipeline call (G1-FIX: now uses pipeline().set() + execute())
+        mock_redis.pipeline.assert_called_once()
+        mock_pipeline = mock_redis.pipeline.return_value
+        redis_set_call = mock_pipeline.set.call_args
         self.assertEqual(redis_set_call[0][0], "price:ltcusdt")
         import json as _json
         payload = _json.loads(redis_set_call[0][1])
         self.assertEqual(payload["price"], "102.5")
         self.assertIn("timestamp", payload)
         self.assertEqual(redis_set_call[1], {"ex": 180})
+        mock_pipeline.execute.assert_called_once()
 
         # Check DB upsert for live_prices and live_candles_1m
         # 1. Update price

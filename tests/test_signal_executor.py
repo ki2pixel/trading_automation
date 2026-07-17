@@ -223,9 +223,10 @@ class TestSignalExecutor:
             ]
         ]
 
-        # Mock live price query
+        # Mock live price query + RETURNING id for intra-cycle dedup (P1-FIX)
         mock_cursor.fetchone.side_effect = [
             (Decimal("160.0"), datetime.now(timezone.utc)), # price query with updated_at
+            (101,),  # RETURNING id from INSERT
         ]
 
         # Mock strategy registry run results
