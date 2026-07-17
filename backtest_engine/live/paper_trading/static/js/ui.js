@@ -32,10 +32,7 @@ export function showToast(message, type = 'info') {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'toast-close';
     closeBtn.innerHTML = '&times;';
-    closeBtn.onclick = () => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300);
-    };
+    closeBtn.onclick = () => dismissToast(toast);
     toast.appendChild(closeBtn);
     
     container.appendChild(toast);
@@ -43,13 +40,20 @@ export function showToast(message, type = 'info') {
     // Trigger animation
     setTimeout(() => toast.classList.add('show'), 10);
     
-    // Auto-remove after 4 seconds
-    setTimeout(() => {
-        if (toast.parentNode) {
-            toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 300);
-        }
-    }, 4000);
+    // Auto-remove with hover pause
+    let autoRemoveTimer = setTimeout(() => dismissToast(toast), 4000);
+    
+    toast.addEventListener('mouseenter', () => clearTimeout(autoRemoveTimer));
+    toast.addEventListener('mouseleave', () => {
+        autoRemoveTimer = setTimeout(() => dismissToast(toast), 2000);
+    });
+}
+
+function dismissToast(toast) {
+    if (toast.parentNode) {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }
 }
 
 // System error handler that prints technical details in console but shows generic messages in UI

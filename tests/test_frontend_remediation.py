@@ -89,7 +89,7 @@ def test_frontend_login_and_security(live_server):
         # 1. Test redirect to login.html
         page.goto(live_server)
         page.wait_for_url("**/login.html")
-        assert "Connexion - Paper Trading Dashboard" in page.title()
+        assert "Login - Paper Trading Dashboard" in page.title()
 
         # 2. Test invalid credentials
         page.wait_for_selector("#username")

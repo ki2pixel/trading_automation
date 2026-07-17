@@ -368,14 +368,14 @@
     </div>
 
     <!-- Panic Close All Confirmation Modal -->
-    <div id="panic-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="panic-modal-title">
+    <div id="panic-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="panic-modal-title" aria-describedby="panic-modal-desc">
         <div class="modal-content glass-panel confirmation-panel">
             <button type="button" class="close-modal" id="close-panic-modal" aria-label="Close modal">&times;</button>
             <div class="alert-icon-container">
                 <svg viewBox="0 0 24 24" width="48" height="48" stroke="#ef4444" stroke-width="2" fill="none"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
             </div>
             <h3 id="panic-modal-title">Liquidate All Positions?</h3>
-            <p class="modal-warning-text">This will immediately sell all open positions across all portfolios (Trading 212 and Bybit) at the current market prices. This action is irreversible.</p>
+            <p class="modal-warning-text" id="panic-modal-desc">This will immediately sell all open positions across all portfolios (Trading 212 and Bybit) at the current market prices. This action is irreversible.</p>
             
             <div class="double-confirm-container">
                 <label class="checkbox-label" style="margin-bottom: 8px;">

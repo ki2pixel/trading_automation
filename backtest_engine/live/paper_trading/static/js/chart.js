@@ -23,15 +23,15 @@ export async function loadChart(ticker, forceRefresh = false) {
             placeholder.style.display = 'flex';
             placeholder.innerHTML = `
                 <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--danger)" stroke-width="1.5" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                <p style="color: var(--danger); font-weight: bold; margin-top: 10px;">Lightweight Charts CDN Offline</p>
-                <p style="font-size: 13px; max-width: 400px; text-align: center;">Unable to load the charts library from the CDN (unpkg.com). Please check your internet connection.</p>
+                <p style="color: var(--danger); font-weight: bold; margin-top: 10px;">Lightweight Charts Unavailable</p>
+                <p style="font-size: 13px; max-width: 400px; text-align: center;">Chart library failed to load. The local vendor bundle may be missing or corrupted.</p>
             `;
         }
         document.getElementById('analytics-grid').style.display = 'none';
         document.getElementById('price-chart').style.display = 'none';
         const selector = document.getElementById('asset-selector');
         if (selector) selector.disabled = true;
-        showError("Unable to load the charts library (CDN offline).");
+        showError("Chart library failed to load (vendor bundle missing).");
         return;
     }
 
@@ -130,6 +130,7 @@ export async function loadChart(ticker, forceRefresh = false) {
         });
         
         currentAsset = ticker;
+        cachedTransactions = null;
     }
     
     try {
@@ -162,7 +163,7 @@ export async function loadChart(ticker, forceRefresh = false) {
         if (cachedTransactions && !forceRefresh) {
             txData = cachedTransactions;
         } else {
-            txData = await getTransactions(5000, 0); // Get enough transactions for markers
+            txData = await getTransactions(5000, 0, null, ticker);
             if (requestId !== chartRequestId) return;
             cachedTransactions = txData;
         }
@@ -192,9 +193,8 @@ export async function loadChart(ticker, forceRefresh = false) {
         const totalTrades = perfData.total_trades;
         document.getElementById('analytic-tradescount').textContent = totalTrades;
         
-        // Filter transactions matching this asset for markers
-        const assetTxs = txData.filter(tx => tx.asset.toLowerCase() === ticker.toLowerCase());
-        const sortedTxs = [...assetTxs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        // Transactions already filtered server-side by asset
+        const sortedTxs = [...txData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         
         // Add BUY / SELL Markers to chart
         const markers = [];

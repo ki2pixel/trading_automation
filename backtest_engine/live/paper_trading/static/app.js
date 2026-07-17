@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const navItems = document.querySelectorAll('.nav-item');
     const sections = document.querySelectorAll('.view-section');
 
+    let tabDebounceTimer = null;
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {
             const targetId = item.getAttribute('data-target');
@@ -53,17 +54,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 targetSection.classList.add('active');
             }
 
-            // Immediate fetch on tab change
-            if (targetId === 'dashboard') {
-                fetchPortfolio();
-                fetchPositions();
-            } else if (targetId === 'configs') {
-                fetchConfigs();
-            } else if (targetId === 'transactions') {
-                fetchTransactions();
-            } else if (targetId === 'evaluations') {
-                fetchEvaluations();
-            }
+            // Debounce fetch by 200ms
+            if (tabDebounceTimer) clearTimeout(tabDebounceTimer);
+            tabDebounceTimer = setTimeout(() => {
+                if (targetId === 'dashboard') {
+                    fetchPortfolio();
+                    fetchPositions();
+                } else if (targetId === 'configs') {
+                    fetchConfigs();
+                } else if (targetId === 'transactions') {
+                    fetchTransactions();
+                } else if (targetId === 'evaluations') {
+                    fetchEvaluations();
+                }
+            }, 200);
         });
     });
 
@@ -72,18 +76,19 @@ document.addEventListener('DOMContentLoaded', () => {
     initLogsSSE();
     initResumeButton();
     
-    initPanicButton(() => {
+    initPanicButton(async () => {
         // Callback on panic success
         resetTxPagination();
         invalidateConfigsCache();
         
-        fetchPortfolio();
-        fetchPositions();
-        fetchTransactions();
+        // Priority 1: Critical state (serialized)
+        await Promise.all([fetchPortfolio(), fetchPositions(), fetchKillSwitchStatus()]);
         
+        // Priority 2: Historical data (serialized after priority 1)
+        await fetchTransactions();
         const selector = document.getElementById('asset-selector');
         if (selector && selector.value) {
-            loadChart(selector.value);
+            await loadChart(selector.value);
         }
     });
 
@@ -224,7 +229,7 @@ const runPollingCycle = async () => {
 };
 
 const triggerImmediateRefresh = async () => {
-    isLoading = false;
+    if (isLoading) return;
     await runPollingCycle();
 };
 

@@ -1,6 +1,12 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-17] - Remédiation frontend Paper Trading (23 anomalies, 4 phases) :
+  **Phase 1 (Critiques)** : A-01 SSE auth handling (circuit breaker + auth-check via /api/status/heartbeat, redirection /login.html si 401), A-02 RedisRateLimiterMiddleware fail-open (try-except sur get_async_redis_client init), A-03 invalidation cache perf_metrics:{asset} après panic close (best-effort, 500ms timeout).
+  **Phase 2 (Hautes)** : A-04 suppression @router.get("/logout") (CSRF logout), A-05 timeout AbortController 15s sur window.fetch, A-06 retry CSRF sur 403 avec flag _csrfRetried, A-07 triggerImmediateRefresh: if (isLoading) return.
+  **Phase 3 (Hautes/Moyennes)** : A-08 lang="fr"→"en" + titre Login, A-09 @media prefers-reduced-motion, A-10 color: #ffffff sur .btn-confirm-resume, A-11 suppression slowapi (api.py, requirements-live.txt) + PATH_RATE_LIMITS dans RedisRateLimiterMiddleware, A-13 param asset sur /api/transactions + filtre SQL LOWER(asset), A-18 aria-describedby="panic-modal-desc".
+  **Phase 4 (Moyennes)** : A-12 debounce 200ms onglets, A-14 messages CDN→vendor bundle, A-15 async/await post-panic (Promise.all état critique puis historique), A-16 SSE visibilitychange (intégré A-01), A-17 childNodes→children + firstChild→firstElementChild, A-19 toast hover pause (mouseenter/mouseleave), A-20 @media prefers-color-scheme: light (8 vars), A-21 backdrop-filter fallback rgba(22,30,49,0.95) + @supports, A-22 @media print, A-23 REDIS_CACHE_TIMEOUT=0.5 (4 occurrences 2.0→0.5s).
+  **Résultat** : 608 tests passés, 1 skipped, 0 régressions. 11 fichiers source + 2 tests + 1 dependency modifiés.
 - [x] [2026-07-17] - Remédiation backend Paper Trading (audit 2026-07-17, 39 anomalies) — 4 phases exécutées :
   **Phase 1 (8 anomalies critiques/hautes)** : C1 Kill Switch zombie, P1 double entrée intra-cycle, J1/J2 idempotence spot_router, H1 race condition accumulator, Q6 rate limiting slowapi, Q3 _is_production() centralisé, P2 batch Redis mget.
   **Phase 2 (4 anomalies)** : A2 timeouts Redis async, A4 timeout pool DB, C2 alerte cancel failures, Q2 lock_timeout panic_close_all.

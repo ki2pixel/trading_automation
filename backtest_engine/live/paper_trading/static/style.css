@@ -51,13 +51,19 @@ h1, h2, h3, h4 {
 
 /* Glassmorphism Utility */
 .glass-panel {
-    background: var(--bg-panel);
+    background: rgba(22, 30, 49, 0.95);  /* Fallback for browsers without backdrop-filter */
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
     box-shadow: var(--glass-shadow);
     transition: border-color 0.3s ease;
+}
+
+@supports (backdrop-filter: blur(16px)) {
+    .glass-panel {
+        background: var(--bg-panel);  /* Semi-transparent when blur is supported */
+    }
 }
 
 .app-container {
@@ -196,6 +202,56 @@ h1, h2, h3, h4 {
     font-size: 0.75rem;
     font-weight: 500;
     color: var(--text-light);
+}
+
+/* prefers-color-scheme: light — minimal light theme */
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg-dark: #f0f2f5;
+        --bg-panel: rgba(255, 255, 255, 0.85);
+        --glass-border: rgba(0, 0, 0, 0.08);
+        --glass-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        --text-main: #1e293b;
+        --text-muted: #64748b;
+        --text-light: #475569;
+        --console-bg: #f8fafc;
+    }
+    body {
+        background-image:
+            radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.06) 0%, transparent 40%),
+            radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.06) 0%, transparent 45%);
+    }
+}
+
+@media print {
+    .sidebar, .top-header, .toast-container, .modal,
+    #console-output, .status-indicator, .heartbeat-dot {
+        display: none !important;
+    }
+    .main-content {
+        margin-left: 0 !important;
+        overflow: visible !important;
+    }
+    .glass-panel {
+        background: white !important;
+        backdrop-filter: none !important;
+        border: 1px solid #ddd !important;
+        box-shadow: none !important;
+    }
+    body {
+        background: white !important;
+        color: black !important;
+    }
+}
+
+/* WCAG 2.3.3 — Respect user preference for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }
 
 @keyframes heartbeat-pulse {
@@ -938,7 +994,7 @@ input:checked + .slider:before {
 
 .btn-confirm-resume {
     background: var(--success);
-    color: #052e16;
+    color: #ffffff;
     border: none;
     padding: 0.6rem 1.2rem;
     border-radius: 8px;

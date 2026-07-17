@@ -263,24 +263,11 @@ export const initLogsSSE = () => {
         });
     }
     
-    const evtSource = new EventSource('/api/logs/stream');
-    
+    let evtSource = null;
     let sseErrorCount = 0;
-    evtSource.onerror = (err) => {
-        console.error("EventSource failed", err);
-        if (sseErrorCount === 0) {
-            showError("Log stream connection lost. Attempting to reconnect...");
-        }
-        sseErrorCount++;
-    };
-    evtSource.onopen = () => {
-        if (sseErrorCount > 0) {
-            showToast("Log stream connection established.", "success");
-            sseErrorCount = 0;
-        }
-    };
-    
-    evtSource.onmessage = (event) => {
+    const MAX_SSE_ERRORS = 5;
+
+    const handleSseMessage = (event) => {
         try {
             const data = JSON.parse(event.data);
             const levelClass = data.level.toLowerCase(); // 'info', 'warning', 'error'
@@ -307,8 +294,8 @@ export const initLogsSSE = () => {
             consoleOutput.appendChild(line);
             
             // Keep DOM size down
-            if (consoleOutput.childNodes.length > 1000) {
-                consoleOutput.removeChild(consoleOutput.firstChild);
+            if (consoleOutput.children.length > 1000) {
+                consoleOutput.removeChild(consoleOutput.firstElementChild);
             }
             
             // Auto scroll
@@ -319,4 +306,55 @@ export const initLogsSSE = () => {
             console.error("Error parsing log line", e);
         }
     };
+
+    const startSSE = () => {
+        evtSource = new EventSource('/api/logs/stream');
+
+        evtSource.onerror = async () => {
+            sseErrorCount++;
+            if (sseErrorCount >= MAX_SSE_ERRORS) {
+                evtSource.close();
+                try {
+                    const authRes = await fetch('/api/status/heartbeat');
+                    if (authRes.status === 401) {
+                        window.location.href = '/login.html';
+                        return;
+                    }
+                } catch (_) { /* network down */ }
+                showError("Log stream connection lost after multiple failures. Retrying in 30s...");
+                setTimeout(() => {
+                    sseErrorCount = 0;
+                    startSSE();
+                }, 30000);
+            } else if (sseErrorCount === 1) {
+                showError("Log stream connection lost. Attempting to reconnect...");
+            }
+        };
+
+        evtSource.onopen = () => {
+            if (sseErrorCount > 0) {
+                showToast("Log stream connection established.", "success");
+                sseErrorCount = 0;
+            }
+        };
+
+        evtSource.onmessage = handleSseMessage;
+    };
+
+    // Pause SSE when tab is hidden, resume on visibility
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (evtSource) {
+                evtSource.close();
+                evtSource = null;
+            }
+        } else {
+            if (!evtSource) {
+                sseErrorCount = 0;
+                startSSE();
+            }
+        }
+    });
+
+    startSSE();
 };

@@ -38,6 +38,8 @@ export async function ensureCsrfToken() {
     return cachedCsrfToken || '';
 }
 
+const FETCH_TIMEOUT_MS = 15000;
+
 // Global fetch interceptor to handle session expiration (401), network errors, 500/503 and CSRF tokens
 window.fetch = async function(url, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
@@ -51,17 +53,43 @@ window.fetch = async function(url, options = {}) {
         }
     }
     
+    // Inject AbortController with timeout (skip for SSE/stream endpoints)
+    let timeoutId;
+    if (!options.signal && !String(url).includes('/logs/stream')) {
+        const controller = new AbortController();
+        options.signal = controller.signal;
+        timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    }
+
     let response;
     try {
         response = await originalFetch(url, options);
     } catch (netError) {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (netError.name === 'AbortError') {
+            showError("Request timed out. The server may be unreachable.");
+            throw netError;
+        }
         showError("Unable to contact the server. Please check your network connection.", netError);
         throw netError;
     }
+    if (timeoutId) clearTimeout(timeoutId);
     
     if (response.status === 401) {
         window.location.href = '/login.html';
     } else if (response.status === 403) {
+        if (method !== 'GET' && !options._csrfRetried) {
+            cachedCsrfToken = null;
+            await ensureCsrfToken();
+            options._csrfRetried = true;
+            if (options.headers instanceof Headers) {
+                options.headers.set('X-CSRFToken', cachedCsrfToken);
+            } else if (options.headers) {
+                options.headers['X-CSRFToken'] = cachedCsrfToken;
+            }
+            delete options.signal;
+            return window.fetch(url, options);
+        }
         showError("Access denied or CSRF token invalid/expired (403). Please refresh the page.");
     } else if (response.status === 422) {
         try {
@@ -120,10 +148,13 @@ export async function toggleConfig(id, is_active) {
     });
 }
 
-export async function getTransactions(limit = 50, offset = 0, cursorTimestamp = null) {
+export async function getTransactions(limit = 50, offset = 0, cursorTimestamp = null, asset = null) {
     let url = `/api/transactions?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`;
     if (cursorTimestamp) {
         url += `&cursor_timestamp=${encodeURIComponent(cursorTimestamp)}`;
+    }
+    if (asset) {
+        url += `&asset=${encodeURIComponent(asset)}`;
     }
     const res = await fetch(url);
     return await res.json();

@@ -15,13 +15,12 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 from typing import Any
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from backtest_engine.live.utils import is_crypto_asset
 
 router = APIRouter(prefix="/api")
-limiter = Limiter(key_func=get_remote_address)
 
+
+REDIS_CACHE_TIMEOUT = 0.5  # 500ms for cache get/set operations
 
 def _is_production() -> bool:
     """Q3-FIX: Centralized production detection supporting both RENDER and ENVIRONMENT."""
@@ -202,7 +201,7 @@ async def get_positions():
 
 
 @router.get("/transactions")
-async def get_transactions(limit: int = 50, offset: int = 0, cursor_timestamp: str | None = None):
+async def get_transactions(limit: int = 50, offset: int = 0, cursor_timestamp: str | None = None, asset: str | None = None):
     pool = await _get_pool()
     try:
         limit = min(max(1, limit), 10000)
@@ -219,17 +218,31 @@ async def get_transactions(limit: int = 50, offset: int = 0, cursor_timestamp: s
 
         async with pool.acquire() as conn:
             if cursor_dt is not None:
-                rows = await conn.fetch(
-                    "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
-                    "FROM paper_transactions WHERE timestamp < $1 ORDER BY timestamp DESC LIMIT $2",
-                    cursor_dt, limit
-                )
+                if asset:
+                    rows = await conn.fetch(
+                        "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
+                        "FROM paper_transactions WHERE timestamp < $1 AND LOWER(asset) = LOWER($2) ORDER BY timestamp DESC LIMIT $3",
+                        cursor_dt, asset, limit
+                    )
+                else:
+                    rows = await conn.fetch(
+                        "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
+                        "FROM paper_transactions WHERE timestamp < $1 ORDER BY timestamp DESC LIMIT $2",
+                        cursor_dt, limit
+                    )
             else:
-                rows = await conn.fetch(
-                    "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
-                    "FROM paper_transactions ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
-                    limit, offset
-                )
+                if asset:
+                    rows = await conn.fetch(
+                        "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
+                        "FROM paper_transactions WHERE LOWER(asset) = LOWER($1) ORDER BY timestamp DESC LIMIT $2 OFFSET $3",
+                        asset, limit, offset
+                    )
+                else:
+                    rows = await conn.fetch(
+                        "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
+                        "FROM paper_transactions ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
+                        limit, offset
+                    )
             return [
                 {
                     "id": r["id"],
@@ -398,7 +411,7 @@ async def get_candles(ticker: str, limit: int = 1000):
 
     if redis_client:
         try:
-            cached = await asyncio.wait_for(redis_client.get(cache_key), timeout=2.0)
+            cached = await asyncio.wait_for(redis_client.get(cache_key), timeout=REDIS_CACHE_TIMEOUT)
             if cached:
                 return json.loads(cached)
         except Exception:
@@ -427,7 +440,7 @@ async def get_candles(ticker: str, limit: int = 1000):
 
             if redis_client and result:
                 try:
-                    await asyncio.wait_for(redis_client.setex(cache_key, 20, json.dumps(result)), timeout=2.0)
+                    await asyncio.wait_for(redis_client.setex(cache_key, 20, json.dumps(result)), timeout=REDIS_CACHE_TIMEOUT)
                 except Exception:
                     pass
                     
@@ -523,7 +536,6 @@ async def get_kill_switch_state():
 
 
 @router.post("/control/panic")
-@limiter.limit("3/minute")
 async def panic_close_all(request: Request):
     from backtest_engine.live.kill_switch import KillSwitchStateError, suspend_trading
 
@@ -628,6 +640,24 @@ async def panic_close_all(request: Request):
                     logger.warning(f"[PaperTrader] PANIC CLOSE: Sold {qty} units of {asset} @ {live_price} € (PnL: {pnl} €)")
                     closed_count += 1
 
+            # Invalidate perf_metrics cache for all closed assets (best-effort, outside DB txn)
+            if closed_count > 0:
+                try:
+                    from backtest_engine.live.connection import get_async_redis_client
+                    redis_client = get_async_redis_client()
+                    if redis_client:
+                        closed_assets = [pos["asset"] for pos in positions]
+                        for asset in closed_assets:
+                            try:
+                                await asyncio.wait_for(
+                                    redis_client.delete(f"perf_metrics:{asset.lower()}"),
+                                    timeout=0.5,
+                                )
+                            except Exception:
+                                pass  # Best-effort cache invalidation
+                except Exception:
+                    pass  # Redis unavailable, cache will expire via TTL
+
             return {
                 "status": "success",
                 "closed_positions_count": closed_count,
@@ -707,7 +737,7 @@ async def get_performance_metrics(ticker: str):
     # 1. Cache lookup
     if redis_client:
         try:
-            cached = await asyncio.wait_for(redis_client.get(f"perf_metrics:{ticker.lower()}"), timeout=2.0)
+            cached = await asyncio.wait_for(redis_client.get(f"perf_metrics:{ticker.lower()}"), timeout=REDIS_CACHE_TIMEOUT)
             if cached:
                 return json.loads(cached)
         except Exception:
@@ -781,7 +811,7 @@ async def get_performance_metrics(ticker: str):
         # 3. Populate cache
         if redis_client:
             try:
-                await asyncio.wait_for(redis_client.setex(f"perf_metrics:{ticker.lower()}", 300, json.dumps(result)), timeout=2.0)
+                await asyncio.wait_for(redis_client.setex(f"perf_metrics:{ticker.lower()}", 300, json.dumps(result)), timeout=REDIS_CACHE_TIMEOUT)
             except Exception:
                 pass
                 
@@ -908,7 +938,6 @@ def _compute_performance_metrics_sync(initial_capital: float, candles: list, txs
 
 
 @router.post("/control/resume")
-@limiter.limit("3/minute")
 async def resume_trading(request: Request):
     from backtest_engine.live.kill_switch import KillSwitchStateError, resume_trading as resume_kill_switch
 
@@ -1001,7 +1030,6 @@ class LoginRequest(BaseModel):
     password: str
 
 @router.post("/login")
-@limiter.limit("10/minute")
 async def login(request: Request):
     content_type = request.headers.get("content-type", "")
     username = None
@@ -1069,7 +1097,6 @@ async def login(request: Request):
     return response
 
 @router.post("/logout")
-@router.get("/logout")
 def logout():
     response = RedirectResponse(url="/login.html", status_code=307)
     response.delete_cookie(key="paper_trader_session", path="/")

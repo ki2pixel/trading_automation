@@ -31,7 +31,7 @@ def test_public_endpoints_no_auth():
     # login.html
     response = client.get("/login.html")
     assert response.status_code == 200
-    assert "Connexion - Paper Trading Dashboard" in response.text
+    assert "Login - Paper Trading Dashboard" in response.text
 
     # style.css
     response = client.get("/style.css")

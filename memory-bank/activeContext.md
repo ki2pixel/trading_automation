@@ -1,16 +1,23 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Passage en production des 4 phases de remédiation du backend Paper Trading (audit 2026-07-17).
+- Déploiement des remédiations frontend Paper Trading (23 anomalies) sur staging Render, puis production.
 
 ## Prochaines Étapes
-- Déploiement incrémental des phases sur staging Render, puis production.
-- Exécution du plan de vérification manuel (smoke tests 30min/1h par phase).
+- Vérification manuelle / Playwright (smoke tests) du dashboard post-remédiation.
+- Déploiement incrémental.
+- Aucun bloquant.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-17] - Remédiation frontend Paper Trading (23 anomalies, 4 phases) :
+  **Phase 1 (Critiques)** : A-01 SSE auth handling (circuit breaker + auth-check), A-02 RedisRateLimiterMiddleware fail-open, A-03 invalidation cache perf_metrics après panic close.
+  **Phase 2 (Hautes)** : A-04 suppression GET /api/logout (CSRF), A-05 timeout AbortController 15s sur fetch, A-06 auto-refresh CSRF sur 403, A-07 garde-fou triggerImmediateRefresh concurrence.
+  **Phase 3 (Hautes/Moyennes)** : A-08 lang/titre login.html, A-09 prefers-reduced-motion, A-10 contraste bouton Resume, A-11 suppression slowapi + consolidation RedisRateLimiterMiddleware, A-13 filtre asset server-side /api/transactions, A-18 aria-describedby modale panic.
+  **Phase 4 (Moyennes)** : A-12 debounce onglets 200ms, A-14 messages CDN corrigés, A-15 burst post-panic sérialisé, A-16 SSE visibilitychange (intégré à A-01), A-17 childNodes → children, A-19 toast pause au survol, A-20 prefers-color-scheme light, A-21 backdrop-filter fallback, A-22 @media print, A-23 REDIS_CACHE_TIMEOUT 500ms.
+  **Tests** : 608 passed, 1 skipped, 0 regressions. 11 source + 2 test + 1 dependency modifiés.
 - [2026-07-17] - Exécution des 4 phases de remédiation du backend Paper Trading (39 anomalies, audit 2026-07-17) :
   **Phase 1 (Critiques)** : Kill Switch zombie (C1 — return au lieu de break), double entrée intra-cycle SignalExecutor (P1 — RETURNING id + injection active_positions), idempotence spot_router (J1 — TTL reconciliation attempts, J2 — SUBMITTED après API call), race condition accumulator (H1 — CTE atomique), rate limiting FastAPI (Q6 — slowapi), détection production (Q3 — _is_production() centralisé), N+1 Redis (P2 — batch mget).
   **Phase 2 (Connexions)** : Timeouts Redis async (A2 — socket_timeout/keepalive/health_check), timeout pool DB (A4 — Semaphore + DB_POOL_ACQUIRE_TIMEOUT), alerte cancel failures Kill Switch (C2 — liste + CRITICAL log), lock_timeout panic_close_all (Q2 — SET LOCAL 5s).

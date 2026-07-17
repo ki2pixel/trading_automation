@@ -224,6 +224,13 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
     Token Bucket / Counter rate limiter middleware using Redis.
     Limits request rates to prevent DoS attacks.
     """
+
+    # Per-path rate limit overrides (migrated from slowapi)
+    PATH_RATE_LIMITS = {
+        "/api/control/panic": (3, 60),     # 3/minute
+        "/api/control/resume": (3, 60),    # 3/minute
+    }
+
     def __init__(self, app, rate_limit: int = 60, window_seconds: int = 60):
         super().__init__(app)
         self.rate_limit = rate_limit
@@ -239,8 +246,12 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
-        
-        if path == "/api/login":
+
+        # Check per-path overrides first, then login special case, then defaults
+        if path in self.PATH_RATE_LIMITS:
+            limit, window = self.PATH_RATE_LIMITS[path]
+            key = f"rate_limit:{path}:{client_ip}"
+        elif path == "/api/login":
             key = f"rate_limit:login:{client_ip}"
             limit = 5
             window = 300
@@ -249,8 +260,13 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
             limit = self.rate_limit
             window = self.window_seconds
 
-        from backtest_engine.live.connection import get_async_redis_client
-        redis_client = get_async_redis_client()
+        try:
+            from backtest_engine.live.connection import get_async_redis_client
+            redis_client = get_async_redis_client()
+        except Exception as e:
+            # Fail open: if Redis client initialization fails, let the request through
+            logger.warning(f"[RateLimiter] Redis client init failed (fail-open): {e}")
+            return await call_next(request)
 
         if redis_client:
             try:
