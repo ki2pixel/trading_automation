@@ -1,6 +1,12 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-25 19:25:00] - Analyse quantitative, financière et comportementale approfondie des transactions de Paper Trading (30/06/2026 au 24/07/2026) :
+  **Journal de Trading** : Reconstitution FIFO de 178 transactions (87 trades complets clôturés, 4 positions ouvertes).
+  **Métriques Globale** : Win Rate 36.78%, PnL Brut/Net T212 +71.52 € (+23.84%), PnL Net Bybit +21.91 € (Friction com. 49.61 €), Payoff Ratio 2.72, Profit Factor 1.58, Expectancy +0.82 €/trade (+0.35%), Max Drawdown -38.76 €.
+  **Diagnostic Anomalies** : Identification du whipsawing sur timeframes ultra-courts 10m/15m (36.8% de trades < 2h causant des pertes d'érosion), stop-loss fixes à 0.5% trop serrés (`AMS.MC` 0% win rate), dépendance à un outlier SAP (+91.76 €).
+  **Plan d'Ajustement** : Rehaussement timeframes 10m→30m/45m, Stop-Loss dynamiques ATR (2.0x ATR / min 2.5%), activation du Trailing Stop, filtrage de volatilité ATR et période minimale de rétention.
+  **Rapport** : Rédaction du rapport complet dans `paper_trading_analysis_report.md`.
 - [x] [2026-07-17] - Exécution du workflow Docs Updater (audit structurel, metrique, correction documentation) :
   **Audit** : cloc (55 fichiers Python core, 7 301 LOC; 292 MD, 38 424 LOC), radon (complexité moyenne D, 23 fonctions score E/F), grep TODO/FIXME (26 occurrences), find fichiers modifiés récents.
   **Corrections** : README.md 8→16 stratégies, strategy_registry.py commentaire 8→16, création signal_executor.md (complexité F documentée), ajout références audits backend/frontend 2026-07-17 dans live_and_paper_trading/README.md.

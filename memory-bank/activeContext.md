@@ -2,6 +2,7 @@
 
 ## Focus Actuel
 - Déploiement des remédiations frontend Paper Trading (23 anomalies) sur staging Render, puis production.
+- [2026-07-25 19:25:00] - Réalisation de l'analyse quantitative, financière et comportementale approfondie du Paper Trading (30/06/2026 au 24/07/2026). Journal complet reconstruit (178 tx, 87 trades clôturés). Rapport d'analyse et plan d'ajustement paramétrique/algorithmique rédigés dans `paper_trading_analysis_report.md`.
 - [2026-07-17] - Exécution du workflow Docs Updater : correction README (8→16 stratégies), création `docs/live_and_paper_trading/signal_executor.md`, mise à jour `docs/live_and_paper_trading/README.md` (références audits), correction commentaire `strategy_registry.py`.
 
 ## Prochaines Étapes
