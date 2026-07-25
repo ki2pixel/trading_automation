@@ -661,4 +661,87 @@ class TestPaperTradingEngine:
         assert abs(secured_balance_added - Decimal('179.818181')) < Decimal('0.0001')
         assert abs(allocated_balance_removed - Decimal('1000.0')) < Decimal('0.0001')
 
+    def test_reconcile_allocated_balances_multi_source(self):
+        # Given: Mock connection with T212 asset (AAPL) and Bybit asset (BTCUSDT)
+        from backtest_engine.live.paper_trading.db_setup import reconcile_allocated_balances
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        mock_cursor.fetchall.side_effect = [
+            [("trading212",), ("bybit",)],
+            [("AAPL", Decimal("10"), Decimal("120.0")), ("BTCUSDT", Decimal("0.5"), Decimal("4000.0"))]
+        ]
+
+        # When: reconcile_allocated_balances is called
+        reconcile_allocated_balances(mock_conn)
+
+        # Then: FOR UPDATE lock query and UPDATE queries are executed with exact Decimal sums
+        lock_calls = [
+            call for call in mock_cursor.execute.call_args_list
+            if "FOR UPDATE" in call[0][0]
+        ]
+        assert len(lock_calls) >= 1
+
+        update_calls = [
+            call[0] for call in mock_cursor.execute.call_args_list
+            if "UPDATE paper_portfolio_balance" in call[0][0]
+        ]
+        assert len(update_calls) == 2
+        params_by_source = {c[1][1]: c[1][0] for c in update_calls}
+        assert params_by_source["trading212"] == Decimal("1200.0")
+        assert params_by_source["bybit"] == Decimal("2000.0")
+
+    def test_reconcile_allocated_balances_empty_positions(self):
+        # Given: Database with sources but no open positions
+        from backtest_engine.live.paper_trading.db_setup import reconcile_allocated_balances
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        mock_cursor.fetchall.side_effect = [
+            [("trading212",), ("bybit",)],
+            []
+        ]
+
+        # When: reconcile_allocated_balances is executed
+        reconcile_allocated_balances(mock_conn)
+
+        # Then: allocated_balance is reset to 0 for both sources
+        update_calls = [
+            call[0] for call in mock_cursor.execute.call_args_list
+            if "UPDATE paper_portfolio_balance" in call[0][0]
+        ]
+        assert len(update_calls) == 2
+        for call in update_calls:
+            assert call[1][0] == Decimal("0")
+
+    def test_signal_executor_reconcile_allocated_balances(self):
+        # Given: SignalExecutor instance and mock connection with positions
+        engine = PaperTradingEngine(db_url="sqlite:///:memory:")
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        mock_cursor.fetchall.side_effect = [
+            [("trading212",), ("bybit",)],
+            [("TSLA", Decimal("5"), Decimal("200.0"))]
+        ]
+
+        # When: engine.executor.reconcile_allocated_balances is called
+        engine.executor.reconcile_allocated_balances(mock_conn)
+
+        # Then: paper_portfolio_balance is reconciled for trading212 with 1000.0
+        update_calls = [
+            call[0] for call in mock_cursor.execute.call_args_list
+            if "UPDATE paper_portfolio_balance" in call[0][0]
+        ]
+        assert len(update_calls) == 2
+        params_by_source = {c[1][1]: c[1][0] for c in update_calls}
+        assert params_by_source["trading212"] == Decimal("1000.0")
+        assert params_by_source["bybit"] == Decimal("0")
+
+
 

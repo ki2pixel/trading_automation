@@ -155,6 +155,19 @@ class SignalExecutor:
             except psycopg2.Error:
                 pass
 
+    def reconcile_allocated_balances(self, conn: Any = None) -> None:
+        """
+        Reconcile paper_portfolio_balance.allocated_balance with open paper_positions.
+        """
+        from backtest_engine.live.paper_trading.db_setup import reconcile_allocated_balances
+        if conn is not None:
+            reconcile_allocated_balances(conn)
+        else:
+            from backtest_engine.live.connection import get_db_connection
+            with get_db_connection() as conn_obj:
+                reconcile_allocated_balances(conn_obj)
+                conn_obj.commit()
+
     def update_portfolio_nav(self, conn: Any) -> None:
         """
         Update the total NAV of the portfolio based on current prices of positions

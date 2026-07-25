@@ -14,6 +14,7 @@
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-25 20:17:00] - Implémentation du contrôle d'idempotence et de réconciliation de `paper_portfolio_balance.allocated_balance` : Ajout de `reconcile_allocated_balances(conn)` dans `db_setup.py` (exécuté dans `init_db()` au démarrage) et de `SignalExecutor.reconcile_allocated_balances(conn)` avec verrouillage transactionnel `FOR UPDATE`, calcul exact en `Decimal(qty * entry_price)` ventilé par écosystème ('trading212' / 'bybit'). Tests unitaires validés (14/14 `test_paper_trading_engine.py`, 28/28 tests totaux passés).
 - [2026-07-17] - Remédiation frontend Paper Trading (23 anomalies, 4 phases) :
   **Phase 1 (Critiques)** : A-01 SSE auth handling (circuit breaker + auth-check), A-02 RedisRateLimiterMiddleware fail-open, A-03 invalidation cache perf_metrics après panic close.
   **Phase 2 (Hautes)** : A-04 suppression GET /api/logout (CSRF), A-05 timeout AbortController 15s sur fetch, A-06 auto-refresh CSRF sur 403, A-07 garde-fou triggerImmediateRefresh concurrence.

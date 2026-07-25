@@ -1,5 +1,7 @@
 import os
 import json
+from typing import Any
+from decimal import Decimal
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -402,6 +404,55 @@ SEED_CONFIGS = [
         }
     }
 ]
+
+def reconcile_allocated_balances(conn: Any) -> None:
+    """
+    Reconciles paper_portfolio_balance.allocated_balance with the sum of
+    committed capital (qty * entry_price) for open positions in paper_positions.
+    Uses FOR UPDATE transactional locking to prevent race conditions.
+    """
+    from backtest_engine.live.utils import is_crypto_asset
+
+    with conn.cursor() as cur:
+        # Lock paper_portfolio_balance rows for update and fetch existing sources
+        cur.execute("SELECT source FROM paper_portfolio_balance FOR UPDATE")
+        balance_rows = cur.fetchall()
+
+        allocated_sums = {r[0]: Decimal("0") for r in balance_rows}
+        if "trading212" not in allocated_sums:
+            allocated_sums["trading212"] = Decimal("0")
+        if "bybit" not in allocated_sums:
+            allocated_sums["bybit"] = Decimal("0")
+
+        # Fetch open positions
+        cur.execute("SELECT asset, qty, entry_price FROM paper_positions")
+        positions = cur.fetchall()
+
+        for row in positions:
+            asset = row[0]
+            qty = row[1]
+            entry_price = row[2]
+
+            if qty is not None and entry_price is not None:
+                qty_dec = Decimal(str(qty))
+                entry_dec = Decimal(str(entry_price))
+                cost = qty_dec * entry_dec
+                source = 'bybit' if is_crypto_asset(asset) else 'trading212'
+                if source in allocated_sums:
+                    allocated_sums[source] += cost
+                else:
+                    allocated_sums[source] = cost
+
+        for source, allocated_real in allocated_sums.items():
+            cur.execute(
+                """
+                UPDATE paper_portfolio_balance
+                SET allocated_balance = %s,
+                    last_updated = CURRENT_TIMESTAMP
+                WHERE source = %s
+                """,
+                (allocated_real, source)
+            )
 
 def init_db():
     if not DATABASE_URL:
@@ -855,6 +906,9 @@ def init_db():
                         VALUES (2, 'Timeframe column added to paper_positions, unique constraints updated, and historical positions backfilled/quarantined.')
                         ON CONFLICT (version) DO NOTHING;
                     """)
+
+                # Reconcile allocated balance with actual paper_positions
+                reconcile_allocated_balances(conn)
 
             conn.commit()
             print("[DB Setup] Paper trading database schema initialized and seeded.")
