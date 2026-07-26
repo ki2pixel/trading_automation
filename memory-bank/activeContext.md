@@ -1,17 +1,23 @@
 # Contexte Actif
 
 ## Focus Actuel
+- [2026-07-27 01:35:00] - Clôture et validation de la remédiation Paper Trading (`docs/audit/paper-trading-frontend-2026-07-26.md` / `implementation_plan.md`). Les 15 anomalies (F-01 à F-15) réparties sur 3 phases ont été intégrées et validées sans régression.
+- [2026-07-27 01:40:00] - Audit et alignement des règles de développement (`AGENTS.md` et `.agents/rules/codingstandards.md`) effectués avec succès après les travaux de remédiation backend Paper Trading (PT-01 à PT-26). Intégration des invariants de sécurité (mode public/fallback des clés, failsafe SHA256), isolation des exceptions broker, séquençage strict PostgreSQL->Redis, wrapping `asyncio.to_thread` des appels I/O synchrones, normalisation canonique minuscules des tickers (`ticker.lower()`) et bufferisation PnL `AccumulatorBuffer`.
 - [2026-07-26 22:40:00] - Clôture et validation de la remédiation backend Paper Trading (`docs/audit/paper-trading-backend-2026-07-26.md` / `implementation_plan.md`). Les 26 anomalies (PT-01 à PT-26) réparties sur 4 phases ont été corrigées et validées par la suite de tests (92/92 tests verts).
-- [2026-07-25 19:25:00] - Réalisation de l'analyse quantitative, financière et comportementale approfondie du Paper Trading (30/06/2026 au 24/07/2026). Journal complet reconstruit (178 tx, 87 trades clôturés). Rapport d'analyse et plan d'ajustement paramétrique/algorithmique rédigés dans `paper_trading_analysis_report.md`.
 
 ## Prochaines Étapes
 - Monitoring et observation de l'exécution live / Paper Trading.
 - Aucun bloquant.
 
-## Bloquants / Problems Actuels
+## Bloquants / Problèmes Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-27 01:35:00] - Remédiation globale Paper Trading (15 anomalies F-01 à F-15, audit 26/07/2026) :
+  **Phase 1 (Sécurité & Intégrité)** : F-01 (Composite cursor `(timestamp, id)` pagination), F-02 (Extraction IP réelle via `X-Forwarded-For` et `forwarded_allow_ips` Uvicorn).
+  **Phase 2 (Robustesse UI & Transport)** : F-03 (SSE log deduplication par `seq`), F-04 (Révocation de session `jti` + Redis blacklist au logout), F-05 (Protection XSS `textContent` chart placeholders), F-06 (Validation Pydantic server-side `ConfigUpdate`), F-07 (Gestion centralisée HTTP 429 & UX login).
+  **Phase 3 (Conformité & Cosmétique)** : F-08 (Harmonisation `lang="en"` & UI), F-09 (Logout HTTP 303 See Other), F-10 (Sélecteur d'actifs dynamique), F-11 (Deduplication promesse CSRF), F-12 (CSP `object-src/base-uri` & script `defer`), F-13 (Evaluations composite cursor), F-14 (Accessibilité ARIA modales/sélecteurs), F-15 (Favicon middleware auth, placeholder login).
+  **Validation** : Suite de tests de sécurité et d'authentification exécutée, 0 régression.
 - [2026-07-26 22:40:00] - Remédiation Backend Paper Trading (26 anomalies PT-01 à PT-26, 4 phases) :
   **Phase 1 (Critiques/Hautes)** : PT-01 (`dry_run` dans dataclass `ConversionOrder` + Step 0 fail-closed), PT-02 (normalisation `.lower()` tickers warm-up), PT-03 (masquage hostname credentials Redis URL), PT-04 (staging Redis post-commit PG ingestor Bybit).
   **Phase 2 (Hautes/Moyennes)** : PT-05 (`continue` post-rejet `qty <= 0`), PT-06 (isolation exceptions par broker dans `update_portfolio_nav`), PT-07 (`deposit()` câblé sur SELL Bybit profitable), PT-08 (prix de référence indépendant pour PTC price collar), PT-09 (curseur `seq` monotone flux SSE logs), PT-10 (batch SQL `ANY()` + alignement `secured_balance` Panic Close).

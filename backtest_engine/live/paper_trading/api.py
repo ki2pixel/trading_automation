@@ -8,12 +8,13 @@ import secrets
 import time
 import hmac
 import hashlib
+import uuid
 from datetime import timezone, datetime
 from decimal import Decimal
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator, Field
 from typing import Any
 from backtest_engine.live.utils import is_crypto_asset
 
@@ -119,12 +120,18 @@ class IndicatorParamsModel(BaseModel):
 
 
 class ConfigUpdate(BaseModel):
-    initial_capital: float
-    initial_capital_bucket: float
-    max_capital_bucket: float
-    max_entry_price: float
+    initial_capital: float = Field(gt=0)
+    initial_capital_bucket: float = Field(gt=0)
+    max_capital_bucket: float = Field(gt=0)
+    max_entry_price: float = Field(gt=0)
     is_active: bool
     indicator_params: IndicatorParamsModel | None = None
+
+    @model_validator(mode='after')
+    def validate_bucket_ordering(self):
+        if self.initial_capital_bucket > self.max_capital_bucket:
+            raise ValueError("initial_capital_bucket must not exceed max_capital_bucket")
+        return self
 
 
 class ConfigToggle(BaseModel):
@@ -208,13 +215,13 @@ async def get_positions():
 
 
 @router.get("/transactions")
-async def get_transactions(limit: int = 50, offset: int = 0, cursor_timestamp: str | None = None, asset: str | None = None):
+async def get_transactions(limit: int = 50, offset: int = 0, cursor_timestamp: str | None = None, cursor_id: int | None = None, asset: str | None = None):
     pool = await _get_pool()
     try:
         limit = min(max(1, limit), 10000)
         offset = max(0, offset)
         cursor_dt = None
-        if cursor_timestamp:
+        if cursor_timestamp and cursor_id is not None:
             try:
                 dt_str = cursor_timestamp
                 if dt_str.endswith("Z"):
@@ -224,30 +231,30 @@ async def get_transactions(limit: int = 50, offset: int = 0, cursor_timestamp: s
                 raise HTTPException(status_code=400, detail="Invalid cursor_timestamp format")
 
         async with pool.acquire() as conn:
-            if cursor_dt is not None:
+            if cursor_dt is not None and cursor_id is not None:
                 if asset:
                     rows = await conn.fetch(
                         "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
-                        "FROM paper_transactions WHERE timestamp < $1 AND LOWER(asset) = LOWER($2) ORDER BY timestamp DESC LIMIT $3",
-                        cursor_dt, asset, limit
+                        "FROM paper_transactions WHERE (timestamp, id) < ($1, $2) AND LOWER(asset) = LOWER($3) ORDER BY timestamp DESC, id DESC LIMIT $4",
+                        cursor_dt, cursor_id, asset, limit
                     )
                 else:
                     rows = await conn.fetch(
                         "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
-                        "FROM paper_transactions WHERE timestamp < $1 ORDER BY timestamp DESC LIMIT $2",
-                        cursor_dt, limit
+                        "FROM paper_transactions WHERE (timestamp, id) < ($1, $2) ORDER BY timestamp DESC, id DESC LIMIT $3",
+                        cursor_dt, cursor_id, limit
                     )
             else:
                 if asset:
                     rows = await conn.fetch(
                         "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
-                        "FROM paper_transactions WHERE LOWER(asset) = LOWER($1) ORDER BY timestamp DESC LIMIT $2 OFFSET $3",
+                        "FROM paper_transactions WHERE LOWER(asset) = LOWER($1) ORDER BY timestamp DESC, id DESC LIMIT $2 OFFSET $3",
                         asset, limit, offset
                     )
                 else:
                     rows = await conn.fetch(
                         "SELECT id, timestamp, asset, strategy_name, action, qty, price, total_value "
-                        "FROM paper_transactions ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
+                        "FROM paper_transactions ORDER BY timestamp DESC, id DESC LIMIT $1 OFFSET $2",
                         limit, offset
                     )
             return [
@@ -267,11 +274,21 @@ async def get_transactions(limit: int = 50, offset: int = 0, cursor_timestamp: s
 
 
 @router.get("/evaluations")
-async def get_evaluations(limit: int = 100, offset: int = 0, status: str | None = None, asset: str | None = None):
+async def get_evaluations(limit: int = 100, offset: int = 0, status: str | None = None, asset: str | None = None,
+                          cursor_timestamp: str | None = None, cursor_id: int | None = None):
     pool = await _get_pool()
     try:
         limit = min(max(1, limit), 10000)
         offset = max(0, offset)
+        cursor_dt = None
+        if cursor_timestamp and cursor_id is not None:
+            try:
+                dt_str = cursor_timestamp
+                if dt_str.endswith("Z"):
+                    dt_str = dt_str[:-1] + "+00:00"
+                cursor_dt = datetime.fromisoformat(dt_str)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid cursor_timestamp format")
 
         query = (
             "SELECT id, timestamp, strategy_name, asset, timeframe, price, "
@@ -281,6 +298,12 @@ async def get_evaluations(limit: int = 100, offset: int = 0, status: str | None 
         conditions = []
         params = []
         param_idx = 1
+
+        # Composite cursor takes precedence over offset
+        if cursor_dt is not None and cursor_id is not None:
+            conditions.append(f"(timestamp, id) < (${param_idx}, ${param_idx + 1})")
+            params.extend([cursor_dt, cursor_id])
+            param_idx += 2
 
         if status:
             conditions.append(f"status = ${param_idx}")
@@ -294,9 +317,13 @@ async def get_evaluations(limit: int = 100, offset: int = 0, status: str | None 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        query += f" ORDER BY timestamp DESC LIMIT ${param_idx} OFFSET ${param_idx + 1}"
-        params.append(limit)
-        params.append(offset)
+        if cursor_dt is not None and cursor_id is not None:
+            query += f" ORDER BY timestamp DESC, id DESC LIMIT ${param_idx}"
+            params.append(limit)
+        else:
+            query += f" ORDER BY timestamp DESC LIMIT ${param_idx} OFFSET ${param_idx + 1}"
+            params.append(limit)
+            params.append(offset)
 
         async with pool.acquire() as conn:
             rows = await conn.fetch(query, *params)
@@ -1002,22 +1029,74 @@ def get_hmac_secret() -> str:
                 _hmac_secret = secret
     return _hmac_secret
 
-def create_session_token(username: str, expires: int, secret: str) -> str:
-    message = f"{username}:{expires}".encode("utf-8")
+def create_session_token(username: str, expires: int, secret: str, jti: str | None = None) -> tuple[str, str]:
+    """Returns (token, jti). jti is generated if not provided."""
+    if jti is None:
+        jti = uuid.uuid4().hex
+    message = f"{username}:{expires}:{jti}".encode("utf-8")
     sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
-    return f"{username}:{expires}:{sig}"
+    return f"{username}:{expires}:{jti}:{sig}", jti
 
-def verify_session_token(token: str, secret: str) -> bool:
+def verify_session_token(token: str, secret: str) -> tuple[bool, str | None, int | None]:
+    """Returns (valid, username, expires)."""
     try:
-        username, expires_str, sig = token.split(":", 2)
+        parts = token.split(":", 3)
+        if len(parts) == 4:
+            username, expires_str, jti, sig = parts
+        elif len(parts) == 3:
+            # Legacy tokens (pre-jti) — username:expires:sig
+            username, expires_str, sig = parts
+            jti = None
+        else:
+            return False, None, None
         expires = int(expires_str)
         if expires < time.time():
-            return False
-        message = f"{username}:{expires_str}".encode("utf-8")
+            return False, None, None
+        message = f"{username}:{expires_str}"
+        if jti:
+            message += f":{jti}"
+        message = message.encode("utf-8")
         expected_sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(sig, expected_sig)
+        if hmac.compare_digest(sig, expected_sig):
+            return True, username, expires
+        return False, None, None
     except Exception:
+        return False, None, None
+
+
+SESSION_TTL_SECONDS = 12 * 3600       # 12 hours
+SESSION_REFRESH_WINDOW = 4 * 3600     # Re-sign when less than 4h remain
+SESSION_COOKIE_MAX_AGE = SESSION_TTL_SECONDS
+
+async def _is_session_revoked(jti: str) -> bool:
+    """Check Redis for a revoked jti."""
+    if not jti:
         return False
+    try:
+        from backtest_engine.live.connection import get_async_redis_client
+        redis_client = get_async_redis_client()
+        if redis_client:
+            result = await asyncio.wait_for(
+                redis_client.exists(f"session_revoked:{jti}"), timeout=1.0
+            )
+            return bool(result)
+    except Exception:
+        pass
+    return False
+
+async def _revoke_session(jti: str, ttl: int) -> None:
+    """Insert jti into Redis revocation set with residual TTL."""
+    if not jti:
+        return
+    try:
+        from backtest_engine.live.connection import get_async_redis_client
+        redis_client = get_async_redis_client()
+        if redis_client:
+            await asyncio.wait_for(
+                redis_client.setex(f"session_revoked:{jti}", ttl, "1"), timeout=1.0
+            )
+    except Exception as e:
+        logger.warning("[Session] Failed to revoke jti %s: %s", jti, e)
 
 def get_paper_trader_credentials() -> tuple[str, str]:
     user = os.getenv("PAPER_TRADER_USER", "admin")
@@ -1096,8 +1175,8 @@ async def login(request: Request):
             status_code=401
         )
 
-    expires = int(time.time()) + 30 * 24 * 3600
-    token = create_session_token(username, expires, get_hmac_secret())
+    expires = int(time.time()) + SESSION_TTL_SECONDS
+    token, jti = create_session_token(username, expires, get_hmac_secret())
 
     is_prod = _is_production()
 
@@ -1109,7 +1188,7 @@ async def login(request: Request):
     response.set_cookie(
         key="paper_trader_session",
         value=token,
-        max_age=30 * 24 * 3600,
+        max_age=SESSION_COOKIE_MAX_AGE,
         expires=expires,
         path="/",
         domain=None,
@@ -1120,7 +1199,22 @@ async def login(request: Request):
     return response
 
 @router.post("/logout")
-def logout():
-    response = RedirectResponse(url="/login.html", status_code=307)
+async def logout(request: Request):
+    # Extract jti from session token and revoke it
+    session_token = request.cookies.get("paper_trader_session")
+    if session_token:
+        try:
+            parts = session_token.split(":", 3)
+            if len(parts) >= 3:
+                jti = parts[2] if len(parts) == 4 else None
+                if jti:
+                    token_expires = int(parts[1])
+                    residual_ttl = max(0, token_expires - int(time.time()))
+                    if residual_ttl > 0:
+                        await _revoke_session(jti, residual_ttl)
+        except (ValueError, IndexError):
+            pass
+
+    response = RedirectResponse(url="/login.html", status_code=303)
     response.delete_cookie(key="paper_trader_session", path="/")
     return response

@@ -1,4 +1,5 @@
 import os
+import time
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -96,7 +97,7 @@ def test_global_handler_paper_trader():
     """
     client = TestClient(paper_app, raise_server_exceptions=False)
 
-    with patch("run_paper_trader.verify_session_token", return_value=True):
+    with patch("run_paper_trader.verify_session_token", return_value=(True, "admin", int(time.time()) + 3600)):
         client.cookies.set("paper_trader_session", "mock_token")
         with patch("backtest_engine.live.paper_trading.api._get_pool", side_effect=RuntimeError("Mock DB pool crashed!")):
             with patch.dict(os.environ, {"ENVIRONMENT": "production", "DEBUG": "false"}):

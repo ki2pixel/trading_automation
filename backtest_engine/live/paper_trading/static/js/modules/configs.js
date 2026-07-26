@@ -153,9 +153,13 @@ export const fetchConfigs = async (forceRefresh = false) => {
             tbody.appendChild(tr);
         });
 
-        // Bind Asset Select Dropdown if empty
+        // Re-populate Asset Select Dropdown, preserving current selection
         const selector = document.getElementById('asset-selector');
-        if (selector && selector.options.length <= 1) {
+        if (selector) {
+            const currentValue = selector.value;
+            while (selector.options.length > 1) {
+                selector.remove(1);
+            }
             const assets = [...new Set(data.map(c => c.asset))];
             assets.forEach(asset => {
                 const opt = document.createElement('option');
@@ -163,6 +167,9 @@ export const fetchConfigs = async (forceRefresh = false) => {
                 opt.textContent = asset;
                 selector.appendChild(opt);
             });
+            if (currentValue && assets.includes(currentValue)) {
+                selector.value = currentValue;
+            }
         }
 
         // Bind strategy toggle switches

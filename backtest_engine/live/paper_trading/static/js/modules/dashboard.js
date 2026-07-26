@@ -169,12 +169,14 @@ export const fetchPositions = async () => {
 
         const t212PnlEl = document.getElementById('kpi-t212-pnl');
         if (t212PnlEl) {
+            totalT212Pnl = Math.round(totalT212Pnl * 100) / 100;
             t212PnlEl.textContent = formatCurrency(totalT212Pnl);
             t212PnlEl.className = 'kpi-value ' + (totalT212Pnl >= 0 ? 'positive' : 'negative');
         }
 
         const bybitPnlEl = document.getElementById('kpi-bybit-pnl');
         if (bybitPnlEl) {
+            totalBybitPnl = Math.round(totalBybitPnl * 100) / 100;
             bybitPnlEl.textContent = formatUSDT(totalBybitPnl);
             bybitPnlEl.className = 'kpi-value ' + (totalBybitPnl >= 0 ? 'positive' : 'negative');
         }

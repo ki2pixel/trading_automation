@@ -86,7 +86,7 @@ def test_csrf_content_type_validation_and_audit_logging():
     client = TestClient(app)
 
     # Generate and set valid session token
-    session_token = create_session_token("admin", int(time.time()) + 3600, HMAC_SECRET)
+    session_token, _ = create_session_token("admin", int(time.time()) + 3600, HMAC_SECRET)
     client.cookies.set("paper_trader_session", session_token)
 
     with patch("backtest_engine.live.connection.get_redis_client", return_value=None):

@@ -36,8 +36,12 @@ if (loginForm) {
         if (response.ok) {
             window.location.href = '/';
         } else {
-            const data = await response.json();
-            errorAlert.textContent = data.message || 'Invalid username or password.';
+            if (response.status === 429) {
+                errorAlert.textContent = 'Too many login attempts. Please wait 5 minutes and try again.';
+            } else {
+                const data = await response.json();
+                errorAlert.textContent = data.message || 'Invalid username or password.';
+            }
             errorAlert.style.display = 'block';
             passwordInput.value = '';
         }

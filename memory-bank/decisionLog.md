@@ -1,5 +1,14 @@
 # Journal des Décisions
 
+## [2026-07-27 01:40:00] - Audit et Alignement des Règles de Développement (`AGENTS.md` & `codingstandards.md`)
+- **Décision** : Mise à jour et harmonisation des règles de développement globales dans `AGENTS.md` (section 2) et `.agents/rules/codingstandards.md` pour refléter l'état réel de la base de code après la remédiation backend Paper Trading (PT-01 à PT-26) :
+  1. **Clés d'API & Sécurité** : Formalisation du mode fallback sans clés (warning et init réussie pour ingestion publique) vs levée de `ValueError` contrôlée lors des requêtes signées. Failsafe SHA256 des hashes des clés API au démarrage.
+  2. **Isolation des Exceptions** : Règle d'isolation des erreurs broker `(requests.exceptions.RequestException, ValueError, KeyError, TypeError)` par connecteur dans les opérations multi-courtiers (calcul NAV). Interdiction de masquer les fautes de programmation (`TypeError` / desérialisation) sous des `except Exception` de transport.
+  3. **Persistance & Async** : Séquençage strict imposant l'exécution du staging pipeline Redis (prix live) STRICTEMENT APRÈS le commit de la transaction PostgreSQL. Obligation d'envelopper les appels `psycopg2` bloquants dans `asyncio.to_thread()` au sein des coroutines asyncio.
+  4. **Logique Financière & Métier** : Dépôt systématique des PnL net des SELL Bybit profitables dans `AccumulatorBuffer` (`deposit()`) au sein de la même transaction SQL.
+  5. **Normalisation Canonique** : Imposition de la casse minuscule canonique (`ticker.lower()`) pour tous les symboles d'actifs inter-modules (warm-up, DB, Redis, exécuteur).
+- **Justification** : Prévenir la dérive entre la documentation/spécification d'ingénierie et le code de production, et pérenniser les invariants de robustesse, sécurité et précision financière établis lors des audits.
+
 ## [2026-07-13 10:01:00] - Optimisation de la performance (Render OOM > 512MB) sur l'ouverture de marché
 - **Décision** :
   1. Activer le cache Redis sur `/api/performance/metrics` même pour les actifs ayant 0 trade (qui causent sinon un calcul lourd et répété de 5000 bougies à chaque intervalle de polling).

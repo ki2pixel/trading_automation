@@ -7,7 +7,7 @@
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
     <!-- Lightweight Charts Local Vendor Version -->
-    <script src="/vendor/lightweight-charts.standalone.production.js"></script>
+    <script src="/vendor/lightweight-charts.standalone.production.js" defer></script>
 </head>
 <body>
     <div class="app-container">
@@ -142,7 +142,7 @@
                     <div class="chart-header">
                         <div class="chart-title-select">
                             <h3>Active Asset Analysis</h3>
-                            <select id="asset-selector" class="glass-select">
+                            <select id="asset-selector" class="glass-select" aria-label="Select trading asset">
                                 <option value="">Select an asset to analyze...</option>
                                 <!-- Populated by JS -->
                             </select>
@@ -290,9 +290,9 @@
                         </tbody>
                     </table>
                     <div class="pagination-controls" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
-                        <button id="btn-tx-prev" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">&larr; Précédent</button>
+                        <button id="btn-tx-prev" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">&larr; Previous</button>
                         <span id="txt-tx-page" style="color: var(--text-muted); align-self: center; font-size: 0.9rem;">Page 1</span>
-                        <button id="btn-tx-next" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">Suivant &rarr;</button>
+                        <button id="btn-tx-next" class="btn-secondary" style="padding: 5px 15px; border-radius: 4px;">Next &rarr;</button>
                     </div>
                 </div>
             </section>
@@ -301,19 +301,19 @@
             <section id="evaluations" class="view-section">
                 <div class="data-table-container glass-panel">
                     <div class="table-header">
-                        <h3>Évaluations Récentes</h3>
+                        <h3>Recent Evaluations</h3>
                     </div>
                     <table class="data-table" role="table" aria-label="Evaluations History">
                         <thead>
                             <tr>
-                                <th>Date/Heure</th>
-                                <th>Actif</th>
-                                <th>Stratégie</th>
+                                <th>Date/Time</th>
+                                <th>Asset</th>
+                                <th>Strategy</th>
                                 <th>Timeframe</th>
                                 <th>Signal</th>
-                                <th>Statut</th>
-                                <th>Prix</th>
-                                <th>Raison/Détails</th>
+                                <th>Status</th>
+                                <th>Price</th>
+                                <th>Reason/Details</th>
                             </tr>
                         </thead>
                         <tbody id="evaluations-body">
@@ -331,10 +331,11 @@
     </div>
 
     <!-- Edit Modal -->
-    <div id="edit-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div id="edit-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="edit-modal-desc">
         <div class="modal-content glass-panel">
             <button type="button" class="close-modal" aria-label="Close modal">&times;</button>
             <h3 id="modal-title">Edit Configuration</h3>
+            <p id="edit-modal-desc" style="display:none;">Modify strategy configuration parameters for a selected asset.</p>
             <form id="config-form">
                 <input type="hidden" id="edit-id">
                 <div class="form-group">
@@ -393,7 +394,7 @@
         </div>
     </div>
 
-    <div id="resume-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="resume-modal-title">
+    <div id="resume-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="resume-modal-title" aria-describedby="resume-modal-message">
         <div class="modal-content glass-panel confirmation-panel resume-confirmation-panel">
             <button type="button" class="close-modal" id="close-resume-modal" aria-label="Close modal">&times;</button>
             <h3 id="resume-modal-title">Resume Trading?</h3>

@@ -2,6 +2,7 @@
 import { showError } from './ui.js';
 
 let cachedCsrfToken = null;
+let csrfPromise = null;
 
 // Global fetch reference for interceptor
 const originalFetch = window.fetch;
@@ -23,19 +24,25 @@ function isSameOrigin(url) {
     }
 }
 
-// Helper to get or retrieve CSRF token asynchronously
+// Helper to get or retrieve CSRF token asynchronously — memoized to avoid parallel fetches
 export async function ensureCsrfToken() {
     if (cachedCsrfToken) return cachedCsrfToken;
-    try {
-        const response = await originalFetch('/api/csrf-token');
-        if (response.ok) {
-            const data = await response.json();
-            cachedCsrfToken = data.csrf_token;
+    if (csrfPromise) return csrfPromise;
+    csrfPromise = (async () => {
+        try {
+            const response = await originalFetch('/api/csrf-token');
+            if (response.ok) {
+                const data = await response.json();
+                cachedCsrfToken = data.csrf_token;
+            }
+        } catch (e) {
+            console.error("Failed to fetch CSRF token", e);
+        } finally {
+            csrfPromise = null;
         }
-    } catch (e) {
-        console.error("Failed to fetch CSRF token", e);
-    }
-    return cachedCsrfToken || '';
+        return cachedCsrfToken || '';
+    })();
+    return csrfPromise;
 }
 
 const FETCH_TIMEOUT_MS = 15000;
@@ -111,6 +118,8 @@ window.fetch = async function(url, options = {}) {
         showError("An internal server error occurred (500).");
     } else if (response.status === 503) {
         showError("The service is temporarily unavailable (503).");
+    } else if (response.status === 429) {
+        showError("Too many requests. Please wait a moment before retrying (429).");
     }
     
     return response;
@@ -148,10 +157,13 @@ export async function toggleConfig(id, is_active) {
     });
 }
 
-export async function getTransactions(limit = 50, offset = 0, cursorTimestamp = null, asset = null) {
+export async function getTransactions(limit = 50, offset = 0, cursorTimestamp = null, cursorId = null, asset = null) {
     let url = `/api/transactions?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`;
     if (cursorTimestamp) {
         url += `&cursor_timestamp=${encodeURIComponent(cursorTimestamp)}`;
+    }
+    if (cursorId !== null && cursorId !== undefined) {
+        url += `&cursor_id=${encodeURIComponent(cursorId)}`;
     }
     if (asset) {
         url += `&asset=${encodeURIComponent(asset)}`;
@@ -160,8 +172,15 @@ export async function getTransactions(limit = 50, offset = 0, cursorTimestamp = 
     return await res.json();
 }
 
-export async function getEvaluations(limit = 100, offset = 0) {
-    const res = await fetch(`/api/evaluations?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`);
+export async function getEvaluations(limit = 100, offset = 0, cursorTimestamp = null, cursorId = null) {
+    let url = `/api/evaluations?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`;
+    if (cursorTimestamp) {
+        url += `&cursor_timestamp=${encodeURIComponent(cursorTimestamp)}`;
+    }
+    if (cursorId !== null && cursorId !== undefined) {
+        url += `&cursor_id=${encodeURIComponent(cursorId)}`;
+    }
+    const res = await fetch(url);
     return await res.json();
 }
 

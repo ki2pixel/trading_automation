@@ -94,6 +94,7 @@ if is_testing and not PAPER_TRADER_PASSWORD:
 
 # HMAC Secret for session token signing and verify helpers from api router
 from backtest_engine.live.paper_trading.api import create_session_token, verify_session_token, get_hmac_secret
+from backtest_engine.live.paper_trading.api import SESSION_TTL_SECONDS, SESSION_REFRESH_WINDOW
 HMAC_SECRET = get_hmac_secret()
 
 class CookieSessionAuthMiddleware(BaseHTTPMiddleware):
@@ -102,15 +103,55 @@ class CookieSessionAuthMiddleware(BaseHTTPMiddleware):
         if len(path) > 1 and path.endswith("/"):
             path = path.rstrip("/")
 
-        # Exclude public monitoring endpoints, styles, and login page/endpoint
-        if path in ("/health", "/keep-alive", "/login.html", "/style.css", "/js/login.js", "/api/login"):
+        # Exclude public monitoring endpoints, styles, login page/endpoint, favicon
+        if path in ("/health", "/keep-alive", "/login.html", "/style.css", "/js/login.js", "/api/login", "/favicon.ico"):
             return await call_next(request)
 
         session_token = request.cookies.get("paper_trader_session")
 
         authenticated = False
+        username = None
+        token_expires = None
+        jti = None
+        new_token = None
+
         if session_token:
-            authenticated = verify_session_token(session_token, get_hmac_secret())
+            valid, username, token_expires = verify_session_token(session_token, get_hmac_secret())
+            if valid:
+                # Extract jti from token for revocation check
+                try:
+                    parts = session_token.split(":", 3)
+                    if len(parts) >= 4:
+                        jti = parts[2]
+                except Exception:
+                    pass
+
+                authenticated = True
+
+        # Check Redis revocation
+        if authenticated and jti and token_expires:
+            try:
+                from backtest_engine.live.connection import get_async_redis_client
+                redis_client = get_async_redis_client()
+                if redis_client:
+                    revoked = await asyncio.wait_for(
+                        redis_client.exists(f"session_revoked:{jti}"), timeout=1.0
+                    )
+                    if revoked:
+                        authenticated = False
+            except Exception:
+                pass  # Fail open if Redis is down
+
+        # Sliding window: re-sign if within refresh window
+        if authenticated and token_expires and username:
+            remaining = token_expires - int(time.time())
+            if 0 < remaining < SESSION_REFRESH_WINDOW:
+                new_expires = int(time.time()) + SESSION_TTL_SECONDS
+                new_token, _ = create_session_token(username, new_expires, get_hmac_secret())
+                request.state._pending_auth_cookie = {
+                    "token": new_token,
+                    "expires": new_expires,
+                }
 
         if not authenticated:
             # For API requests, return JSON 401
@@ -121,9 +162,29 @@ class CookieSessionAuthMiddleware(BaseHTTPMiddleware):
                     media_type="application/json"
                 )
             # For pages, redirect to login
-            return RedirectResponse(url="/login.html", status_code=307)
+            response = RedirectResponse(url="/login.html", status_code=303)
+            response.delete_cookie(key="paper_trader_session", path="/")
+            return response
 
-        return await call_next(request)
+        response = await call_next(request)
+
+        # Set re-signed cookie if sliding window was triggered
+        cookie_data = getattr(request.state, "_pending_auth_cookie", None)
+        if cookie_data:
+            is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
+            response.set_cookie(
+                key="paper_trader_session",
+                value=cookie_data["token"],
+                max_age=SESSION_TTL_SECONDS,
+                expires=cookie_data["expires"],
+                path="/",
+                domain=None,
+                secure=is_prod,
+                httponly=True,
+                samesite="strict"
+            )
+
+        return response
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
@@ -157,7 +218,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         # Security hardening: reject mutating request if Content-Type is not application/json
         # (prevents CORS bypass via Blob, FormData, or text/plain POSTs)
         content_type = request.headers.get("Content-Type", "")
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _get_real_client_ip(request)
         if path.startswith("/api/") and not content_type.startswith("application/json"):
             logging.getLogger("trading_audit").error(
                 f"Content-Type violation: IP={client_ip}, path={path}, content_type={content_type}"
@@ -211,12 +272,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
             "font-src 'self'; "
-            "connect-src 'self'"
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'none'"
         )
         is_prod = os.getenv("ENVIRONMENT", "").lower() == "production" or os.getenv("RENDER") is not None
         if is_prod:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
+
+
+def _get_real_client_ip(request: Request) -> str:
+    """Extract the real client IP from X-Forwarded-For, falling back to request.client.host."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip:
+        return x_real_ip.strip()
+    return request.client.host if request.client else "unknown"
 
 
 class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
@@ -245,7 +319,7 @@ class RedisRateLimiterMiddleware(BaseHTTPMiddleware):
         if path == "/api/csrf-token":
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _get_real_client_ip(request)
 
         # Check per-path overrides first, then login special case, then defaults
         if path in self.PATH_RATE_LIMITS:
@@ -461,9 +535,11 @@ def main():
 
     port = int(os.getenv("PORT", "8081")) # Different default port to not clash if run locally with ingestor
     host = os.getenv("HOST", "0.0.0.0")
+    forwarded_allow_ips = os.getenv("FORWARDED_ALLOW_IPS", "*")
 
     print(f"[PaperTrader] Starting Paper Trading Web Server on {host}:{port}...")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="info",
+                proxy_headers=True, forwarded_allow_ips=forwarded_allow_ips)
 
 if __name__ == "__main__":
     main()

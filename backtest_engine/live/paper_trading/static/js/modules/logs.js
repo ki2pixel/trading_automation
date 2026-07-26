@@ -9,11 +9,12 @@ import {
     showError 
 } from '../ui.js';
 
-export let cursorStack = [null];
+export let cursorStack = [null]; // each entry: { id: number, timestamp: string } | null
 export let currentPageIndex = 0;
 export const txLimit = 50;
 
-export let evalPage = 1;
+export let evalCursorStack = [null];
+export let currentEvalPageIndex = 0;
 export const evalLimit = 100;
 
 export const resetTxPagination = () => {
@@ -32,19 +33,21 @@ export const goPrevTxPage = () => {
 };
 
 export const goNextEvalPage = () => {
-    evalPage++;
+    currentEvalPageIndex++;
 };
 
 export const goPrevEvalPage = () => {
-    if (evalPage > 1) {
-        evalPage--;
+    if (currentEvalPageIndex > 0) {
+        currentEvalPageIndex--;
     }
 };
 
 export const fetchTransactions = async () => {
     try {
         const cursor = cursorStack[currentPageIndex];
-        const data = await getTransactions(txLimit, 0, cursor);
+        const cursorTs = cursor ? cursor.timestamp : null;
+        const cursorId = cursor ? cursor.id : null;
+        const data = await getTransactions(txLimit, 0, cursorTs, cursorId);
         const tbody = document.getElementById('transactions-body');
         if (!tbody) return;
         tbody.innerHTML = '';
@@ -109,7 +112,8 @@ export const fetchTransactions = async () => {
         if (pageTxt) pageTxt.textContent = `Page ${currentPageIndex + 1}`;
 
         if (data.length === txLimit) {
-            const nextCursor = data[data.length - 1].timestamp;
+            const lastItem = data[data.length - 1];
+            const nextCursor = { id: lastItem.id, timestamp: lastItem.timestamp };
             if (cursorStack.length === currentPageIndex + 1) {
                 cursorStack.push(nextCursor);
             }
@@ -119,7 +123,10 @@ export const fetchTransactions = async () => {
 
 export const fetchEvaluations = async () => {
     try {
-        const data = await getEvaluations(evalLimit, (evalPage - 1) * evalLimit);
+        const cursor = evalCursorStack[currentEvalPageIndex];
+        const cursorTs = cursor ? cursor.timestamp : null;
+        const cursorId = cursor ? cursor.id : null;
+        const data = await getEvaluations(evalLimit, 0, cursorTs, cursorId);
         const tbody = document.getElementById('evaluations-body');
         if (!tbody) return;
         tbody.innerHTML = '';
@@ -225,9 +232,17 @@ export const fetchEvaluations = async () => {
         const nextBtn = document.getElementById('btn-eval-next');
         const pageTxt = document.getElementById('txt-eval-page');
         
-        if (prevBtn) prevBtn.disabled = evalPage === 1;
+        if (prevBtn) prevBtn.disabled = currentEvalPageIndex === 0;
         if (nextBtn) nextBtn.disabled = data.length < evalLimit;
-        if (pageTxt) pageTxt.textContent = `Page ${evalPage}`;
+        if (pageTxt) pageTxt.textContent = `Page ${currentEvalPageIndex + 1}`;
+
+        if (data.length === evalLimit) {
+            const lastItem = data[data.length - 1];
+            const nextCursor = { id: lastItem.id, timestamp: lastItem.timestamp };
+            if (evalCursorStack.length === currentEvalPageIndex + 1) {
+                evalCursorStack.push(nextCursor);
+            }
+        }
     } catch (e) { console.error('Error rendering evaluations', e); }
 };
 
@@ -266,10 +281,15 @@ export const initLogsSSE = () => {
     let evtSource = null;
     let sseErrorCount = 0;
     const MAX_SSE_ERRORS = 5;
+    let lastSeqReceived = 0;
 
     const handleSseMessage = (event) => {
         try {
             const data = JSON.parse(event.data);
+
+            // Deduplicate by monotonic seq number — ignore replayed buffer on reconnect
+            if (data.seq <= lastSeqReceived) return;
+            lastSeqReceived = data.seq;
             const levelClass = data.level.toLowerCase(); // 'info', 'warning', 'error'
             
             const date = new Date(data.timestamp);

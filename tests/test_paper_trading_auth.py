@@ -49,12 +49,12 @@ def test_public_endpoints_with_trailing_slash():
 def test_protected_endpoints_redirects_to_login():
     # root page redirect to login
     response = client.get("/", follow_redirects=False)
-    assert response.status_code == 307
+    assert response.status_code == 303
     assert response.headers["Location"] == "/login.html"
 
     # specific page redirect to login
     response = client.get("/index.html", follow_redirects=False)
-    assert response.status_code == 307
+    assert response.status_code == 303
     assert response.headers["Location"] == "/login.html"
 
 def test_protected_api_endpoints_return_401():
@@ -106,7 +106,7 @@ def test_login_logout_flow_and_authenticated_access():
 
     # 3. Logout to clear session
     response = client.post("/api/logout", follow_redirects=False)
-    assert response.status_code == 307
+    assert response.status_code == 303
     assert response.headers["Location"] == "/login.html"
 
     # Cookie should be deleted/expired in response headers

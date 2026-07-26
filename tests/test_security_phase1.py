@@ -35,37 +35,37 @@ class TestHMACSecretSeparation:
         expires = int(time.time()) + 3600
 
         # Create token with HMAC_SECRET (the correct key)
-        token = create_session_token("admin", expires, HMAC_SECRET)
+        token, _ = create_session_token("admin", expires, HMAC_SECRET)
 
         # Verify with HMAC_SECRET → should succeed
-        assert verify_session_token(token, HMAC_SECRET) is True
+        assert verify_session_token(token, HMAC_SECRET)[0] is True
 
         # Verify with user password → should FAIL (keys are now separate)
         if password != HMAC_SECRET:
-            assert verify_session_token(token, password) is False
+            assert verify_session_token(token, password)[0] is False
 
     def test_token_created_with_password_not_valid(self):
         """A token signed with the user password should not pass HMAC verification."""
         password = "some_user_password"
         expires = int(time.time()) + 3600
 
-        token = create_session_token("admin", expires, password)
+        token, _ = create_session_token("admin", expires, password)
 
         # This token should NOT verify with HMAC_SECRET
-        assert verify_session_token(token, HMAC_SECRET) is False
+        assert verify_session_token(token, HMAC_SECRET)[0] is False
 
     def test_expired_token_rejected(self):
         """Expired tokens should be rejected regardless of correct secret."""
         expires = int(time.time()) - 1  # already expired
-        token = create_session_token("admin", expires, HMAC_SECRET)
-        assert verify_session_token(token, HMAC_SECRET) is False
+        token, _ = create_session_token("admin", expires, HMAC_SECRET)
+        assert verify_session_token(token, HMAC_SECRET)[0] is False
 
     def test_malformed_token_rejected(self):
         """Malformed tokens should be rejected gracefully."""
-        assert verify_session_token("garbage", HMAC_SECRET) is False
-        assert verify_session_token("a:b", HMAC_SECRET) is False
-        assert verify_session_token("a:not_int:sig", HMAC_SECRET) is False
-        assert verify_session_token("", HMAC_SECRET) is False
+        assert verify_session_token("garbage", HMAC_SECRET)[0] is False
+        assert verify_session_token("a:b", HMAC_SECRET)[0] is False
+        assert verify_session_token("a:not_int:sig", HMAC_SECRET)[0] is False
+        assert verify_session_token("", HMAC_SECRET)[0] is False
 
     @patch.dict(os.environ, {"PAPER_TRADER_USER": "test_user", "PAPER_TRADER_PASSWORD": "test_password"})
     def test_login_flow_uses_hmac_secret(self):
@@ -82,7 +82,7 @@ class TestHMACSecretSeparation:
         session_token = response.cookies["paper_trader_session"]
 
         # Token should verify with HMAC_SECRET
-        assert verify_session_token(session_token, HMAC_SECRET) is True
+        assert verify_session_token(session_token, HMAC_SECRET)[0] is True
 
     @patch.dict(os.environ, {"PAPER_TRADER_USER": "test_user", "PAPER_TRADER_PASSWORD": "test_password"})
     def test_login_flow_form_urlencoded_success(self):
@@ -160,7 +160,7 @@ class TestCSRFProtection:
 
         response = client.post("/api/logout", follow_redirects=False)
         # Logout is exempt from CSRF
-        assert response.status_code == 307
+        assert response.status_code == 303
 
     @patch.dict(os.environ, {"PAPER_TRADER_USER": "test_user", "PAPER_TRADER_PASSWORD": "test_password"})
     def test_post_without_csrf_header_returns_403(self):

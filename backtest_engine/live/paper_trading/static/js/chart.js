@@ -21,11 +21,21 @@ export async function loadChart(ticker, forceRefresh = false) {
         const placeholder = document.getElementById('chart-placeholder');
         if (placeholder) {
             placeholder.style.display = 'flex';
-            placeholder.innerHTML = `
+            const svgEl = document.createElement('span');
+            svgEl.innerHTML = `
                 <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--danger)" stroke-width="1.5" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                <p style="color: var(--danger); font-weight: bold; margin-top: 10px;">Lightweight Charts Unavailable</p>
-                <p style="font-size: 13px; max-width: 400px; text-align: center;">Chart library failed to load. The local vendor bundle may be missing or corrupted.</p>
             `;
+            placeholder.appendChild(svgEl);
+
+            const pTitle = document.createElement('p');
+            pTitle.style.cssText = 'color: var(--danger); font-weight: bold; margin-top: 10px;';
+            pTitle.textContent = 'Lightweight Charts Unavailable';
+            placeholder.appendChild(pTitle);
+
+            const pDesc = document.createElement('p');
+            pDesc.style.cssText = 'font-size: 13px; max-width: 400px; text-align: center;';
+            pDesc.textContent = 'Chart library failed to load. The local vendor bundle may be missing or corrupted.';
+            placeholder.appendChild(pDesc);
         }
         document.getElementById('analytics-grid').style.display = 'none';
         document.getElementById('price-chart').style.display = 'none';
@@ -44,10 +54,14 @@ export async function loadChart(ticker, forceRefresh = false) {
         document.getElementById('chart-placeholder').style.display = 'flex';
         const placeholder = document.getElementById('chart-placeholder');
         if (placeholder) {
-            placeholder.innerHTML = `
+            const svgEl = document.createElement('span');
+            svgEl.innerHTML = `
                 <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--text-muted)" stroke-width="1.5" fill="none"><path d="M3 3v18h18"></path><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path></svg>
-                <p>Select an asset from the list above to view price chart, trades history, and equity curve comparison.</p>
             `;
+            placeholder.appendChild(svgEl);
+            const pEl = document.createElement('p');
+            pEl.textContent = 'Select an asset from the list above to view price chart, trades history, and equity curve comparison.';
+            placeholder.appendChild(pEl);
         }
         if (chartContainer) chartContainer.style.display = 'none';
         currentAsset = null;
@@ -144,11 +158,21 @@ export async function loadChart(ticker, forceRefresh = false) {
             const placeholder = document.getElementById('chart-placeholder');
             if (placeholder) {
                 placeholder.style.display = 'flex';
-                placeholder.innerHTML = `
+                const svgEl = document.createElement('span');
+                svgEl.innerHTML = `
                     <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--danger)" stroke-width="1.5" fill="none"><path d="M3 3v18h18"></path><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path></svg>
-                    <p style="color: var(--danger); font-weight: bold; margin-top: 10px;">Stale Market Data</p>
-                    <p style="font-size: 13px; max-width: 400px; text-align: center;">No price candles available for ${ticker}. The feed may be inactive or offline.</p>
                 `;
+                placeholder.appendChild(svgEl);
+
+                const pTitle = document.createElement('p');
+                pTitle.style.cssText = 'color: var(--danger); font-weight: bold; margin-top: 10px;';
+                pTitle.textContent = 'Stale Market Data';
+                placeholder.appendChild(pTitle);
+
+                const pDesc = document.createElement('p');
+                pDesc.style.cssText = 'font-size: 13px; max-width: 400px; text-align: center;';
+                pDesc.textContent = 'No price candles available for ' + ticker + '. The feed may be inactive or offline.';
+                placeholder.appendChild(pDesc);
             }
             if (candleSeries) candleSeries.setData([]);
             if (equitySeries) equitySeries.setData([]);
@@ -245,11 +269,21 @@ export async function loadChart(ticker, forceRefresh = false) {
             const placeholder = document.getElementById('chart-placeholder');
             if (placeholder) {
                 placeholder.style.display = 'flex';
-                placeholder.innerHTML = `
+                const svgEl = document.createElement('span');
+                svgEl.innerHTML = `
                     <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--danger)" stroke-width="1.5" fill="none"><path d="M3 3v18h18"></path><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path></svg>
-                    <p style="color: var(--danger); font-weight: bold; margin-top: 10px;">Error Loading Data</p>
-                    <p style="font-size: 13px; max-width: 400px; text-align: center;">Failed to load data for ${ticker}. Please check console or network connection.</p>
                 `;
+                placeholder.appendChild(svgEl);
+
+                const pTitle = document.createElement('p');
+                pTitle.style.cssText = 'color: var(--danger); font-weight: bold; margin-top: 10px;';
+                pTitle.textContent = 'Error Loading Data';
+                placeholder.appendChild(pTitle);
+
+                const pDesc = document.createElement('p');
+                pDesc.style.cssText = 'font-size: 13px; max-width: 400px; text-align: center;';
+                pDesc.textContent = 'Failed to load data for ' + ticker + '. Please check console or network connection.';
+                placeholder.appendChild(pDesc);
             }
         }
         showError("Failed to load financial metrics for " + ticker);

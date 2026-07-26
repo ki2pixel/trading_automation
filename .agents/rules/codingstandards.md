@@ -17,24 +17,25 @@
   df['pnl'] = (df['close'] - df['open']) * df['qty']
   ```
 - **PEP 8 & Docstrings**: Respect strict du style PEP 8. Documentez l'objectif, les arguments et retours des fonctions complexes.
-- **Audit & Logging**: Logs structurés (format JSON) requis pour le routage d'ordres (`timestamp_utc`, `order_id`, `symbole`, `quantité`, `prix`, `statut`).
-- **Secrets & Conf**: Secrets masqués via variables d'environnement. Mode public-only pour l'ingestion Bybit sur Render (sans clé). Les appels signés Bybit dans le Paper Trader doivent s'exécuter conditionnellement (lever `ValueError` contrôlée si les clés sont absentes pour éviter les 401).
-- **Failsafe de clés d'API (CRITIQUE)**: Validation stricte des hashes SHA256 des clés Bybit lors de l'initialisation pour interdire formellement l'utilisation d'une clé de démo en production ou d'une clé de production en démo/testnet.
+- **Audit & Logging**: Logs structurés (format JSON) requis pour le routage d'ordres (`timestamp_utc`, `order_id`, `symbole`, `quantité`, `prix`, `statut`). Les URLs contenant des identifiants (ex: basic auth Redis Upstash) doivent impérativement masquer les credentials (journaliser uniquement le host/port). Tous les `print()` doivent être remplacés par un logger structuré.
+- **Secrets & Conf**: Secrets masqués via variables d'environnement. Mode public-only pour l'ingestion Bybit/MarketFlow sur Render (sans clé, warning au démarrage, init réussie). Les appels signés Bybit/T212 dans le Paper Trader doivent s'exécuter conditionnellement (lever `ValueError` contrôlée avec message explicite si les clés sont absentes pour éviter les 401/403).
+- **Failsafe de clés d'API (CRITIQUE)**: Validation stricte des hashes SHA256 des clés Bybit et Trading 212 (`EXPECTED_BYBIT_LIVE_KEY_HASH`, `EXPECTED_BYBIT_DEMO_KEY_HASH`) lors de l'initialisation pour interdire formellement l'utilisation d'une clé de démo en production ou d'une clé de production en démo/testnet (Fail-Fast au démarrage).
 - **Timeouts Réseau Centralisés**: Timeout explicite obligatoire sur chaque appel HTTP (Bybit, Trading 212, warm-ups). Constante globale `NETWORK_TIMEOUT_DEFAULT = 10` dans `utils.py`. Maximum standard de 10s (jusqu'à 30s pour téléchargements lourds).
 
 ## 3. Gestion des Erreurs et Robustesse
-- **Exceptions spécifiques**: Interdiction de capturer `Exception` de manière générique et silencieuse (`except Exception: pass`). Interceptez des exceptions typées.
+- **Exceptions spécifiques**: Interdiction de capturer `Exception` de manière générique et silencieuse (`except Exception: pass`). Interceptez des exceptions typées. Ne laissez pas un `TypeError` ou une faute de programmation/desérialisation être masqué par un `except Exception` de transport réseau (principe Fail-Closed).
 - **Middleware exception**: Captures globales `except Exception as e` tolérées uniquement au niveau du middleware FastAPI ou de l'orchestrateur global.
+- **Isolation des Erreurs par Connecteur**: Lors des mises à jour multi-courtiers (ex: `update_portfolio_nav`), interceptez les exceptions d'API et de parsing (`requests.exceptions.RequestException`, `ValueError`, `KeyError`, `TypeError`) de manière isolée par courtier afin qu'un échec de transport/parsing sur un broker n'annule pas la transaction de l'autre broker ni le recalcul complet de NAV.
 - **Logging de tracebacks**: Utilisez obligatoirement `logger.exception()` pour logger les erreurs système et de transport critiques avec leur traceback complet. Cependant, les déconnexions d'inactivité prévisibles et pertes de connexion réseau transitoires (comme le timeout d'inactivité ou la reconnexion périodique de Redis Pub/Sub) doivent être loggées de manière modérée sans traceback (`logger.info` ou `logger.warning`) tant que la reconnexion automatique les prend en charge afin d'éviter la pollution des logs.
 - **Exceptions d'Affaires**: Levez des exceptions métier dédiées (ex: `SignalExecutionError`, `PortfolioUpdateError`).
 - **Masquage en Production**: API en production masquant les détails internes. Utilisation de `safe_error_response(exc, request)` retournant un message standard et un UUID de corrélation unique. Traces verbeuses affichées uniquement si `DEBUG=true` en dev.
 
 ## 4. Base de Données et Persistance
 - **Séparation Sync/Async**:
-  - **FastAPI (API)**: Utilisation exclusive d'un pool asynchrone `asyncpg` (`asyncpg.create_pool()`). Appels bloquants interdits.
+  - **FastAPI (API)**: Utilisation exclusive d'un pool asynchrone `asyncpg` (`asyncpg.create_pool()`). Appels bloquants interdits. Les opérations I/O synchrones (ex: `psycopg2` keep-alive ou heartbeats) exécutées dans les coroutines `asyncio` doivent impérativement être enveloppées via `asyncio.to_thread()`.
   - **Workers Sync & Backtests**: Utilisation exclusive de `psycopg2` (synchrone/multithread).
-- **Anti-N+1**: Interrogation SQL en boucle interdite. Utilisez des requêtes groupées (`ticker IN ($1, $2, ...)`) et des transactions en lot (`executemany` ou requêtes groupées) pour la persistance (ex: mise à jour de la NAV).
-- **Bufferisation I/O**: Écritures fréquentes (ex: Optuna trials) tamponnées en mémoire et flushées par lots (ex: N=50). Flush final garanti via `atexit` ou `finally`.
+- **Anti-N+1 & Séquençage Redis**: Interrogation SQL en boucle interdite. Utilisez des requêtes groupées (`ticker = ANY($1)`) et des transactions en lot (`executemany`) pour la persistance (ex: NAV, panic close, candles). Le staging pipeline Redis (prix live) doit être exécuté STRICTEMENT APRÈS le commit de la transaction PostgreSQL pour éviter d'alimenter le cache avec des données non commitées.
+- **Bufferisation I/O & Accumulateur de Conversion**: Écritures fréquentes tamponnées en mémoire et flushées par lots (ex: Optuna trials N=50). Tout SELL Bybit profitable doit verser son PnL net dans `AccumulatorBuffer` (`deposit()`) au sein de la même transaction PostgreSQL pour alimenter le pipeline de conversion USDC→EUR.
 
 ## 5. Concurrence et Thread-Safety
 - **États Partagés**: Mutation d'états concurrents (allocations, portefeuilles) protégée par verrous explicites (`Lock`, `asyncio.Lock`).
@@ -56,6 +57,7 @@
 ## 7. Architecture, Structure et Frameworks
 - **Dualité de Traitement**: Séparation stricte. Backtest vectorisé (Pandas, Vectorbt) vs Exécution Live événementielle (Event-Driven / async).
 - **Separation of Concerns (SoC)**: Logique de calcul isolée des connecteurs API, BDD et I/O.
+- **Normalisation Canonique des Tickers (CRITIQUE)**: Les symboles d'actifs doivent obligatoirement être convertis en minuscules (`ticker.lower()`) de manière canonique sur tous les modules (warm-up MarketFlow, requêtes SQL `live_candles_1m`/`live_prices`, clés Redis `price:{symbol}`, exécuteur de signaux) pour prévenir les divergences sensible-à-la-casse (ex: `ZEAL.CO` vs `zeal.co`).
 - **Validation WFA**: Optimisation hyperparamétrique soumise à une validation Walk-Forward Analysis (WFA), PBO et DSR (CSCV) sur les actifs de référence **NVO**, **NVS**, et **AMS.MC** avant production.
 - **Interfaces & Reporting**: API avec FastAPI/Uvicorn. Visualisations Plotly ou Lightweight Charts.
 - **Dépendances segmentées**: 
