@@ -271,7 +271,7 @@ class TestPaperTradingEngine:
 
         # Return mock candles (at least 15 minutes of candles)
         mock_candles = [
-            (datetime(2023, 10, 4, 12, i, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
+            ("zeal.co", datetime(2023, 10, 4, 12, i, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
             for i in range(30)
         ]
 
@@ -299,8 +299,8 @@ class TestPaperTradingEngine:
 
         # We need run_result.bars to contain a long_entry at the last closed time
         # Let's align the times
-        df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
-        df_1m.set_index("timestamp_minute", inplace=True)
+        df_1m = pd.DataFrame([(r[2], r[3], r[4], r[5]) for r in mock_candles], index=[r[1] for r in mock_candles], columns=["open", "high", "low", "close"])
+        df_1m.index.name = "timestamp_minute"  # already indexed by timestamp
         df_aggregated = df_1m.resample("15min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
 
         last_closed_time = df_aggregated.index[-2]
@@ -355,7 +355,7 @@ class TestPaperTradingEngine:
 
         # Return mock configs, positions, candles
         mock_candles = [
-            (datetime(2023, 10, 4, 12, i, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
+            ("zeal.co", datetime(2023, 10, 4, 12, i, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
             for i in range(30)
         ]
 
@@ -411,7 +411,7 @@ class TestPaperTradingEngine:
 
         # Return mock configs, positions, candles
         mock_candles = [
-            (datetime(2023, 10, 4, 12, i, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
+            ("zeal.co", datetime(2023, 10, 4, 12, i, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
             for i in range(30)
         ]
 
@@ -442,8 +442,8 @@ class TestPaperTradingEngine:
         mock_strat_info = MagicMock()
         mock_strat_registry_get.return_value = mock_strat_info
 
-        df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
-        df_1m.set_index("timestamp_minute", inplace=True)
+        df_1m = pd.DataFrame([(r[2], r[3], r[4], r[5]) for r in mock_candles], index=[r[1] for r in mock_candles], columns=["open", "high", "low", "close"])
+        df_1m.index.name = "timestamp_minute"  # already indexed by timestamp
         df_aggregated = df_1m.resample("15min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
 
         last_closed_time = df_aggregated.index[-2]
@@ -484,7 +484,7 @@ class TestPaperTradingEngine:
         import pandas as pd
 
         mock_candles = [
-            (datetime(2023, 10, 4, 12 + i // 60, i % 60, tzinfo=timezone.utc), 10.0, 10.5, 9.8, 10.2)
+            ("ltcusdt", datetime(2023, 10, 4, 12 + i // 60, i % 60, tzinfo=timezone.utc), 9.8, 10.5, 9.5, 10.2)
             for i in range(120)
         ]
 
@@ -519,8 +519,8 @@ class TestPaperTradingEngine:
         mock_strat_info = MagicMock()
         mock_strat_registry_get.return_value = mock_strat_info
 
-        df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
-        df_1m.set_index("timestamp_minute", inplace=True)
+        df_1m = pd.DataFrame([(r[2], r[3], r[4], r[5]) for r in mock_candles], index=[r[1] for r in mock_candles], columns=["open", "high", "low", "close"])
+        df_1m.index.name = "timestamp_minute"  # already indexed by timestamp
         df_aggregated = df_1m.resample("45min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
 
         last_closed_time = df_aggregated.index[-2]
@@ -589,7 +589,7 @@ class TestPaperTradingEngine:
         from datetime import timedelta
         start_time = datetime(2023, 10, 4, 12, 0, tzinfo=timezone.utc)
         mock_candles = [
-            (start_time + timedelta(minutes=i), 100.0, 100.0, 100.0, 100.0)
+            ("ltcusdt", start_time + timedelta(minutes=i), Decimal("115"), Decimal("120"), Decimal("113"), Decimal("118"))
             for i in range(2500)
         ]
 
@@ -599,6 +599,9 @@ class TestPaperTradingEngine:
                 return (99,)
             if "SELECT price, updated_at FROM live_prices" in last_query:
                 return (Decimal("120.0"), datetime.now(timezone.utc))
+            # PT-07: Mock accumulator deposit — COALESCE(SUM(amount)) query
+            if "conversion_accumulator" in last_query and "COALESCE(SUM(amount)" in last_query:
+                return (Decimal("200.0"),)
             return None
 
         def mock_fetchall():
@@ -622,8 +625,8 @@ class TestPaperTradingEngine:
         mock_strat_info = MagicMock()
         mock_strat_registry_get.return_value = mock_strat_info
 
-        df_1m = pd.DataFrame(mock_candles, columns=["timestamp_minute", "open", "high", "low", "close"])
-        df_1m.set_index("timestamp_minute", inplace=True)
+        df_1m = pd.DataFrame([(r[2], r[3], r[4], r[5]) for r in mock_candles], index=[r[1] for r in mock_candles], columns=["open", "high", "low", "close"])
+        df_1m.index.name = "timestamp_minute"  # already indexed by timestamp
         df_aggregated = df_1m.resample("45min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
 
         result_bars = df_aggregated.copy()

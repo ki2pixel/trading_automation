@@ -56,7 +56,10 @@ def _build_asyncpg_ssl(dsn: str) -> Union[ssl.SSLContext, bool]:
             ctx.load_verify_locations(cafile=ssl_ca)
             ctx.verify_mode = ssl.CERT_REQUIRED
         else:
-            ctx.verify_mode = ssl.CERT_NONE
+            raise ValueError(
+                "DB_SSL_CA is required when DB_SSL_CERT and DB_SSL_KEY are configured "
+                "(mTLS authentication requires server certificate verification)."
+            )
         ctx.check_hostname = False
         return ctx
 
@@ -197,21 +200,24 @@ def get_db_connection() -> Generator[psycopg2.extensions.connection, None, None]
 
 async def run_postgres_keep_alive_task(interval_seconds: int = 14400) -> None:
     """Heartbeat task to keep PostgreSQL alive on Aiven (preventing 24h idle spindown)."""
-    import asyncio
-    print(f"[KeepAlive] Starting PostgreSQL keep-alive loop (interval: {interval_seconds}s)...")
+    import asyncio, logging
+    _keepalive_logger = logging.getLogger("keepalive")
+    _keepalive_logger.info("Starting PostgreSQL keep-alive loop (interval: %ds)...", interval_seconds)
     while True:
         try:
             db_url = os.getenv("DATABASE_URL")
             if db_url:
-                with get_db_connection() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT 1;")
-                        cur.fetchone()
-                print("[KeepAlive] PostgreSQL heartbeat (SELECT 1;) executed successfully.")
+                async def _heartbeat_once():
+                    with get_db_connection() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT 1;")
+                            cur.fetchone()
+                await asyncio.to_thread(_heartbeat_once)
+                _keepalive_logger.info("PostgreSQL heartbeat (SELECT 1;) executed successfully.")
             else:
-                print("[KeepAlive] DATABASE_URL not set, skipping heartbeat.")
+                _keepalive_logger.warning("DATABASE_URL not set, skipping heartbeat.")
         except Exception as e:
-            print(f"[KeepAlive] PostgreSQL heartbeat failed: {e}")
+            _keepalive_logger.warning("PostgreSQL heartbeat failed: %s", e)
         
         await asyncio.sleep(interval_seconds)
 
@@ -278,7 +284,7 @@ def _is_upstash_quota_exhausted(redis_url: str, api_key: str, email: str) -> boo
         return monthly_requests >= db_limit
 
     except Exception as e:
-        print(f"[UpstashAPI] Error querying Upstash API for {redis_url}: {e}")
+        print(f"[UpstashAPI] Error querying Upstash API for host {host}: {type(e).__name__}: {e}")
         return False
 
 

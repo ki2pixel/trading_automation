@@ -60,6 +60,9 @@ class ConversionOrder:
     reconciliation_attempts: int = 0  # J1-FIX: track recovery retries
     max_reconciliation_attempts: int = 10  # hard limit before forced FAILED
 
+    # Runtime flags
+    dry_run: bool = False  # PT-01: persisted for crash recovery, prevents TypeError on reconstruction
+
     def to_bybit_payload(self) -> dict:
         """
         Generates the exact JSON payload for POST /v5/order/create.

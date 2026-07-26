@@ -31,6 +31,7 @@ class SignalExecutor:
         self._is_market_open_func: Optional[Callable[[str], bool]] = is_market_open_func
         self._last_eval_timestamps: Dict[int, Any] = {}
         self._broker_simulators: Dict[tuple, Any] = {}
+        self._margin_simulator = None  # PT-18: cached UTAMarginSimulator
 
     @property
     def t212_client(self) -> Any:
@@ -87,8 +88,9 @@ class SignalExecutor:
         current_time = None
         try:
             current_time = datetime.now(dt.timezone.utc)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[PaperTrader] Failed to get current UTC time: %s", e)
+            return False
         return is_market_open(asset, self.market_hours, current_time=current_time)
 
     def log_evaluation(
@@ -200,8 +202,8 @@ class SignalExecutor:
                                     "UPDATE paper_portfolio_balance SET paper_cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'",
                                     (api_cash,)
                                 )
-                    except requests.exceptions.RequestException as api_err:
-                        logger.exception("[PaperTrader] Failed to fetch account summary from Trading 212 API")
+                    except (requests.exceptions.RequestException, ValueError, KeyError, TypeError) as api_err:
+                        logger.warning("[PaperTrader] Failed to fetch account summary from Trading 212 API: %s", api_err)
 
                 # If Bybit Client is active and authenticated, fetch real-time cash balance (USDC/USDT) and update DB
                 if self.bybit_client is not None and self.bybit_client.config.api_key:
@@ -219,8 +221,8 @@ class SignalExecutor:
                                 "UPDATE paper_portfolio_balance SET paper_cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'",
                                 (bybit_balance,)
                             )
-                    except requests.exceptions.RequestException as api_err:
-                        logger.exception("[PaperTrader] Failed to fetch account summary from Bybit API")
+                    except (requests.exceptions.RequestException, ValueError, KeyError, TypeError) as api_err:
+                        logger.warning("[PaperTrader] Failed to fetch account summary from Bybit API: %s", api_err)
 
                 # Fetch cash and secured balances for both ecosystems
                 cur.execute("SELECT source, paper_cash_balance, secured_balance FROM paper_portfolio_balance")
@@ -228,8 +230,10 @@ class SignalExecutor:
                 balances = {r[0]: Decimal(str(r[1])) for r in rows}
                 secured_balances = {r[0]: Decimal(str(r[2])) for r in rows}
                 
-                t212_nav = balances.get("trading212", Decimal("100000"))
-                bybit_nav = balances.get("bybit", Decimal("10000"))
+                t212_nav = balances.get("trading212")
+                bybit_nav = balances.get("bybit")
+                if t212_nav is None or bybit_nav is None:
+                    raise PortfolioUpdateError("No balance row found in paper_portfolio_balance for one or both sources (trading212/bybit)")
                 bybit_secured = secured_balances.get("bybit", Decimal("0"))
 
                 # Get open positions (single query)
@@ -291,7 +295,7 @@ class SignalExecutor:
                                     except Exception as je:
                                         logger.error(f"[PaperTrader] Failed to parse Redis price for {ticker}: {je}")
                         except Exception as redis_err:
-                            logger.exception("[PaperTrader] Redis mget error")
+                            logger.warning("[PaperTrader] Redis mget error: %s", redis_err)
 
                     # 2. Batch SQL fallback for tickers not found in Redis (single query)
                     missing_tickers = [t for t in tickers if t not in redis_prices]
@@ -425,11 +429,15 @@ class SignalExecutor:
                     all_candle_rows = cur.fetchall()
                 
                 for row in all_candle_rows:
-                    if len(row) == 5:
+                    if len(row) == 6:
+                        ticker, timestamp, o, h, l, c = row
+                    elif len(row) == 5:
+                        logger.warning("[PaperTrader] Candle row has 5 columns (ticker missing) — please run tickercase migration (PT-02)")
                         ticker = configs[0][2].lower() if configs else "unknown"
                         timestamp, o, h, l, c = row
                     else:
-                        ticker, timestamp, o, h, l, c = row
+                        logger.error("[PaperTrader] Unexpected candle row length %d, skipping", len(row))
+                        continue
                     ticker_lower = ticker.lower()
                     if ticker_lower not in candles_by_ticker:
                         candles_by_ticker[ticker_lower] = []
@@ -453,10 +461,10 @@ class SignalExecutor:
                             ts = datetime.fromisoformat(data["timestamp"])
                             if now_utc - ts <= timedelta(minutes=3):
                                 live_prices_cache[ticker] = price_val
-                        except Exception:
-                            pass
+                        except Exception as parse_err:
+                            logger.warning("[PaperTrader] Failed to parse Redis price for %s: %s", ticker, parse_err)
             except Exception:
-                logger.exception("[PaperTrader] Redis mget error for live prices batch")
+                logger.warning("[PaperTrader] Redis mget error for live prices batch: %s", "timeout or connection issue")
 
         for config_id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params in configs:
             indicator_params = indicator_params or {}
@@ -732,11 +740,12 @@ class SignalExecutor:
                                     "qty_precision": qty_precision
                                 }
                             )
+                            continue
                     # Pre-Trade Controls check
                     try:
                         from backtest_engine.live.controls import PreTradeController
                         ptc = PreTradeController()
-                        pos_key = (asset.lower(), strategy_name)
+                        pos_key = (asset.lower(), strategy_name, timeframe)
                         current_qty = active_positions[pos_key][1] if pos_key in active_positions else Decimal("0.0")
                         ptc.check_limits(
                             ticker=asset,
@@ -744,7 +753,7 @@ class SignalExecutor:
                             price=current_price,
                             current_nav=total_nav,
                             current_position_qty=current_qty,
-                            reference_price=current_price
+                            reference_price=Decimal(str(last_closed_bar["close"]))
                         )
                     except Exception as ptce:
                         logger.error(f"[PaperTrader] BUY Order REJECTED by Pre-Trade Controls for {asset} on {strategy_name}: {ptce}")
@@ -976,7 +985,7 @@ class SignalExecutor:
                             price=current_price,
                             current_nav=total_nav,
                             current_position_qty=qty,
-                            reference_price=current_price
+                            reference_price=Decimal(str(last_closed_bar["close"]))
                         )
                     except Exception as ptce:
                         logger.error(f"[PaperTrader] SELL Order REJECTED by Pre-Trade Controls for {asset} on {strategy_name}: {ptce}")
@@ -1100,6 +1109,12 @@ class SignalExecutor:
                                         last_updated = CURRENT_TIMESTAMP
                                     WHERE source = %s
                                 """, (total_entry_cost, pnl_eur, qty * entry_price, source))
+                                # PT-07: Feed the conversion accumulator with realized profit
+                                from backtest_engine.live.bybit.conversion.accumulator import AccumulatorBuffer
+                                import os
+                                threshold = Decimal(os.getenv("BYBIT_CONVERSION_THRESHOLD_USDC", "100"))
+                                accumulator = AccumulatorBuffer(threshold=threshold)
+                                accumulator.deposit(conn, pnl, trade_ref=f"paper-sell-{pos_id}")
                             else:
                                 cur.execute("""
                                     UPDATE paper_portfolio_balance 
@@ -1189,7 +1204,10 @@ class SignalExecutor:
             dry_run = os.getenv("BYBIT_CONVERSION_DRY_RUN", "true").lower() == "true"
 
             accumulator = AccumulatorBuffer(threshold=threshold)
-            margin_sim = UTAMarginSimulator(self.bybit_client)
+            # PT-18: Reuse cached margin simulator to preserve _conversion_locked TTL
+            if self._margin_simulator is None:
+                self._margin_simulator = UTAMarginSimulator(self.bybit_client)
+            margin_sim = self._margin_simulator
             router = SpotConversionRouter(
                 self.bybit_client, accumulator, margin_sim, dry_run=dry_run
             )

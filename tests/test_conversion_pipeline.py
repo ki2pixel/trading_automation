@@ -307,7 +307,7 @@ def test_spot_router_idempotent_recovery():
     assert order.avg_fill_price == Decimal("1.08")
 
     # Real order fill drains the accumulator
-    accumulator_mock.drain.assert_called_once_with(conn_mock, order.client_order_id)
+    accumulator_mock.drain.assert_called_once_with(conn_mock, order.client_order_id, order.submitted_at)
 
 
 # ---------------------------------------------------------

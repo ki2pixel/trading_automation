@@ -104,12 +104,8 @@ class BybitPriceIngestor(BasePriceIngestor):
     def poll_and_cache(self) -> Dict[str, float]:
         """Polls current ticker price and recent 1m candles from Bybit and saves them to caches."""
         prices: Dict[str, float] = {}
-        redis_pipeline = None
+        staged_redis: list[tuple[str, str]] = []
         redis_client = get_redis_client()
-
-        # ── G1-FIX Phase 1: Stage Redis writes (buffered, NOT yet sent) ──
-        if redis_client:
-            redis_pipeline = redis_client.pipeline()
 
         for symbol in self.symbols:
             try:
@@ -127,13 +123,12 @@ class BybitPriceIngestor(BasePriceIngestor):
                 res = self.client.get_klines(symbol, interval="1", limit=5)
                 klines_data = res.get("result", {}).get("list", [])
 
-                # Stage Redis write (buffered in pipeline, not yet executed)
-                if redis_pipeline:
-                    price_payload = json.dumps({
-                        "price": str(price_val),
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    })
-                    redis_pipeline.set(f"price:{symbol_lower}", price_payload, ex=180)
+                # PT-04: Build price payload but do NOT stage in Redis pipeline yet.
+                # Redis staging happens only AFTER successful PostgreSQL commit.
+                price_payload = json.dumps({
+                    "price": str(price_val),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
 
                 # ── G1-FIX Phase 2: Write PostgreSQL (single transaction per symbol) ──
                 try:
@@ -168,21 +163,24 @@ class BybitPriceIngestor(BasePriceIngestor):
                                 (symbol_lower,),
                             )
                         conn.commit()
+                        # PT-04: Stage Redis write ONLY after successful PG commit
+                        staged_redis.append((f"price:{symbol_lower}", price_payload))
                 except Exception as pg_err:
                     print(f"[BybitIngestor] PostgreSQL write failed for {symbol_lower}: {pg_err}")
-                    # G1-FIX: Rolled back this symbol, but Redis pipeline is still intact
-                    # for symbols that succeeded. Remove this symbol from redis pipeline
-                    # by not including it in prices dict — Redis only gets committed data.
+                    # Failed PG commit → remove from prices dict, no Redis staging
                     prices.pop(symbol_lower, None)
                     continue
 
             except Exception as e:
                 print(f"[BybitIngestor] Error polling {symbol}: {e}")
 
-        # ── G1-FIX Phase 3: Execute Redis pipeline (only after all PG commits succeed) ──
-        if redis_pipeline and prices:
+        # ── G1-FIX Phase 3: Execute Redis pipeline (only committed prices) ──
+        if redis_client and staged_redis:
             try:
-                redis_pipeline.execute()
+                pipe = redis_client.pipeline()
+                for key, payload in staged_redis:
+                    pipe.set(key, payload, ex=180)
+                pipe.execute()
             except Exception as redis_exec_err:
                 print(f"[BybitIngestor] Redis pipeline execution failed: {redis_exec_err}")
 

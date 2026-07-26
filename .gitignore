@@ -90,5 +90,10 @@ scratch/
 # ZenCoder settings
 .zencoder/
 
+# Command Code
+.commandcode/
+.commandcode/taste.md
+
+
 
 

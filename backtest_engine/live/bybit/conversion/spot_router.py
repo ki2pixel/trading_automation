@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Optional
 import json
 import logging
+import uuid
+import psycopg2
 
 from .order_types import ConversionOrder, ConversionOrderStatus
 from .margin_simulator import UTAMarginSimulator
@@ -54,6 +56,7 @@ class SpotConversionRouter:
                     SELECT client_order_id, broker_order_id, status, qty_usdc, filled_qty_eur, avg_fill_price, fee_usdc, error_message, dry_run, created_at
                     FROM conversion_audit_log
                     WHERE status IN ('PENDING', 'SUBMITTED', 'RECONCILIATION_PENDING', 'PARTIAL')
+                    ORDER BY created_at DESC
                     LIMIT 1
                 """)
                 row = cur.fetchone()
@@ -94,7 +97,7 @@ class SpotConversionRouter:
                     recovered_order = self._recover_order_state(unfinished_order)
                     self._log_conversion(conn, recovered_order, dry_run=recovered_order.dry_run)
                     if recovered_order.status == ConversionOrderStatus.FILLED:
-                        self.accumulator.drain(conn, recovered_order.client_order_id)
+                        self.accumulator.drain(conn, recovered_order.client_order_id, recovered_order.submitted_at)
                     elif recovered_order.status == ConversionOrderStatus.RECONCILIATION_PENDING:
                         logger.warning(
                             "[SpotRouter] Order %s remains in RECONCILIATION_PENDING. "
@@ -104,8 +107,12 @@ class SpotConversionRouter:
                             recovered_order.max_reconciliation_attempts,
                         )
                     return recovered_order
-        except Exception as e:
-            logger.error(f"[SpotRouter] Failed to check/recover unfinished orders: {e}")
+        except (psycopg2.Error, OSError) as e:
+            logger.error("[SpotRouter] Failed to check/recover unfinished orders (transient): %s", e)
+            return None  # fail-closed: never submit a new order when state cannot be read
+        except (TypeError, ValueError, KeyError) as e:
+            logger.critical("[SpotRouter] Programming error in Step 0 rebuild: %s", e)
+            raise  # propagate: these are bugs, never silence them into Step 1
 
         # Step 1: Check accumulator threshold
         should_trigger, balance = self.accumulator.should_trigger(conn)
@@ -151,7 +158,7 @@ class SpotConversionRouter:
         order = self._submit_order(conn, order)
 
         if order.status == ConversionOrderStatus.FILLED:
-            self.accumulator.drain(conn, order.client_order_id)
+            self.accumulator.drain(conn, order.client_order_id, order.submitted_at)
             self._log_conversion(conn, order)
         elif order.status == ConversionOrderStatus.RECONCILIATION_PENDING:
             # J1-FIX: Explicit retry via next cycle — Step 0 will attempt recovery
@@ -464,7 +471,7 @@ class SpotConversionRouter:
                     VALUES (%s, 'BLOCKED', %s, %s, FALSE, %s)
                     """,
                     (
-                        f"blocked-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+                        f"blocked-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}",
                         amount,
                         margin_check.reason,
                         datetime.now(timezone.utc),

@@ -204,7 +204,7 @@ def get_eurusd_rate(conn=None):
                             rate = Decimal(str(usd_rate))
                             break
             except Exception as api_err:
-                logger.exception(f"[PaperTrader] Public API call to {url} failed: {api_err}")
+                logger.warning("[PaperTrader] Public API call to %s failed: %s", url, api_err)
 
     # 3. Static fallback
     if rate is None:

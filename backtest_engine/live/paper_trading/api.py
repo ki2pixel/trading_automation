@@ -29,13 +29,20 @@ def _is_production() -> bool:
         or os.getenv("RENDER") is not None
     )
 
-# Global thread-safe logs buffer
+# Global thread-safe logs buffer with monotonic sequence counter (PT-09)
 log_buffer = collections.deque(maxlen=1000)
 log_lock = threading.Lock()
+_log_seq_counter = 0
+_log_seq_lock = threading.Lock()
 
 class DequeLogHandler(logging.Handler):
     def emit(self, record):
+        global _log_seq_counter
+        with _log_seq_lock:
+            _log_seq_counter += 1
+            seq = _log_seq_counter
         entry = {
+            "seq": seq,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "message": record.getMessage()
@@ -403,8 +410,8 @@ async def get_candles(ticker: str, limit: int = 1000):
     redis_client = None
     try:
         redis_client = get_async_redis_client()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[API] /candles: Redis client init failed: %s", e)
 
     limit = min(max(1, limit), 10000)
     cache_key = f"candles:{ticker.lower()}:{limit}"
@@ -414,8 +421,8 @@ async def get_candles(ticker: str, limit: int = 1000):
             cached = await asyncio.wait_for(redis_client.get(cache_key), timeout=REDIS_CACHE_TIMEOUT)
             if cached:
                 return json.loads(cached)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[API] /candles: Redis cache read failed: %s", e)
 
     pool = await _get_pool()
     try:
@@ -441,8 +448,8 @@ async def get_candles(ticker: str, limit: int = 1000):
             if redis_client and result:
                 try:
                     await asyncio.wait_for(redis_client.setex(cache_key, 20, json.dumps(result)), timeout=REDIS_CACHE_TIMEOUT)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("[API] /candles: Redis cache write failed: %s", e)
                     
             return result
     except HTTPException:
@@ -565,6 +572,16 @@ async def panic_close_all(request: Request):
                 positions = await conn.fetch(
                     "SELECT id, asset, strategy_name, qty, entry_price, current_price FROM paper_positions FOR UPDATE"
                 )
+                if not positions:
+                    return {"status": "success", "closed_positions_count": 0, "kill_switch": kill_switch_status.as_dict()}
+
+                # PT-10: Batch price lookup — single query instead of N+1 per position
+                assets_lower = [pos["asset"].lower() for pos in positions]
+                price_rows = await conn.fetch(
+                    "SELECT ticker, price FROM live_prices WHERE LOWER(ticker) = ANY($1::text[])",
+                    assets_lower,
+                )
+                price_map = {r["ticker"].lower(): Decimal(str(r["price"])) for r in price_rows if r["price"] is not None}
 
                 closed_count = 0
                 for pos in positions:
@@ -574,16 +591,8 @@ async def panic_close_all(request: Request):
                     qty = Decimal(str(pos["qty"]))
                     entry_price = Decimal(str(pos["entry_price"]))
 
-                    # Resolve price exclusively from live_prices in DB (using asyncpg, non-blocking)
-                    live_price = None
-                    price_row = await conn.fetchrow(
-                        "SELECT price FROM live_prices WHERE LOWER(ticker) = $1",
-                        asset.lower(),
-                    )
-                    if price_row and price_row["price"] is not None:
-                        live_price = Decimal(str(price_row["price"]))
-                    else:
-                        live_price = Decimal(str(pos["current_price"]))
+                    # Resolve price from batched lookup, fallback to position's stored price
+                    live_price = price_map.get(asset.lower(), Decimal(str(pos["current_price"])))
 
                     source = 'bybit' if is_crypto_asset(asset) else 'trading212'
                     fee_rate = Decimal("0.0010") if source == 'bybit' else Decimal("0.0")
@@ -601,19 +610,33 @@ async def panic_close_all(request: Request):
                         pos_id
                     )
                     if not deleted_pos:
-                        # The position was already deleted by another concurrent transaction/thread
                         logger.warning(f"[PaperTrader] Position {pos_id} already closed/deleted by concurrent task. Skipping balance credit.")
                         continue
 
-                    # 4. Update balance
-                    await conn.execute(
-                        "UPDATE paper_portfolio_balance "
-                        "SET paper_cash_balance = paper_cash_balance + $1, "
-                        "    allocated_balance = GREATEST(0, allocated_balance - $2), "
-                        "    last_updated = CURRENT_TIMESTAMP "
-                        "WHERE source = $3",
-                        net_revenue, qty * entry_price, source,
-                    )
+                    # 4. Update balance — PT-10: align with SELL standard: credit secured_balance for Bybit profits
+                    if pnl > 0 and source == 'bybit':
+                        # Query EUR/USD rate directly via asyncpg (sync get_eurusd_rate uses psycopg2)
+                        eur_row = await conn.fetchrow("SELECT price FROM live_prices WHERE ticker = 'eurusd'")
+                        eurusd_rate = Decimal(str(eur_row["price"])) if eur_row and eur_row["price"] else Decimal("1.08")
+                        pnl_eur = pnl / eurusd_rate
+                        await conn.execute(
+                            "UPDATE paper_portfolio_balance "
+                            "SET paper_cash_balance = paper_cash_balance + $1, "
+                            "    secured_balance = secured_balance + $2, "
+                            "    allocated_balance = GREATEST(0, allocated_balance - $3), "
+                            "    last_updated = CURRENT_TIMESTAMP "
+                            "WHERE source = $4",
+                            total_entry_cost, pnl_eur, qty * entry_price, source,
+                        )
+                    else:
+                        await conn.execute(
+                            "UPDATE paper_portfolio_balance "
+                            "SET paper_cash_balance = paper_cash_balance + $1, "
+                            "    allocated_balance = GREATEST(0, allocated_balance - $2), "
+                            "    last_updated = CURRENT_TIMESTAMP "
+                            "WHERE source = $3",
+                            net_revenue, qty * entry_price, source,
+                        )
 
                     # Insert transaction
                     await conn.execute(
@@ -653,10 +676,10 @@ async def panic_close_all(request: Request):
                                     redis_client.delete(f"perf_metrics:{asset.lower()}"),
                                     timeout=0.5,
                                 )
-                            except Exception:
-                                pass  # Best-effort cache invalidation
-                except Exception:
-                    pass  # Redis unavailable, cache will expire via TTL
+                            except Exception as e:
+                                logger.debug("[API] /panic: cache invalidation failed for %s: %s", asset, e)
+                except Exception as e:
+                    logger.debug("[API] /panic: Redis unavailable for cache invalidation: %s", e)
 
             return {
                 "status": "success",
@@ -696,11 +719,11 @@ async def toggle_config(config_id: int, payload: ConfigToggle):
 async def stream_logs(request: Request):
     async def log_generator():
         # Send up to the last 100 logs from buffer for immediate context on connect
-        last_sent_idx = 0
+        last_sent_seq = 0
         with log_lock:
-            history_start = max(0, len(log_buffer) - 100)
-            buffered_logs = list(log_buffer)[history_start:]
-            last_sent_idx = history_start + len(buffered_logs)
+            buffered_logs = list(log_buffer)[-100:]
+            if buffered_logs:
+                last_sent_seq = buffered_logs[-1]["seq"]
             
         for log in buffered_logs:
             yield f"data: {json.dumps(log)}\n\n"
@@ -712,13 +735,12 @@ async def stream_logs(request: Request):
             await asyncio.sleep(0.5)
             new_logs = []
             with log_lock:
-                current_len = len(log_buffer)
-                if current_len > last_sent_idx:
-                    start_idx = current_len - (current_len - last_sent_idx)
-                    if start_idx < 0:
-                        start_idx = 0
-                    new_logs = list(log_buffer)[start_idx:]
-                    last_sent_idx = current_len
+                # PT-09: Use monotonic seq counter instead of index-based tracking.
+                # Index-based tracking breaks once deque(maxlen=1000) wraps around.
+                for entry in log_buffer:
+                    if entry["seq"] > last_sent_seq:
+                        new_logs.append(entry)
+                        last_sent_seq = entry["seq"]
             for log in new_logs:
                 yield f"data: {json.dumps(log)}\n\n"
                 
@@ -731,8 +753,9 @@ async def get_performance_metrics(ticker: str):
     redis_client = None
     try:
         redis_client = get_async_redis_client()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[API] /performance/metrics: Redis client init failed: %s", e)
+
 
     # 1. Cache lookup
     if redis_client:
@@ -740,8 +763,8 @@ async def get_performance_metrics(ticker: str):
             cached = await asyncio.wait_for(redis_client.get(f"perf_metrics:{ticker.lower()}"), timeout=REDIS_CACHE_TIMEOUT)
             if cached:
                 return json.loads(cached)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[API] /performance/metrics: Redis cache read failed: %s", e)
             
     pool = await _get_pool()
     try:
@@ -812,8 +835,8 @@ async def get_performance_metrics(ticker: str):
         if redis_client:
             try:
                 await asyncio.wait_for(redis_client.setex(f"perf_metrics:{ticker.lower()}", 300, json.dumps(result)), timeout=REDIS_CACHE_TIMEOUT)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[API] /performance/metrics: Redis cache write failed: %s", e)
                 
         return result
         

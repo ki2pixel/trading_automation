@@ -42,9 +42,14 @@ class PaperTradingEngine:
         )
 
     def _warmup_clients(self) -> None:
-        """O3-FIX: Lazy initialization of broker clients on first cycle."""
+        """O3-FIX: Lazy initialization of broker clients on first cycle.
+        PT-26: Only mark as warmed up if at least one client succeeded.
+        On full failure, clients are retried periodically (every N cycles)."""
         if self._clients_warmed_up:
             return
+
+        t212_ok = False
+        bybit_ok = False
 
         from backtest_engine.live.trading212.config import Trading212Config
         from backtest_engine.live.trading212.client import Trading212Client
@@ -56,6 +61,7 @@ class PaperTradingEngine:
             self.executor.t212_client = self.t212_client
             logger.info("[PaperTrader] Trading 212 API client successfully initialized and pending orders recovered.")
             self.t212_init_error = None
+            t212_ok = True
         except ValueError as e:
             logger.info("[PaperTrader] Trading 212 credentials not configured or invalid, running in local-only mode: %s", e)
             self.t212_client = None
@@ -74,6 +80,7 @@ class PaperTradingEngine:
             self.executor.bybit_client = self.bybit_client
             logger.info("[PaperTrader] Bybit API client successfully initialized.")
             self.bybit_init_error = None
+            bybit_ok = True
         except ValueError as e:
             logger.info("[PaperTrader] Bybit credentials not configured or invalid: %s", e)
             self.bybit_client = None
@@ -83,7 +90,15 @@ class PaperTradingEngine:
             self.bybit_client = None
             self.bybit_init_error = str(e)
 
-        self._clients_warmed_up = True
+        # PT-26: Only mark warmed up if at least one client initialized.
+        # If both failed, _warmup_clients() will retry on every cycle.
+        self._clients_warmed_up = t212_ok or bybit_ok
+        if not self._clients_warmed_up:
+            logger.warning(
+                "[PaperTrader] Both broker clients failed to initialize. "
+                "Retrying on next cycle (errors: T212=%s, Bybit=%s).",
+                self.t212_init_error, self.bybit_init_error,
+            )
 
     def _load_market_hours(self):
         try:

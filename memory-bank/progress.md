@@ -1,6 +1,11 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-26 22:40:00] - Exécution et validation finale de la remédiation backend Paper Trading (`docs/audit/paper-trading-backend-2026-07-26.md` / `implementation_plan.md`) :
+  **Phase 1 (Critiques/Hautes)** : PT-01 (`dry_run` dans `ConversionOrder` + Step 0 fail-closed `spot_router.py`), PT-02 ( normalisation `.lower()` tickers warm-up), PT-03 (masquage hostname credentials Redis URL), PT-04 (staging Redis post-commit PG ingestor Bybit).
+  **Phase 2 (Hautes/Moyennes)** : PT-05 (`continue` post-rejet `qty <= 0`), PT-06 (isolation exceptions par broker dans `update_portfolio_nav`), PT-07 (`deposit()` câblé sur SELL Bybit profitable), PT-08 (prix de référence indépendant pour PTC price collar), PT-09 (curseur `seq` monotone flux SSE logs), PT-10 (batch SQL `ANY()` + alignement `secured_balance` Panic Close).
+  **Phase 3 (Moyennes/Basses)** : PT-11 (idempotence T212 via `get_pending_orders()`), PT-12 (logging contextuel exceptions), PT-13 (`Decimal` calculs de sortie `BrokerSimulator`), PT-14 (keep-alive PG `asyncio.to_thread`), PT-15 (suppression branche morte `len(row) == 5`), PT-16 à PT-26 (mTLS CA strict, persistance reconciliation, locks throttle, index DDL, auto-reconnexion brokers).
+  **Phase 4 (Validation & Tests)** : 92/92 tests unitaires et d'intégration validés, 0 régression.
 - [x] [2026-07-25 19:25:00] - Analyse quantitative, financière et comportementale approfondie des transactions de Paper Trading (30/06/2026 au 24/07/2026) :
   **Journal de Trading** : Reconstitution FIFO de 178 transactions (87 trades complets clôturés, 4 positions ouvertes).
   **Métriques Globale** : Win Rate 36.78%, PnL Brut/Net T212 +71.52 € (+23.84%), PnL Net Bybit +21.91 € (Friction com. 49.61 €), Payoff Ratio 2.72, Profit Factor 1.58, Expectancy +0.82 €/trade (+0.35%), Max Drawdown -38.76 €.

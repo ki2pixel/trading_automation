@@ -438,7 +438,7 @@ def test_bybit_conversion_crash_recovery():
     assert order.filled_qty_eur == Decimal("18.50")
 
     # Confirm accumulator is drained on verified filled status
-    accumulator_mock.drain.assert_called_once_with(conn_mock, order.client_order_id)
+    accumulator_mock.drain.assert_called_once_with(conn_mock, order.client_order_id, order.submitted_at)
 
 def test_bybit_conversion_dry_run_not_destructive():
     """

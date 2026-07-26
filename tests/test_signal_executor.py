@@ -250,7 +250,7 @@ class TestSignalExecutor:
         # To avoid actual pandas resampling logic issues with mock candle rows, let's patch pd.DataFrame or mock the Aggregation
         with patch('pandas.DataFrame.resample') as mock_resample:
             mock_resample.return_value.agg.return_value.dropna.return_value = pd.DataFrame(
-                {"open": [150.0, 155.0, 160.0], "high": [151.0, 156.0, 161.0], "low": [149.0, 154.0, 159.0], "close": [150.5, 155.5, 160.0]},
+                {"open": [150.0, 155.0, 160.0], "high": [151.0, 156.0, 161.0], "low": [149.0, 154.0, 159.0], "close": [150.5, 162.0, 165.0]},
                 index=idx
             )
             executor.evaluate_and_execute_strategies(mock_conn)
@@ -337,7 +337,7 @@ class TestSignalExecutor:
 
         with patch('pandas.DataFrame.resample') as mock_resample:
             mock_resample.return_value.agg.return_value.dropna.return_value = pd.DataFrame(
-                {"open": [150.0, 155.0, 160.0], "high": [151.0, 156.0, 161.0], "low": [149.0, 154.0, 159.0], "close": [150.5, 155.5, 160.0]},
+                {"open": [150.0, 155.0, 160.0], "high": [151.0, 156.0, 161.0], "low": [149.0, 154.0, 159.0], "close": [150.5, 162.0, 165.0]},
                 index=idx
             )
             executor.evaluate_and_execute_strategies(mock_conn)
@@ -446,7 +446,7 @@ class TestSignalExecutor:
 
         with patch('pandas.DataFrame.resample') as mock_resample:
             mock_resample.return_value.agg.return_value.dropna.return_value = pd.DataFrame(
-                {"open": [150.0, 155.0, 160.0], "high": [151.0, 156.0, 161.0], "low": [149.0, 154.0, 159.0], "close": [150.5, 155.5, 160.0]},
+                {"open": [150.0, 155.0, 160.0], "high": [151.0, 156.0, 161.0], "low": [149.0, 154.0, 159.0], "close": [150.5, 162.0, 165.0]},
                 index=idx
             )
             executor.evaluate_and_execute_strategies(mock_conn)

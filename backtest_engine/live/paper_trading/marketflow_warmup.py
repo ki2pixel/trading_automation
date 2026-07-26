@@ -96,7 +96,7 @@ def parse_and_insert(t212_ticker, candles, conn):
                 if open_val == Decimal("0"):
                     continue
 
-                records.append((t212_ticker, dt_val, open_val, high_val, low_val, close_val))
+                records.append((t212_ticker.lower(), dt_val, open_val, high_val, low_val, close_val))
             except Exception as e:
                 logger.exception(f"[WarmUp] Erreur parsing bougie {candle} pour {t212_ticker}: {e}")
 

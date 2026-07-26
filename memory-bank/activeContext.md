@@ -1,19 +1,22 @@
 # Contexte Actif
 
 ## Focus Actuel
-- Déploiement des remédiations frontend Paper Trading (23 anomalies) sur staging Render, puis production.
+- [2026-07-26 22:40:00] - Clôture et validation de la remédiation backend Paper Trading (`docs/audit/paper-trading-backend-2026-07-26.md` / `implementation_plan.md`). Les 26 anomalies (PT-01 à PT-26) réparties sur 4 phases ont été corrigées et validées par la suite de tests (92/92 tests verts).
 - [2026-07-25 19:25:00] - Réalisation de l'analyse quantitative, financière et comportementale approfondie du Paper Trading (30/06/2026 au 24/07/2026). Journal complet reconstruit (178 tx, 87 trades clôturés). Rapport d'analyse et plan d'ajustement paramétrique/algorithmique rédigés dans `paper_trading_analysis_report.md`.
-- [2026-07-17] - Exécution du workflow Docs Updater : correction README (8→16 stratégies), création `docs/live_and_paper_trading/signal_executor.md`, mise à jour `docs/live_and_paper_trading/README.md` (références audits), correction commentaire `strategy_registry.py`.
 
 ## Prochaines Étapes
-- Vérification manuelle / Playwright (smoke tests) du dashboard post-remédiation.
-- Déploiement incrémental.
+- Monitoring et observation de l'exécution live / Paper Trading.
 - Aucun bloquant.
 
 ## Bloquants / Problems Actuels
 - Aucun bloquant.
 
 ## Résolutions Récentes
+- [2026-07-26 22:40:00] - Remédiation Backend Paper Trading (26 anomalies PT-01 à PT-26, 4 phases) :
+  **Phase 1 (Critiques/Hautes)** : PT-01 (`dry_run` dans dataclass `ConversionOrder` + Step 0 fail-closed), PT-02 (normalisation `.lower()` tickers warm-up), PT-03 (masquage hostname credentials Redis URL), PT-04 (staging Redis post-commit PG ingestor Bybit).
+  **Phase 2 (Hautes/Moyennes)** : PT-05 (`continue` post-rejet `qty <= 0`), PT-06 (isolation exceptions par broker dans `update_portfolio_nav`), PT-07 (`deposit()` câblé sur SELL Bybit profitable), PT-08 (prix de référence indépendant pour PTC price collar), PT-09 (curseur `seq` monotone flux SSE logs), PT-10 (batch SQL `ANY()` + alignement `secured_balance` Panic Close).
+  **Phase 3 (Moyennes/Basses)** : PT-11 (idempotence T212 via `get_pending_orders()`), PT-12 (logging contextuel exceptions), PT-13 (`Decimal` calculs de sortie `BrokerSimulator`), PT-14 (keep-alive PG `asyncio.to_thread`), PT-15 (suppression branche morte `len(row) == 5`), PT-16 à PT-26 (mTLS CA strict, persistance reconciliation, locks throttle, index DDL, auto-reconnexion brokers).
+  **Phase 4 (Validation & Tests)** : 92/92 tests unitaires et d'intégration validés, 0 régression.
 - [2026-07-25 20:17:00] - Implémentation du contrôle d'idempotence et de réconciliation de `paper_portfolio_balance.allocated_balance` : Ajout de `reconcile_allocated_balances(conn)` dans `db_setup.py` (exécuté dans `init_db()` au démarrage) et de `SignalExecutor.reconcile_allocated_balances(conn)` avec verrouillage transactionnel `FOR UPDATE`, calcul exact en `Decimal(qty * entry_price)` ventilé par écosystème ('trading212' / 'bybit'). Tests unitaires validés (14/14 `test_paper_trading_engine.py`, 28/28 tests totaux passés).
 - [2026-07-17] - Remédiation frontend Paper Trading (23 anomalies, 4 phases) :
   **Phase 1 (Critiques)** : A-01 SSE auth handling (circuit breaker + auth-check), A-02 RedisRateLimiterMiddleware fail-open, A-03 invalidation cache perf_metrics après panic close.

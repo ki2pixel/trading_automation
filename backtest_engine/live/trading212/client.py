@@ -1,4 +1,5 @@
 import time
+import threading
 import requests
 from requests.auth import HTTPBasicAuth
 from typing import Any, Dict, List, Optional
@@ -16,6 +17,7 @@ class Trading212Client:
         
         # Throttling trackers (timestamps of last calls)
         self._last_call_times: Dict[str, float] = {}
+        self._throttle_lock = threading.Lock()
         
         # Min delays between calls in seconds
         self._endpoint_delays = {
@@ -29,12 +31,13 @@ class Trading212Client:
 
     def _throttle(self, endpoint: str) -> None:
         """Enforces client-side rate limits to prevent 429s."""
-        min_delay = self._endpoint_delays.get(endpoint, 1.0)
-        last_call = self._last_call_times.get(endpoint, 0.0)
-        elapsed = time.time() - last_call
-        if elapsed < min_delay:
-            time.sleep(min_delay - elapsed)
-        self._last_call_times[endpoint] = time.time()
+        with self._throttle_lock:
+            min_delay = self._endpoint_delays.get(endpoint, 1.0)
+            last_call = self._last_call_times.get(endpoint, 0.0)
+            elapsed = time.time() - last_call
+            if elapsed < min_delay:
+                time.sleep(min_delay - elapsed)
+            self._last_call_times[endpoint] = time.time()
 
     def _request(
         self,

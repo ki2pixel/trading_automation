@@ -5,7 +5,7 @@ vers EUR que lorsque le seuil minimum est atteint.
 """
 from decimal import Decimal
 from datetime import datetime, timezone
-from typing import Tuple
+from typing import Optional, Tuple
 import logging
 
 logger = logging.getLogger("bybit.conversion")
@@ -86,20 +86,35 @@ class AccumulatorBuffer:
         balance = self.get_balance(conn)
         return balance >= self.threshold, balance
 
-    def drain(self, conn, conversion_id: str) -> Decimal:
+    def drain(self, conn, conversion_id: str, submitted_at: Optional[datetime] = None) -> Decimal:
         """
         Marque toutes les entrées non-drainées comme drainées.
         Associe l'ID de conversion pour traçabilité.
+        Si submitted_at est fourni, ne draine que les dépôts créés avant la soumission (PT-25).
         Retourne le montant total drainé.
         """
-        balance = self.get_balance(conn)
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE conversion_accumulator
-                SET drained = TRUE, conversion_id = %s, drained_at = %s
-                WHERE source = %s AND drained = FALSE
-            """, (conversion_id, datetime.now(timezone.utc), self.source))
-        conn.commit()
+        if submitted_at:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE conversion_accumulator
+                    SET drained = TRUE, conversion_id = %s, drained_at = %s
+                    WHERE source = %s AND drained = FALSE AND created_at <= %s
+                """, (conversion_id, datetime.now(timezone.utc), self.source, submitted_at))
+                conn.commit()
+                cur.execute(
+                    "SELECT COALESCE(SUM(amount), 0) FROM conversion_accumulator WHERE source = %s AND conversion_id = %s",
+                    (self.source, conversion_id),
+                )
+                balance = Decimal(str(cur.fetchone()[0]))
+        else:
+            balance = self.get_balance(conn)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE conversion_accumulator
+                    SET drained = TRUE, conversion_id = %s, drained_at = %s
+                    WHERE source = %s AND drained = FALSE
+                """, (conversion_id, datetime.now(timezone.utc), self.source))
+            conn.commit()
         logger.info(
             f"[Accumulator] Drained {balance} USDC (conversion: {conversion_id})"
         )
