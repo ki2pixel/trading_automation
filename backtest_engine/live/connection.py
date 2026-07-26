@@ -207,7 +207,7 @@ async def run_postgres_keep_alive_task(interval_seconds: int = 14400) -> None:
         try:
             db_url = os.getenv("DATABASE_URL")
             if db_url:
-                async def _heartbeat_once():
+                def _heartbeat_once():
                     with get_db_connection() as conn:
                         with conn.cursor() as cur:
                             cur.execute("SELECT 1;")
