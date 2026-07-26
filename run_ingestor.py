@@ -191,16 +191,19 @@ def main():
         print("[Runner] ERROR: Neither Trading 212 nor Bybit are configured. Exiting.", file=sys.stderr)
         sys.exit(1)
 
-    # 3. Bootstrapping (optional for T212)
+    # 3. Bootstrapping (optional for T212, executed asynchronously in background)
     bootstrap_env = os.getenv("T212_BOOTSTRAP", "false").lower()
     if bootstrap_env in ("true", "1", "yes") and t212_ingestor is not None:
-        print("[Runner] Running bootstrap procedure...")
-        try:
-            resolver = Trading212TickerResolver(t212_client)
-            bootstrapper = Trading212Bootstrapper(t212_client, resolver)
-            bootstrapper.bootstrap()
-        except Exception as e:
-            print(f"[Runner] Bootstrap failed: {e}", file=sys.stderr)
+        import threading
+        def _run_bootstrap():
+            print("[Runner] Running bootstrap procedure in background thread...")
+            try:
+                resolver = Trading212TickerResolver(t212_client)
+                bootstrapper = Trading212Bootstrapper(t212_client, resolver)
+                bootstrapper.bootstrap()
+            except Exception as e:
+                print(f"[Runner] Bootstrap failed: {e}", file=sys.stderr)
+        threading.Thread(target=_run_bootstrap, daemon=True, name="t212-bootstrapper").start()
 
     # 4. Mode routing
     mode = os.getenv("T212_INGESTOR_MODE", "worker").lower()

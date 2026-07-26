@@ -90,7 +90,10 @@ class Trading212Client:
                     response.raise_for_status()
                     return response
         except Exception as e:
-            print(f"[Trading212Client] Request failed after tenacity retries: {e}")
+            if isinstance(e, requests.exceptions.HTTPError) and e.response is not None and e.response.status_code == 400:
+                print(f"[Trading212Client] Order request returned 400 Bad Request for {url}: {e}")
+            else:
+                print(f"[Trading212Client] Request failed after tenacity retries: {e}")
             raise e
 
     def get_instruments(self) -> List[Dict[str, Any]]:
