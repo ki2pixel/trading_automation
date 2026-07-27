@@ -178,27 +178,71 @@ class PaperTradingEngine:
             else:
                 time.sleep(remaining)
 
-    async def start_loop_async(self, interval_seconds=60):
-        logger.info("[PaperTrader] Starting async paper trading loop (interval: %ds)...", interval_seconds)
+    async def start_loop_async(self, fast_interval=30, eval_interval=60, interval_seconds=None):
+        """Phase 3: Decoupled dual-loop execution.
+        - Fast loop (30s): update_portfolio_nav + cleanup only
+        - Eval loop (60s): evaluate_and_execute_strategies + conversion pipeline
+
+        This guarantees NAV updates are never blocked by a slow evaluation cycle.
+        Pass interval_seconds= as a backward-compatible shorthand (sets eval_interval).
+        """
         import asyncio
+        from backtest_engine.live.connection import get_db_connection
+        if interval_seconds is not None:
+            eval_interval = interval_seconds
+        logger.info("[PaperTrader] Starting decoupled async loops (fast: %ds, eval: %ds)...",
+                     fast_interval, eval_interval)
         self._running = True
-        while self._running:
-            cycle_start = time.monotonic()
-            await asyncio.to_thread(self.run_cycle)
-            elapsed = time.monotonic() - cycle_start
-            remaining = max(0, interval_seconds - elapsed)
-            if remaining == 0:
-                logger.warning(
-                    "[PaperTrader] Async cycle took %.1fs (> %ds interval). No sleep.",
-                    elapsed, interval_seconds,
-                )
-            elif remaining <= 1:
+
+        async def _fast_loop():
+            while self._running:
+                cycle_start = time.monotonic()
+                try:
+                    await asyncio.to_thread(self._run_fast_cycle)
+                except Exception:
+                    logger.exception("[PaperTrader] Fast cycle error")
+                elapsed = time.monotonic() - cycle_start
+                if elapsed > fast_interval:
+                    logger.warning("[PaperTrader] Fast cycle took %.1fs (> %ds interval).", elapsed, fast_interval)
+                await asyncio.sleep(fast_interval)
+
+        async def _eval_loop():
+            while self._running:
+                cycle_start = time.monotonic()
+                try:
+                    await asyncio.to_thread(self._run_evaluation_cycle)
+                except Exception:
+                    logger.exception("[PaperTrader] Evaluation cycle error")
+                elapsed = time.monotonic() - cycle_start
+                remaining = max(0, eval_interval - elapsed)
+                if remaining == 0:
+                    logger.warning("[PaperTrader] Eval cycle took %.1fs (> %ds interval).", elapsed, eval_interval)
                 await asyncio.sleep(remaining)
-            else:
-                # Sleep in 1s increments for responsiveness to self._running changes
-                deadline = time.monotonic() + remaining
-                while self._running and time.monotonic() < deadline:
-                    await asyncio.sleep(min(1, deadline - time.monotonic()))
+
+        await asyncio.gather(_fast_loop(), _eval_loop())
+
+    def _run_fast_cycle(self) -> None:
+        """Phase 3: Fast NAV-only cycle (no strategy evaluation)."""
+        if not self._clients_warmed_up:
+            self._warmup_clients()
+        from backtest_engine.live.connection import get_db_connection
+        with get_db_connection() as conn:
+            self.executor.update_portfolio_nav(conn)
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM paper_evaluations WHERE timestamp < NOW() - INTERVAL '48 hours'")
+            conn.commit()
+        logger.debug("[PaperTrader] Fast cycle (NAV) completed.")
+
+    def _run_evaluation_cycle(self) -> None:
+        """Phase 3: Strategy evaluation cycle (no NAV update)."""
+        if not self._clients_warmed_up:
+            self._warmup_clients()
+        from backtest_engine.live.connection import get_db_connection
+        with get_db_connection() as conn:
+            self.executor.evaluate_and_execute_strategies(conn)
+            if os.getenv("BYBIT_CONVERSION_ENABLED", "false").lower() == "true":
+                self.executor.run_conversion_pipeline(conn)
+        logger.debug("[PaperTrader] Eval cycle completed.")
 
     def stop(self):
         self._running = False
@@ -210,8 +254,11 @@ class PaperTradingEngine:
     def _evaluate_and_execute_strategies(self, conn):
         return self.executor.evaluate_and_execute_strategies(conn)
 
-    def _log_evaluation(self, conn, *args, **kwargs):
-        return self.executor.log_evaluation(conn, *args, **kwargs)
+    def _log_evaluation(self, *args, **kwargs):
+        # A-02: Strip legacy 'conn' first positional arg for backward compat
+        if args and hasattr(args[0], 'cursor'):
+            args = args[1:]
+        return self.executor.log_evaluation(*args, **kwargs)
 
     def _run_conversion_pipeline(self, conn):
         return self.executor.run_conversion_pipeline(conn)

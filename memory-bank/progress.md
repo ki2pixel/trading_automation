@@ -2,6 +2,13 @@
 
 ## Tâches Terminées
 
+- [x] [2026-07-27 12:00:00] - **Refactorisation de la boucle principale Paper Trader** : Élimination du dépassement de cycle 122.2s → cible < 60s.
+  - **Phase 1 (Critique)** : A-01 parallélisation `ThreadPoolExecutor` T212+Bybit, A-02 accumulateur `_eval_buffer` + `executemany` batch.
+  - **Phase 2 (Haute)** : A-03/A-04 cache `_strategy_result_cache` par `(asset, tf, bar_ts)`, A-08 cache intraday `compute_previous_day_close`.
+  - **Phase 3 (Structurelle)** : Découplage `start_loop_async` en deux boucles `asyncio.gather` (NAV 30s + évaluation 60s), A-05 réutilisation `BrokerSimulator` + `exit_rules` pré-instanciés, A-06 fetch bougies 10K→2K.
+  - **Phase 4 (Micro)** : A-07 pré-calcul `market_open_status` par asset.
+  - **Tests** : 26/27 passent. 1 échec préexistant (`test_bybit_secured_profit_routing`).
+
 - [x] [2026-07-27 03:00:00] - **Garde-Fous d'Exécution SignalExecutor (Feuille de Route §3)**
   - Module `execution_guards.py` créé (fonctions pures, typage Decimal/float selon charte §2.2).
   - **Max Entry Price dynamique** : cap = close_veille × (1+buffer), buffer +30 % défaut, repli statique BDD.

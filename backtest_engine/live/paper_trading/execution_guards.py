@@ -11,6 +11,7 @@ uses float for vectorized performance (compatible with Pandas/NumPy).
 """
 
 import logging
+from datetime import date
 from decimal import Decimal
 from typing import Optional, Tuple
 
@@ -20,10 +21,14 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger("papertrader.execution_guards")
 
+# A-08: Intraday cache for previous-day close (constant within a calendar day per asset)
+_prev_close_cache: dict[Tuple[str, date], Optional[Decimal]] = {}
+
 
 def compute_previous_day_close(
     df_1m: pd.DataFrame,
     now_utc: datetime,
+    asset: str = "",
 ) -> Optional[Decimal]:
     """
     Close of the last completed calendar day strictly before now_utc.
@@ -31,23 +36,38 @@ def compute_previous_day_close(
     Uses resample('D').last() on the 1m DataFrame, then picks the row
     where the day is < date(now_utc).  Returns None when no such day exists
     (e.g. only intra-day data for a single day).
+
+    A-08: Results are cached per (asset, now_utc.date()) since the
+    previous-day close is constant within a calendar day.
     """
+    today = now_utc.date()
+    cache_key = (asset.lower(), today)
+    if cache_key in _prev_close_cache:
+        return _prev_close_cache[cache_key]
+
     if df_1m.empty:
-        return None
-    close = df_1m.get("close")
-    if close is None or close.empty:
-        return None
+        result = None
+    else:
+        close = df_1m.get("close")
+        if close is None or close.empty:
+            result = None
+        else:
+            daily_close = close.resample("D").last().dropna()
+            if daily_close.empty:
+                result = None
+            else:
+                prev_days = daily_close[daily_close.index.date < today]
+                if prev_days.empty:
+                    result = None
+                else:
+                    result = Decimal(str(prev_days.iloc[-1]))
 
-    daily_close = close.resample("D").last().dropna()
-    if daily_close.empty:
-        return None
-
-    today_utc = now_utc.date()
-    prev_days = daily_close[daily_close.index.date < today_utc]
-    if prev_days.empty:
-        return None
-
-    return Decimal(str(prev_days.iloc[-1]))
+    _prev_close_cache[cache_key] = result
+    # Evict stale entries (previous days)
+    stale = [k for k in _prev_close_cache if k[1] < today]
+    for k in stale:
+        del _prev_close_cache[k]
+    return result
 
 
 def resolve_max_entry_price(
@@ -56,6 +76,7 @@ def resolve_max_entry_price(
     static_max: Decimal,
     buffer_pct: float,
     now_utc: datetime,
+    asset: str = "",
 ) -> Tuple[Decimal, str]:
     """
     Return (cap, mode):
@@ -67,7 +88,7 @@ def resolve_max_entry_price(
     if buffer_pct < 0:
         raise ValueError(f"buffer_pct must be >= 0, got {buffer_pct}")
 
-    prev_close = compute_previous_day_close(df_1m, now_utc)
+    prev_close = compute_previous_day_close(df_1m, now_utc, asset=asset)
     if prev_close is None:
         logger.info(
             "[ExecutionGuards] No previous day close — static fallback cap=%.6f",

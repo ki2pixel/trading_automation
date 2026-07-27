@@ -1,5 +1,6 @@
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Union, Callable, Dict
@@ -37,6 +38,8 @@ class SignalExecutor:
         self._is_market_open_func: Optional[Callable[[str], bool]] = is_market_open_func
         self._last_eval_timestamps: Dict[int, Any] = {}
         self._broker_simulators: Dict[tuple, Any] = {}
+        self._eval_buffer: list[tuple] = []  # A-02: batch evaluation inserts
+        self._strategy_result_cache: Dict[tuple, tuple] = {}  # A-03: (asset, tf, bar_ts) -> (bar_ts, run_result)
         self._margin_simulator = None  # PT-18: cached UTAMarginSimulator
 
     @property
@@ -101,7 +104,6 @@ class SignalExecutor:
 
     def log_evaluation(
         self,
-        conn: Any,
         strategy_name: str,
         asset: str,
         timeframe: str,
@@ -112,6 +114,7 @@ class SignalExecutor:
         fail_reason: Optional[str] = None,
         details: Optional[Any] = None,
     ) -> None:
+        """Accumulate evaluation log entry for batch flush (A-02 anti-N+1)."""
         def serialize_details(obj: Any) -> Any:
             if isinstance(obj, dict):
                 return {k: serialize_details(v) for k, v in obj.items()}
@@ -142,26 +145,35 @@ class SignalExecutor:
                 logger.exception("[PaperTrader] JSON serialization error for details")
                 details_json = "{}"
 
+        self._eval_buffer.append((
+            strategy_name, asset, timeframe,
+            float(price) if price is not None else None,
+            signal_type, signal_triggered, status,
+            fail_reason, details_json,
+        ))
+
+    def _flush_evaluations(self, conn: Any) -> None:
+        """Batch-insert all accumulated evaluation log entries (A-02)."""
+        if not self._eval_buffer:
+            return
         try:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.executemany("""
                     INSERT INTO paper_evaluations (
-                        strategy_name, asset, timeframe, price, signal_type, 
+                        strategy_name, asset, timeframe, price, signal_type,
                         signal_triggered, status, fail_reason, details, timestamp
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (
-                    strategy_name, asset, timeframe, 
-                    float(price) if price is not None else None, 
-                    signal_type, signal_triggered, status, 
-                    fail_reason, details_json
-                ))
+                """, self._eval_buffer)
             conn.commit()
+            logger.debug("[PaperTrader] Flushed %d evaluation entries in batch.", len(self._eval_buffer))
+            self._eval_buffer.clear()
         except psycopg2.Error as e:
-            logger.exception("[PaperTrader] Error logging evaluation")
+            logger.exception("[PaperTrader] Error batch-flushing evaluations")
             try:
                 conn.rollback()
             except psycopg2.Error:
                 pass
+            self._eval_buffer.clear()
 
     def reconcile_allocated_balances(self, conn: Any = None) -> None:
         """
@@ -176,59 +188,89 @@ class SignalExecutor:
                 reconcile_allocated_balances(conn_obj)
                 conn_obj.commit()
 
+    def _fetch_t212_summary(self) -> Optional[Decimal]:
+        """Fetch Trading 212 account summary and return available cash balance (or None on failure)."""
+        if self.t212_client is None:
+            return None
+        summary = self.t212_client.get_account_summary()
+        if not summary:
+            return None
+        if "cash" in summary and isinstance(summary["cash"], dict) and "availableToTrade" in summary["cash"]:
+            return Decimal(str(summary["cash"]["availableToTrade"]))
+        elif "free" in summary:
+            return Decimal(str(summary["free"]))
+        elif "balance" in summary:
+            return Decimal(str(summary["balance"]))
+        elif "totalValue" in summary:
+            return Decimal(str(summary["totalValue"]))
+        return None
+
+    def _fetch_bybit_summary(self) -> Decimal:
+        """Fetch Bybit account summary and return wallet balance (or Decimal('0') on failure)."""
+        if self.bybit_client is None or not self.bybit_client.config.api_key:
+            return Decimal("0")
+        base_coin = self.bybit_client.config.base_currency
+        summary = self.bybit_client.get_account_summary(coin=base_coin)
+        bybit_balance = Decimal("0")
+        for acc in summary.get("result", {}).get("list", []):
+            for coin_info in acc.get("coin", []):
+                if coin_info.get("coin") == base_coin:
+                    bybit_balance = Decimal(coin_info.get("walletBalance", "0"))
+                    break
+        return bybit_balance
+
     def update_portfolio_nav(self, conn: Any) -> None:
         """
         Update the total NAV of the portfolio based on current prices of positions
         and the cash balance, split by ecosystem (trading212 vs bybit).
 
         Batched I/O: uses Redis mget() + SQL ANY() + executemany() to avoid N+1 queries.
+        Broker API calls (T212, Bybit) are executed in parallel via ThreadPoolExecutor.
         """
         from backtest_engine.live.connection import get_redis_client
         redis_client = get_redis_client()
         
         try:
-            with conn.cursor() as cur:
-                # If Trading 212 Client is active, fetch real-time cash balance and update DB
-                if self.t212_client is not None:
-                    try:
-                        summary = self.t212_client.get_account_summary()
-                        if summary:
-                            api_cash = None
-                            if "cash" in summary and isinstance(summary["cash"], dict) and "availableToTrade" in summary["cash"]:
-                                api_cash = Decimal(str(summary["cash"]["availableToTrade"]))
-                            elif "free" in summary:
-                                api_cash = Decimal(str(summary["free"]))
-                            elif "balance" in summary:
-                                api_cash = Decimal(str(summary["balance"]))
-                            elif "totalValue" in summary:
-                                api_cash = Decimal(str(summary["totalValue"]))
-                            
-                            if api_cash is not None:
-                                cur.execute(
-                                    "UPDATE paper_portfolio_balance SET paper_cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'",
-                                    (api_cash,)
-                                )
-                    except (requests.exceptions.RequestException, ValueError, KeyError, TypeError) as api_err:
-                        logger.warning("[PaperTrader] Failed to fetch account summary from Trading 212 API: %s", api_err)
+            # A-01: Fetch broker account summaries in parallel (ThreadPoolExecutor)
+            t212_balance: Optional[Decimal] = None
+            bybit_balance: Optional[Decimal] = None
 
-                # If Bybit Client is active and authenticated, fetch real-time cash balance (USDC/USDT) and update DB
-                if self.bybit_client is not None and self.bybit_client.config.api_key:
-                    try:
-                        base_coin = self.bybit_client.config.base_currency
-                        summary = self.bybit_client.get_account_summary(coin=base_coin)
-                        bybit_balance = Decimal("0")
-                        for acc in summary.get("result", {}).get("list", []):
-                            for coin_info in acc.get("coin", []):
-                                if coin_info.get("coin") == base_coin:
-                                    bybit_balance = Decimal(coin_info.get("walletBalance", "0"))
-                                    break
-                        if bybit_balance > 0:
-                            cur.execute(
-                                "UPDATE paper_portfolio_balance SET paper_cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'",
-                                (bybit_balance,)
-                            )
-                    except (requests.exceptions.RequestException, ValueError, KeyError, TypeError) as api_err:
-                        logger.warning("[PaperTrader] Failed to fetch account summary from Bybit API: %s", api_err)
+            t212_needed = self.t212_client is not None
+            bybit_needed = self.bybit_client is not None and self.bybit_client.config.api_key
+
+            if t212_needed or bybit_needed:
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    futures: dict = {}
+                    if t212_needed:
+                        futures[executor.submit(self._fetch_t212_summary)] = "t212"
+                    if bybit_needed:
+                        futures[executor.submit(self._fetch_bybit_summary)] = "bybit"
+
+                    for future in as_completed(futures):
+                        source = futures[future]
+                        try:
+                            result = future.result()
+                            if source == "t212":
+                                t212_balance = result
+                            else:
+                                bybit_balance = result
+                        except (requests.exceptions.RequestException, ValueError, KeyError, TypeError) as api_err:
+                            logger.warning("[PaperTrader] Failed to fetch account summary from %s API: %s", source.upper(), api_err)
+
+            with conn.cursor() as cur:
+                # Apply Trading 212 balance if fetched
+                if t212_balance is not None:
+                    cur.execute(
+                        "UPDATE paper_portfolio_balance SET paper_cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'trading212'",
+                        (t212_balance,)
+                    )
+
+                # Apply Bybit balance if fetched
+                if bybit_balance is not None and bybit_balance > 0:
+                    cur.execute(
+                        "UPDATE paper_portfolio_balance SET paper_cash_balance = %s, last_updated = CURRENT_TIMESTAMP WHERE source = 'bybit'",
+                        (bybit_balance,)
+                    )
 
                 # Fetch cash and secured balances for both ecosystems
                 cur.execute("SELECT source, paper_cash_balance, secured_balance FROM paper_portfolio_balance")
@@ -415,10 +457,14 @@ class SignalExecutor:
             }
             
         # N-01: Filter configs and extract unique tickers for batch fetching
+        # A-07: Pre-compute is_market_open per asset (avoid duplicate calls in filter + loop)
         active_assets = set()
+        market_open_status: Dict[str, bool] = {}
         for config in configs:
             asset = config[2]
-            if self.is_market_open(asset):
+            if asset not in market_open_status:
+                market_open_status[asset] = self.is_market_open(asset)
+            if market_open_status[asset]:
                 active_assets.add(asset.lower())
 
         # Batch fetch all 1m candles for active assets
@@ -434,7 +480,7 @@ class SignalExecutor:
                             FROM live_candles_1m
                             WHERE ticker = ANY(%s)
                         ) t
-                        WHERE rn <= 10000
+                        WHERE rn <= 2000
                         ORDER BY ticker, timestamp_minute ASC
                     """, (list(active_assets),))
                     all_candle_rows = cur.fetchall()
@@ -484,9 +530,10 @@ class SignalExecutor:
             has_position = position_row is not None
             
             # Check market hours — log MARKET_CLOSED instead of silently skipping
-            if not self.is_market_open(asset):
+            # A-07: Use pre-computed market_open_status map
+            if not market_open_status.get(asset, False):
                 self.log_evaluation(
-                    conn, strategy_name, asset, timeframe,
+                    strategy_name, asset, timeframe,
                     price=None, signal_type='EXIT' if has_position else 'ENTRY',
                     signal_triggered=False, status='MARKET_CLOSED',
                     fail_reason='Market is closed'
@@ -507,7 +554,7 @@ class SignalExecutor:
                 except psycopg2.Error as e:
                     logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
                 self.log_evaluation(
-                    conn, strategy_name, asset, timeframe, 
+                    strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
                     signal_triggered=False, status='WAITING_DATA', 
                     fail_reason='Not enough candle history'
@@ -555,7 +602,7 @@ class SignalExecutor:
                 except psycopg2.Error as e:
                     logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
                 self.log_evaluation(
-                    conn, strategy_name, asset, timeframe, 
+                    strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
                     signal_triggered=False, status='WAITING_DATA', 
                     fail_reason='Not enough candle history'
@@ -573,19 +620,32 @@ class SignalExecutor:
             # Let's run the strategy signals on the aggregated data
             try:
                 strat_info = StrategyRegistry.get(strategy_name)
-                # Parse config overrides
-                overrides = strat_info.overrides_from_mapping_function(indicator_params)
-                
-                # Run backtest_engine's strategy execution
-                # We disable full metrics to be super fast
-                run_result = strat_info.run_function(
-                    data=df_aggregated,
-                    symbol=asset,
-                    overrides=overrides,
-                    initial_capital=float(initial_capital_bucket),
-                    timeframe_minutes=timeframe,
-                    compute_full_metrics=False
-                )
+
+                # A-03/A-04: Check cache for previously computed result on same (asset, tf, bar_ts)
+                cache_key = (asset.lower(), timeframe, last_closed_time)
+                cached = self._strategy_result_cache.get(cache_key)
+                if cached is not None and cached[0] == last_closed_time:
+                    run_result = cached[1]
+                    logger.debug("[SignalExecutor] Cache hit for %s/%s @ %s", asset, timeframe, last_closed_time)
+                else:
+                    # Parse config overrides
+                    overrides = strat_info.overrides_from_mapping_function(indicator_params)
+
+                    run_result = strat_info.run_function(
+                        data=df_aggregated,
+                        symbol=asset,
+                        overrides=overrides,
+                        initial_capital=float(initial_capital_bucket),
+                        timeframe_minutes=timeframe,
+                        compute_full_metrics=False
+                    )
+                    self._strategy_result_cache[cache_key] = (last_closed_time, run_result)
+                    # Periodic cache cleanup: evict entries older than 5 minutes
+                    if len(self._strategy_result_cache) > 50:
+                        stale = [k for k, v in self._strategy_result_cache.items()
+                                  if (pd.Timestamp.now(tz='UTC') - v[0]).total_seconds() > 300]
+                        for k in stale:
+                            del self._strategy_result_cache[k]
                 
                 # Check signals on the last closed bar
                 result_bars = run_result.bars
@@ -621,7 +681,7 @@ class SignalExecutor:
                 except psycopg2.Error as e:
                     logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
                 self.log_evaluation(
-                    conn, strategy_name, asset, timeframe, 
+                    strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
                     signal_triggered=False, status='ERROR', 
                     fail_reason=str(strat_err)
@@ -654,7 +714,7 @@ class SignalExecutor:
                 else:
                     fail_reason = f'No fresh price available (age: {price_age_s:.0f}s)'
                 self.log_evaluation(
-                    conn, strategy_name, asset, timeframe,
+                    strategy_name, asset, timeframe,
                     price=None, signal_type='EXIT' if has_position else 'ENTRY',
                     signal_triggered=False, status='WAITING_DATA',
                     fail_reason=fail_reason
@@ -672,6 +732,7 @@ class SignalExecutor:
                             static_max=Decimal(str(max_entry_price)),
                             buffer_pct=buffer_pct,
                             now_utc=now_utc,
+                            asset=asset,
                         )
                     except (ValueError, KeyError, TypeError) as guard_err:
                         logger.exception("[PaperTrader] MEP guard error for %s — fallback static", asset)
@@ -682,7 +743,7 @@ class SignalExecutor:
                             asset, current_price, cap, cap_mode, buffer_pct * 100,
                         )
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='ENTRY',
                             signal_triggered=True, status='REJECTED',
                             fail_reason=f'Price {current_price} > cap {cap} (mode={cap_mode})',
@@ -711,7 +772,7 @@ class SignalExecutor:
                             atr_blocked = None
                         if atr_blocked is True:
                             self.log_evaluation(
-                                conn, strategy_name, asset, timeframe,
+                                strategy_name, asset, timeframe,
                                 price=current_price, signal_type='ENTRY',
                                 signal_triggered=True, status='REJECTED',
                                 fail_reason='ATR gate: volatility below percentile threshold',
@@ -747,7 +808,7 @@ class SignalExecutor:
                     )
                     if allocated_cash <= 0:
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='ENTRY',
                             signal_triggered=True, status='REJECTED',
                             fail_reason=f'Kelly size ({kelly_size_cash}) or cash availability ({cash_balance}) results in zero qty',
@@ -762,7 +823,7 @@ class SignalExecutor:
                     if current_price is None or current_price <= Decimal("0"):
                         logger.warning(f"[PaperTrader] Invalid current_price for {asset} on {strategy_name}: {current_price}")
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='ENTRY',
                             signal_triggered=True, status='FAILED',
                             fail_reason=f'Invalid price: {current_price}'
@@ -775,7 +836,7 @@ class SignalExecutor:
                     qty = round(qty, qty_precision)
                     if qty <= 0:
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='ENTRY',
                             signal_triggered=True, status='REJECTED',
                             fail_reason='Kelly size or cash availability results in zero qty after precision rounding',
@@ -801,7 +862,7 @@ class SignalExecutor:
                         total_buy_cost = actual_cost + buy_fee
                         if qty <= 0:
                             self.log_evaluation(
-                                conn, strategy_name, asset, timeframe,
+                                strategy_name, asset, timeframe,
                                 price=current_price, signal_type='ENTRY',
                                 signal_triggered=True, status='REJECTED',
                                 fail_reason='Kelly size or cash availability results in zero qty after fee adjustment',
@@ -828,7 +889,7 @@ class SignalExecutor:
                     except Exception as ptce:
                         logger.error(f"[PaperTrader] BUY Order REJECTED by Pre-Trade Controls for {asset} on {strategy_name}: {ptce}")
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='ENTRY',
                             signal_triggered=True, status='REJECTED',
                             fail_reason=f"Pre-Trade Controls Check Failed: {str(ptce)}",
@@ -862,7 +923,7 @@ class SignalExecutor:
                             except Exception as e:
                                 logger.exception(f"[PaperTrader] T212 API BUY order failed for {asset}")
                                 self.log_evaluation(
-                                    conn, strategy_name, asset, timeframe,
+                                    strategy_name, asset, timeframe,
                                     price=current_price, signal_type='ENTRY',
                                     signal_triggered=True, status='FAILED',
                                     fail_reason=f"T212 API Order Error: {str(e)}"
@@ -871,7 +932,7 @@ class SignalExecutor:
                         else:
                             logger.error("[PaperTrader] T212 client is missing while T212_PAPER_ROUTING_ENABLED is true")
                             self.log_evaluation(
-                                conn, strategy_name, asset, timeframe,
+                                strategy_name, asset, timeframe,
                                 price=current_price, signal_type='ENTRY',
                                 signal_triggered=True, status='FAILED',
                                 fail_reason="T212 client is uninitialized"
@@ -917,7 +978,7 @@ class SignalExecutor:
                         logger.info(f"[PaperTrader] Executed virtual BUY for {asset} ({strategy_name}): {qty} units @ {current_price} € (Cost: {actual_cost} €, Fee: {buy_fee} €, Total: {total_buy_cost} €)")
                         
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe, 
+                            strategy_name, asset, timeframe, 
                             price=current_price, signal_type='ENTRY', 
                             signal_triggered=True, status='EXECUTED', 
                             fail_reason=None,
@@ -931,14 +992,14 @@ class SignalExecutor:
                         logger.exception("[PaperTrader] Database error executing BUY")
                         conn.rollback()
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe, 
+                            strategy_name, asset, timeframe, 
                             price=current_price, signal_type='ENTRY', 
                             signal_triggered=True, status='ERROR', 
                             fail_reason=f"Database error executing BUY: {db_err}"
                         )
                 else:
                     self.log_evaluation(
-                        conn, strategy_name, asset, timeframe, 
+                        strategy_name, asset, timeframe, 
                         price=current_price, signal_type='ENTRY', 
                         signal_triggered=False, status='NO_SIGNAL', 
                         fail_reason='No long entry signal generated',
@@ -973,63 +1034,71 @@ class SignalExecutor:
                 # 2. Check Broker ExitRules (fixed/net brackets, trailing stops, safety stops)
                 if not trigger_exit:
                     from backtest_engine.broker import BrokerSimulator, BrokerConfig, Position as BrokerPosition
-                    
+
                     sim_key = (strategy_name, asset.lower())
-                    broker = self._broker_simulators.get(sim_key)
-                    if not broker:
+                    cached_broker = self._broker_simulators.get(sim_key)
+
+                    # A-05: Reuse broker + exit orchestrator if already cached, only update dynamic fields
+                    if cached_broker is None:
                         broker_config = BrokerConfig(
                             account_currency=indicator_params.get("account_currency", "EUR"),
                             asset_currency=indicator_params.get("asset_currency", "EUR"),
                             point_value=indicator_params.get("point_value", 1.0)
                         )
                         broker = BrokerSimulator(broker_config)
-                        self._broker_simulators[sim_key] = broker
-                    
-                    broker.cash = float(qty * entry_price)
+                        exit_rules = []
+
+                        use_bracket = indicator_params.get("use_net_bracket_exits", False) or indicator_params.get("enable_stop_loss", False) or indicator_params.get("enable_take_profit", False)
+                        if use_bracket:
+                            from backtest_engine.broker import NetBracketExitRule
+                            tp = indicator_params.get("take_profit_pct") if indicator_params.get("enable_take_profit") else indicator_params.get("take_profit_net_percent")
+                            sl = indicator_params.get("stop_loss_pct") if indicator_params.get("enable_stop_loss") else indicator_params.get("stop_loss_net_percent")
+                            exit_rules.append(NetBracketExitRule(broker, tp_pct=tp, sl_pct=sl))
+                        if indicator_params.get("enable_trailing_stop", False):
+                            from backtest_engine.broker import TrailingStopExitRule
+                            exit_rules.append(TrailingStopExitRule(
+                                broker,
+                                trail_profit_pct=indicator_params.get("trail_profit_pct", 0.5),
+                                trail_loss_pct=indicator_params.get("trail_loss_pct", 0.5),
+                            ))
+                        if indicator_params.get("use_safety_stop", False):
+                            from backtest_engine.broker import SafetyStopExitRule
+                            exit_rules.append(SafetyStopExitRule(
+                                broker,
+                                applies_to=indicator_params.get("safety_stop_applies_to", "Both"),
+                                mode=indicator_params.get("safety_stop_mode", "Net loss only"),
+                                max_loss_mode=indicator_params.get("safety_max_net_loss_mode", "Cash amount"),
+                                max_loss_cash=indicator_params.get("safety_max_net_loss_cash"),
+                                max_loss_pct=indicator_params.get("safety_max_net_loss_percent"),
+                                max_bars=indicator_params.get("safety_max_bars_in_trade", 0),
+                            ))
+
+                        if exit_rules:
+                            from backtest_engine.broker import ExitOrchestrator
+                            broker.exit_orchestrator = ExitOrchestrator(exit_rules)
+                        else:
+                            broker.exit_orchestrator = None
+                        self._broker_simulators[sim_key] = (broker, exit_rules)
+                    else:
+                        broker, exit_rules = cached_broker
+                        # Re-apply shared broker reference on cached rules (they hold a ref to the old broker)
+                        if exit_rules:
+                            for rule in exit_rules:
+                                rule.broker = broker
+                            broker.exit_orchestrator = broker.exit_orchestrator or broker.__dict__.get('exit_orchestrator')
+
+                    # Update dynamic per-cycle fields on the (shared) broker instance
                     from backtest_engine.broker import _OpenPositionEntry
+                    broker.cash = float(qty * entry_price)
                     broker._open_entry = _OpenPositionEntry(
-                        timestamp=last_closed_time, 
-                        order_id="dummy_entry", 
+                        timestamp=last_closed_time,
+                        order_id="dummy_entry",
                         remaining_commission=0.0
                     )
                     broker.position = BrokerPosition(signed_quantity=float(qty), average_price=float(entry_price))
-                    
-                    exit_rules = []
-                    # Brackets (SL / TP)
-                    use_bracket = indicator_params.get("use_net_bracket_exits", False) or indicator_params.get("enable_stop_loss", False) or indicator_params.get("enable_take_profit", False)
-                    if use_bracket:
-                        from backtest_engine.broker import NetBracketExitRule
-                        tp = indicator_params.get("take_profit_pct") if indicator_params.get("enable_take_profit") else indicator_params.get("take_profit_net_percent")
-                        sl = indicator_params.get("stop_loss_pct") if indicator_params.get("enable_stop_loss") else indicator_params.get("stop_loss_net_percent")
-                        exit_rules.append(NetBracketExitRule(
-                            broker,
-                            tp_pct=tp,
-                            sl_pct=sl,
-                        ))
-                    # Trailing Stop
-                    if indicator_params.get("enable_trailing_stop", False):
-                        from backtest_engine.broker import TrailingStopExitRule
-                        exit_rules.append(TrailingStopExitRule(
-                            broker,
-                            trail_profit_pct=indicator_params.get("trail_profit_pct", 0.5),
-                            trail_loss_pct=indicator_params.get("trail_loss_pct", 0.5),
-                        ))
-                    # Safety Stop
-                    if indicator_params.get("use_safety_stop", False):
-                        from backtest_engine.broker import SafetyStopExitRule
-                        exit_rules.append(SafetyStopExitRule(
-                            broker,
-                            applies_to=indicator_params.get("safety_stop_applies_to", "Both"),
-                            mode=indicator_params.get("safety_stop_mode", "Net loss only"),
-                            max_loss_mode=indicator_params.get("safety_max_net_loss_mode", "Cash amount"),
-                            max_loss_cash=indicator_params.get("safety_max_net_loss_cash"),
-                            max_loss_pct=indicator_params.get("safety_max_net_loss_percent"),
-                            max_bars=indicator_params.get("safety_max_bars_in_trade", 0),
-                        ))
-                    
+
                     if exit_rules:
-                        from backtest_engine.broker import ExitOrchestrator
-                        broker.exit_orchestrator = ExitOrchestrator(exit_rules)
+                        # A-05: ExitOrchestrator already set from cache (line 1073) or first creation
                         
                         # We evaluate on the last closed bar
                         bar_dict = last_closed_bar.to_dict()
@@ -1069,7 +1138,7 @@ class SignalExecutor:
                     except Exception as ptce:
                         logger.error(f"[PaperTrader] SELL Order REJECTED by Pre-Trade Controls for {asset} on {strategy_name}: {ptce}")
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='EXIT',
                             signal_triggered=True, status='REJECTED',
                             fail_reason=f"Pre-Trade Controls Check Failed: {str(ptce)}",
@@ -1127,7 +1196,7 @@ class SignalExecutor:
                             except Exception as e:
                                 logger.exception(f"[PaperTrader] T212 API SELL order failed for {asset}")
                                 self.log_evaluation(
-                                    conn, strategy_name, asset, timeframe,
+                                    strategy_name, asset, timeframe,
                                     price=current_price, signal_type='EXIT',
                                     signal_triggered=True, status='FAILED',
                                     fail_reason=f"T212 API Order Error: {str(e)}",
@@ -1141,7 +1210,7 @@ class SignalExecutor:
                         else:
                             logger.error("[PaperTrader] T212 client is missing while T212_PAPER_ROUTING_ENABLED is true")
                             self.log_evaluation(
-                                conn, strategy_name, asset, timeframe,
+                                strategy_name, asset, timeframe,
                                 price=current_price, signal_type='EXIT',
                                 signal_triggered=True, status='FAILED',
                                 fail_reason="T212 client is uninitialized",
@@ -1228,7 +1297,7 @@ class SignalExecutor:
                                 logger.error(f"[PaperTrader] Failed to run reactive self-healing bootstrap for {asset}: {e}")
                         
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='EXIT',
                             signal_triggered=True, status='EXECUTED',
                             fail_reason=f"Exit rule matched: {exit_reason}",
@@ -1244,7 +1313,7 @@ class SignalExecutor:
                         logger.exception("[PaperTrader] Database error executing SELL")
                         conn.rollback()
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='EXIT',
                             signal_triggered=True, status='ERROR',
                             fail_reason=f"Database error executing SELL: {db_err}"
@@ -1253,7 +1322,7 @@ class SignalExecutor:
                     # If MHP blocked the strategy exit signal, log BLOCKED_MHP; otherwise NO_SIGNAL
                     if mhp_block:
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='EXIT',
                             signal_triggered=True, status='BLOCKED_MHP',
                             fail_reason=f'Minimum holding period: {mhp_block["bars_since"]} < {mhp_block["min_bars"]} bars',
@@ -1267,7 +1336,7 @@ class SignalExecutor:
                         )
                     else:
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe,
+                            strategy_name, asset, timeframe,
                             price=current_price, signal_type='EXIT',
                             signal_triggered=False, status='NO_SIGNAL',
                             fail_reason='No exit trigger matched',
@@ -1278,6 +1347,9 @@ class SignalExecutor:
                                 "current_pnl": float((current_price - entry_price) * qty)
                             }
                         )
+
+        # A-02: flush accumulated evaluation logs in a single batch
+        self._flush_evaluations(conn)
 
     def run_conversion_pipeline(self, conn: Any) -> None:
         """
