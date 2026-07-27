@@ -1,6 +1,9 @@
 # Contexte Actif
 
 ## Focus Actuel
+- [2026-07-27 09:18:00] - Résolution des blocages "Postgres price is stale" et "Waiting Data" pour ZEAL.CO et NVO en timeframe 45m (`cybernetic_hilbert` et `momentum_based_zigzag`) :
+  - **Script de backfill (`scripts/backfill_candles.py`)** : Développé pour charger 3 000 bougies 1m historiques via MarketFlow et lever l'attente de 2.7 à 4.4 jours de warm-up (50 bougies 45m).
+  - **Refactorisation `signal_executor.py`** : Prise en compte des horaires boursiers (`configs/market_hours.json`) pour assigner le statut `MARKET_CLOSED` au lieu d'une alerte trompeuse hors-heures, correction d'un bug de dead code (position check) et enrichissement de l'âge dans le statut `WAITING_DATA`.
 - [2026-07-27 01:35:00] - Clôture et validation de la remédiation Paper Trading (`docs/audit/paper-trading-frontend-2026-07-26.md` / `implementation_plan.md`). Les 15 anomalies (F-01 à F-15) réparties sur 3 phases ont été intégrées et validées sans régression.
 - [2026-07-27 01:40:00] - Audit et alignement des règles de développement (`AGENTS.md` et `.agents/rules/codingstandards.md`) effectués avec succès après les travaux de remédiation backend Paper Trading (PT-01 à PT-26). Intégration des invariants de sécurité (mode public/fallback des clés, failsafe SHA256), isolation des exceptions broker, séquençage strict PostgreSQL->Redis, wrapping `asyncio.to_thread` des appels I/O synchrones, normalisation canonique minuscules des tickers (`ticker.lower()`) et bufferisation PnL `AccumulatorBuffer`.
 - [2026-07-26 22:40:00] - Clôture et validation de la remédiation backend Paper Trading (`docs/audit/paper-trading-backend-2026-07-26.md` / `implementation_plan.md`). Les 26 anomalies (PT-01 à PT-26) réparties sur 4 phases ont été corrigées et validées par la suite de tests (92/92 tests verts).

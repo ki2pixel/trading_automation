@@ -468,15 +468,21 @@ class SignalExecutor:
 
         for config_id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params in configs:
             indicator_params = indicator_params or {}
-            # Check market hours
+            # Determine active position status (O(1) local dict check) — needed for signal_type in logs below
+            position_row = active_positions.get((asset.lower(), strategy_name, timeframe))
+            has_position = position_row is not None
+            
+            # Check market hours — log MARKET_CLOSED instead of silently skipping
             if not self.is_market_open(asset):
+                self.log_evaluation(
+                    conn, strategy_name, asset, timeframe,
+                    price=None, signal_type='EXIT' if has_position else 'ENTRY',
+                    signal_triggered=False, status='MARKET_CLOSED',
+                    fail_reason='Market is closed'
+                )
                 continue
                 
             source = 'bybit' if is_crypto_asset(asset) else 'trading212'
-                
-            # Check if we have an active position for this strategy + asset + timeframe (O(1) local dict check)
-            position_row = active_positions.get((asset.lower(), strategy_name, timeframe))
-            has_position = position_row is not None
             
             # Fetch 1m candles for this asset from the pre-fetched dict (N-01)
             candle_rows = candles_by_ticker.get(asset.lower(), [])
@@ -614,6 +620,7 @@ class SignalExecutor:
             # Fetch current live price (P2-FIX: pre-batched Redis mget cache first, then Postgres)
             current_price = live_prices_cache.get(asset.lower())
             now_utc = datetime.now(timezone.utc)
+            price_age_s = None
             if current_price is None:
                 with conn.cursor() as cur:
                     cur.execute("SELECT price, updated_at FROM live_prices WHERE ticker = %s", (asset.lower(),))
@@ -625,17 +632,21 @@ class SignalExecutor:
                             if updated_at.tzinfo is None:
                                 updated_at = updated_at.replace(tzinfo=timezone.utc)
                             age = now_utc - updated_at
+                            price_age_s = age.total_seconds()
                             if age <= timedelta(minutes=3):
                                 current_price = price_val
                             else:
-                                logger.error(f"[PaperTrader] Postgres price for {asset} is stale (age: {age.total_seconds()}s). Ignoring.")
+                                logger.error(f"[PaperTrader] Postgres price for {asset} is stale (age: {price_age_s}s). Ignoring.")
             if current_price is None:
-                # No fresh price available
+                if price_row is None:
+                    fail_reason = 'No price in database'
+                else:
+                    fail_reason = f'No fresh price available (age: {price_age_s:.0f}s)'
                 self.log_evaluation(
                     conn, strategy_name, asset, timeframe,
                     price=None, signal_type='EXIT' if has_position else 'ENTRY',
                     signal_triggered=False, status='WAITING_DATA',
-                    fail_reason='No fresh price available'
+                    fail_reason=fail_reason
                 )
                 continue
                 

@@ -611,7 +611,7 @@ def test_stale_redis_price_resolution():
         logged = False
         for call in cur_mock.execute.call_args_list:
             args = call[0]
-            if len(args) > 1 and "paper_evaluations" in args[0] and "No fresh price available" in args[1]:
+            if len(args) > 1 and "paper_evaluations" in args[0] and any("No fresh price available" in str(arg) for arg in args[1]):
                 logged = True
                 break
         assert logged, "Expected WAITING_DATA evaluation log not found"

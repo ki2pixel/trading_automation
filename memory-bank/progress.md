@@ -1,6 +1,9 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+- [x] [2026-07-27 09:18:00] - Résolution des blocages "Postgres price is stale" et "Waiting Data" pour ZEAL.CO et NVO en 45m (`cybernetic_hilbert` et `momentum_based_zigzag`) :
+  - **Script de backfill (`scripts/backfill_candles.py`)** : Ingestion de 3 000 bougies 1m historiques via l'API MarketFlow (`live_candles_1m`).
+  - **Gestion de marché fermé & tolérance `signal_executor.py`** : Prise en compte du calendrier boursier (`configs/market_hours.json`), statut `MARKET_CLOSED` hors-heures, correction du dead code sur les checks de position, et transmission de l'âge exact du prix en secondes dans `WAITING_DATA`.
 - [x] [2026-07-27 01:35:00] - Élaboration du plan d'implémentation et validation finale de la remédiation globale Paper Trading (`docs/audit/paper-trading-frontend-2026-07-26.md` / `implementation_plan.md`) :
   **Phase 1 (Sécurité & Intégrité)** : F-01 (Pagination curseur composite `(timestamp, id)`), F-02 (Extraction IP cliente réelle `X-Forwarded-For` et `forwarded_allow_ips`).
   **Phase 2 (Robustesse UI & Transport)** : F-03 (Déduplication SSE `seq`), F-04 (Révocation de session `jti` + liste noire Redis), F-05 (Protection XSS `textContent` chart), F-06 (Validation Pydantic server-side `ConfigUpdate`), F-07 (Gestion centralisée HTTP 429 & UX login).
