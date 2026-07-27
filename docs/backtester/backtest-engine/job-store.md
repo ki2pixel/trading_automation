@@ -1,8 +1,10 @@
 # Gérer les longs calculs sans stress : Le Job Store SQLite
 
-**TL;DR** : Un système de file d'attente persistant basé sur SQLite. Il sépare le serveur web des calculs lourds pour garantir qu'aucun crash ou redémarrage de l'interface n'interrompe tes optimisations en cours.
+**TL;DR** : Un système de file d'attente persistant basé sur SQLite avec chiffrement AES-256 (SQLCipher) et signatures cryptographiques HMAC-SHA256. Il sépare le serveur web des calculs lourds pour garantir qu'aucun crash ou redémarrage de l'interface n'interrompe tes optimisations en cours.
 
-Tu as configuré une optimisation massive sur 10 000 combinaisons pour ta stratégie Range Filter. Le calcul va durer 4 heures. Au bout de 3 heures et demie, tu fermes accidentellement ton navigateur, ou ton serveur API Web FastAPI subit un micro-redémarrage à cause d'une mise à jour système. 
+---
+
+Tu as configuré une optimisation massive sur 10 000 combinaisons pour ta stratégie Range Filter. Le calcul va durer 4 heures. Au bout de 3 heures et demie, tu fermes accidentellement ton navigateur, ou ton serveur API Web FastAPI subit un micro-redémarrage à cause d'une mise à jour système.
 
 Dans un système classique non persistant, tout est perdu. Tu dois tout relancer depuis le début et tu viens de gaspiller 3 heures de calcul.
 
@@ -10,73 +12,83 @@ Le **Job Store SQLite** est là pour t'éviter ce cauchemar. En isolant la gesti
 
 ---
 
-## Une architecture découplée pour plus de sécurité
-
-Le secret de la robustesse de notre système réside dans la séparation stricte des rôles entre trois composants distincts.
+## Architecture
 
 ```
-+--------------------+
-|  Serveur FastAPI   |  <- Ne fait aucun calcul lourd
-+--------------------+
-          |
-          v Enregistre la demande (PENDING)
-+-------------------------------------------------+
-|  Base SQLite partagée (jobs.sqlite3)            |  <- Le journal de bord persistant
-+-------------------------------------------------+
-          ^
-          | Réserve et exécute la tâche (IN_PROGRESS)
-+--------------------+
-|  Worker local      |  <- Consomme les calculs en arrière-plan
-+--------------------+
+┌──────────────────────────────────────────────────────┐
+│                   FastAPI Server                      │
+│  POST /jobs → enqueue → SQLite                       │
+│  GET  /jobs/{id} → read status → SQLite              │
+└──────────────────────┬───────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────┐
+│                 Worker Thread (psycopg2 sync)         │
+│  Poll SQLite → pick PENDING job → execute → update   │
+└──────────────────────────────────────────────────────┘
 ```
-
-### 1. Le Serveur FastAPI (L'intermédiaire)
-Quand tu cliques sur "Lancer l'optimisation" dans ton interface graphique, le serveur web ne calcule rien lui-même. Il valide simplement ta demande, génère un identifiant unique pour ta tâche (`job_id`), écrit une nouvelle ligne avec le statut `PENDING` dans la base SQLite, et te rend immédiatement la main. Tu peux naviguer sur d'autres pages ou fermer l'interface : l'ordre est enregistré.
-
-### 2. Le Job Store SQLite (Le pivot)
-Situé dans `reports/local_optimizer/jobs.sqlite3`, ce simple fichier de base de données est le cœur persistant du système. C'est lui qui stocke l'état d'avancement de toutes les tâches passées, présentes et futures.
-
-### 3. Le Worker (La force brute)
-C'est un processus autonome qui tourne en tâche de fond. Il interroge régulièrement le Job Store SQLite pour voir si de nouvelles tâches sont en attente. Dès qu'il trouve un job `PENDING`, il le verrouille en passant son statut à `IN_PROGRESS`, lance les calculs intensifs sur ton processeur, et met à jour sa progression en temps réel dans la base de données.
 
 ---
 
-## Le cycle de vie d'une tâche d'optimisation
+## Sécurité du Job Store
 
-Chaque simulation longue traverse plusieurs états bien définis :
-- **`PENDING`** : Ta demande est dans la file d'attente. Elle attend qu'un worker CPU se libère pour la traiter.
-- **`IN_PROGRESS`** : Un worker exécute l'optimisation. Tu peux suivre le pourcentage d'avancement barre par barre.
-- **`COMPLETED`** : C'est terminé. Le worker a enregistré le meilleur jeu de paramètres et le rapport de stabilité dans le dossier de résultats.
-- **`FAILED`** : Quelque chose a planté (données corrompues, coupure de courant). Le message d'erreur est conservé pour t'aider à comprendre.
-- **`CANCELLED`** : Tu as cliqué sur le bouton d'arrêt d'urgence. Le worker arrête proprement ses calculs et libère ton processeur.
+### Chiffrement SQLCipher (AES-256)
+
+Depuis la Phase 1 du plan de remédiation sécurité (2026-07-04), la base SQLite est chiffrée avec SQLCipher (AES-256). Sans la clé de chiffrement, les données des jobs sont illisibles — même avec un accès physique au fichier `.sqlite`.
+
+```python
+# Configuration dans job_store.py
+SQLITE_PRAGMA_KEY = os.environ["SQLCIPHER_KEY"]  # Clé AES-256
+```
+
+### Signatures HMAC-SHA256
+
+Chaque job est signé cryptographiquement pour prévenir l'altération des données :
+
+```python
+def compute_job_signature(job_id, created_at, request_json, status, output_dir):
+    message = f"{job_id}|{created_at}|{request_json}|{status}|{output_dir}".encode("utf-8")
+    key = os.environ["JOB_SIGNING_KEY"].encode()
+    return hmac.new(key, message, hashlib.sha256).hexdigest()
+```
+
+La signature est vérifiée à chaque lecture du job. Une signature invalide lève `JobSignatureError` et le job est marqué comme corrompu.
+
+### Fail-Fast au démarrage
+
+Conformément à §2.2, le Job Store valide la présence de `SQLCIPHER_KEY` et `JOB_SIGNING_KEY` au démarrage. Si les clés sont absentes, l'application lève une exception explicite et refuse de démarrer.
 
 ---
 
-## Commandes d'administration pour ton terminal
+## États des jobs
 
-Tu as deux commandes principales pour gérer cette file d'attente en direct.
+```
+PENDING ──[worker picks]──▶ RUNNING ──[success]──▶ COMPLETED
+    │                           │
+    │                           ├──[error]──▶ FAILED
+    │                           ├──[crash]──▶ CRASHED
+    │                           └──[cancel]──▶ CANCELED
+    │
+    └──[cancel requested]──▶ CANCEL_REQUESTED
+```
 
-### Lancer le worker de calcul
-Pour commencer à exécuter les tâches en attente dans la file d'attente :
+---
+
+## Utilisation
+
+### Lancer le worker
 
 ```bash
 python3 -m backtest_engine worker \
-  --output-dir reports/local_optimizer \
+  --job-store ./storage/jobs.sqlite \
   --poll-interval 1.0 \
-  --worker-id worker-node-01
+  --max-concurrent 2
 ```
 
-> [!TIP]
-> Si tu veux intégrer le backtester dans un script automatisé qui s'arrête dès que la file d'attente est vide, ajoute l'option `--once`. Le worker exécutera le premier job disponible puis quittera proprement le terminal.
-
 ### Nettoyer la base après un crash brutal
-Si ton système d'exploitation décide de tuer le worker parce que ta machine a manqué de mémoire vive (erreur Out of Memory ou OOM Kill), la tâche en cours restera indéfiniment marquée comme `IN_PROGRESS` dans la base SQLite.
-
-Pour débloquer la file d'attente et marquer proprement ce job orphelin en échec, utilise la commande de nettoyage :
 
 ```bash
 python3 -m backtest_engine mark-crashed \
-  --worker-id worker-node-01 \
+  --job-store ./storage/jobs.sqlite \
   --exit-code 137
 ```
 
@@ -87,5 +99,23 @@ Le moteur interprète automatiquement les codes de sortie système courants pour
 ## Maintenance automatique de la base de données
 
 Une base de données qui grossit sans fin finit par ralentir le système. Notre Job Store intègre un service de nettoyage automatique pour rester léger :
-- **Suppression par âge (TTL)** : Toutes les tâches terminées (`COMPLETED` ou `FAILED`) qui datent de plus de 24 heures sont automatiquement supprimées du fichier SQLite.
-- **Suppression par volume** : Nous conservons un historique maximal de 100 tâches. Si tu dépasses cette limite, les jobs terminés les plus anciens sont effacés. Bien sûr, les jobs actifs ou en attente ne sont jamais touchés.
+
+- **Vacuum automatique** : Exécuté après chaque complétion de job
+- **Purge des anciens jobs** : Les jobs terminés depuis plus de 30 jours sont archivés
+- **Nettoyage des jobs corrompus** : Les jobs avec signature invalide sont isolés
+
+---
+
+## Thread-safety
+
+Le Job Store utilise `threading.RLock` pour protéger les accès concurrents entre le serveur FastAPI (qui enqueue) et le worker (qui déqueue). L'ordre d'acquisition est strict pour éviter les deadlocks (§2.5).
+
+---
+
+## The Golden Rule
+
+> **Règle d'or** : Chaque job doit pouvoir être repris après un crash sans perte de progression. Le Job Store est la mémoire du système — s'il est corrompu, tout le pipeline d'optimisation s'effondre. C'est pourquoi chaque octet est chiffré et chaque ligne est signée.
+
+---
+
+*Guidé par documentation/SKILL.md — sections: TL;DR, Problem-First, Architecture, Golden Rule.*
