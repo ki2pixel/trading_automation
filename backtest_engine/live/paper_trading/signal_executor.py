@@ -90,6 +90,32 @@ class SignalExecutor:
     def bybit_client(self, value: Any) -> None:
         self._bybit_client = value
 
+    @staticmethod
+    def _parse_timeframe_minutes(tf_str: str) -> int:
+        """Parse a timeframe string like '45m', '1h', '5' into integer minutes."""
+        tf = str(tf_str).strip().lower()
+        if tf.endswith("m"):
+            return int(tf[:-1])
+        if tf.endswith("h"):
+            return int(tf[:-1]) * 60
+        if tf.endswith("min"):
+            return int(tf[:-3])
+        return int(tf)
+
+    @staticmethod
+    def _compute_min_bars_needed(indicator_params: dict) -> int:
+        """Compute dynamic warmup period based on indicator lookback parameters."""
+        min_bars_needed = 2
+        if indicator_params:
+            lookbacks = [50]
+            for k, v in indicator_params.items():
+                if isinstance(v, (int, float)):
+                    k_lower = k.lower()
+                    if any(term in k_lower for term in ["length", "period", "len", "lookback", "window", "bars"]):
+                        lookbacks.append(int(v))
+            min_bars_needed = max(lookbacks)
+        return min_bars_needed
+
     def is_market_open(self, asset: str) -> bool:
         if self._is_market_open_func:
             return self._is_market_open_func(asset)
@@ -460,12 +486,17 @@ class SignalExecutor:
         # A-07: Pre-compute is_market_open per asset (avoid duplicate calls in filter + loop)
         active_assets = set()
         market_open_status: Dict[str, bool] = {}
+        max_rn = 2000
         for config in configs:
             asset = config[2]
             if asset not in market_open_status:
                 market_open_status[asset] = self.is_market_open(asset)
             if market_open_status[asset]:
                 active_assets.add(asset.lower())
+            tf_minutes = self._parse_timeframe_minutes(config[3])
+            indicator_params_config = config[9] or {}
+            min_bars = self._compute_min_bars_needed(indicator_params_config)
+            max_rn = max(max_rn, min_bars * tf_minutes)
 
         # Batch fetch all 1m candles for active assets
         candles_by_ticker = {}
@@ -480,9 +511,9 @@ class SignalExecutor:
                             FROM live_candles_1m
                             WHERE ticker = ANY(%s)
                         ) t
-                        WHERE rn <= 2000
+                        WHERE rn <= %s
                         ORDER BY ticker, timestamp_minute ASC
-                    """, (list(active_assets),))
+                    """, (list(active_assets), max_rn))
                     all_candle_rows = cur.fetchall()
                 
                 for row in all_candle_rows:
@@ -547,9 +578,20 @@ class SignalExecutor:
                 
             if len(candle_rows) < 10:
                 # Not enough history (Warmup)
+                tf_minutes = self._parse_timeframe_minutes(timeframe)
+                min_bars_needed = self._compute_min_bars_needed(indicator_params)
+                warmup_progress = {
+                    "current_bars": 0,
+                    "required_bars": min_bars_needed,
+                    "progress_pct": 0.0,
+                    "timeframe_minutes": tf_minutes,
+                }
                 try:
                     with conn.cursor() as cur:
-                        cur.execute("UPDATE paper_strategy_configs SET run_status = 'waiting_data' WHERE id = %s", (config_id,))
+                        cur.execute(
+                            "UPDATE paper_strategy_configs SET run_status = 'waiting_data', warmup_progress = %s WHERE id = %s",
+                            (json.dumps(warmup_progress), config_id)
+                        )
                     conn.commit()
                 except psycopg2.Error as e:
                     logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
@@ -584,20 +626,22 @@ class SignalExecutor:
             df_aggregated["volume"] = 0.0 # dummy volume
             
             # Calculate dynamic warmup period based on indicator parameters
-            min_bars_needed = 2
-            if indicator_params:
-                lookbacks = [50] # Default safe lookback when config is populated
-                for k, v in indicator_params.items():
-                    if isinstance(v, (int, float)):
-                        k_lower = k.lower()
-                        if any(term in k_lower for term in ["length", "period", "len", "lookback", "window", "bars"]):
-                            lookbacks.append(int(v))
-                min_bars_needed = max(lookbacks)
+            tf_minutes = self._parse_timeframe_minutes(timeframe)
+            min_bars_needed = self._compute_min_bars_needed(indicator_params)
 
             if len(df_aggregated) < min_bars_needed:
+                warmup_progress = {
+                    "current_bars": len(df_aggregated),
+                    "required_bars": min_bars_needed,
+                    "progress_pct": round(min(100.0, len(df_aggregated) / min_bars_needed * 100), 1),
+                    "timeframe_minutes": tf_minutes,
+                }
                 try:
                     with conn.cursor() as cur:
-                        cur.execute("UPDATE paper_strategy_configs SET run_status = 'waiting_data' WHERE id = %s", (config_id,))
+                        cur.execute(
+                            "UPDATE paper_strategy_configs SET run_status = 'waiting_data', warmup_progress = %s WHERE id = %s",
+                            (json.dumps(warmup_progress), config_id)
+                        )
                     conn.commit()
                 except psycopg2.Error as e:
                     logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
@@ -656,11 +700,11 @@ class SignalExecutor:
                 long_entry_signal = bool(last_closed_result.get('long_entry', False))
                 long_exit_signal = bool(last_closed_result.get('long_exit', False))
                 
-                # Success - Set status to active and reset last_error
+                # Success - Set status to active and reset last_error / warmup_progress
                 with conn.cursor() as cur:
                     cur.execute("""
                         UPDATE paper_strategy_configs 
-                        SET run_status = 'active', last_error = NULL 
+                        SET run_status = 'active', last_error = NULL, warmup_progress = NULL
                         WHERE id = %s
                     """, (config_id,))
                 conn.commit()
@@ -674,7 +718,7 @@ class SignalExecutor:
                     with conn.cursor() as cur:
                         cur.execute("""
                             UPDATE paper_strategy_configs 
-                            SET run_status = 'error', last_error = %s 
+                            SET run_status = 'error', last_error = %s, warmup_progress = NULL
                             WHERE id = %s
                         """, (str(strat_err), config_id))
                     conn.commit()

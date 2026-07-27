@@ -805,6 +805,12 @@ def init_db():
                     ADD COLUMN IF NOT EXISTS last_error TEXT DEFAULT NULL
                 """)
 
+                # Add warmup_progress column if it doesn't exist
+                cur.execute("""
+                    ALTER TABLE paper_strategy_configs 
+                    ADD COLUMN IF NOT EXISTS warmup_progress JSONB DEFAULT NULL
+                """)
+
                 # Seed the strategy configs
                 for config in SEED_CONFIGS:
                     params_json = json.dumps(config.get('indicator_params', {}))

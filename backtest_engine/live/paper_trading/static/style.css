@@ -808,6 +808,33 @@ h1, h2, h3, h4 {
 .badge.warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.25); }
 .badge.error { background: rgba(139, 92, 246, 0.15); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.25); }
 
+/* Warmup Progress Bar */
+.warmup-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 180px;
+}
+.warmup-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(245, 158, 11, 0.15);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.warmup-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #f59e0b, #eab308);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+.warmup-text {
+    font-size: 0.7rem;
+    color: #f59e0b;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
 .btn-edit {
     background: rgba(59, 130, 246, 0.12);
     color: #93c5fd;

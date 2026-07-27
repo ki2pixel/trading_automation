@@ -366,7 +366,7 @@ async def get_configs():
             rows = await conn.fetch(
                 "SELECT id, strategy_name, asset, timeframe, kelly_weight, "
                 "initial_capital, initial_capital_bucket, max_capital_bucket, "
-                "max_entry_price, is_active, indicator_params, run_status, last_error "
+                "max_entry_price, is_active, indicator_params, run_status, last_error, warmup_progress "
                 "FROM paper_strategy_configs ORDER BY id ASC"
             )
             result = []
@@ -390,6 +390,7 @@ async def get_configs():
                     "indicator_params": indicator_params,
                     "status": "inactive" if not r["is_active"] else (r["run_status"] if r["run_status"] else "active"),
                     "last_error": r["last_error"],
+                    "warmup_progress": json.loads(r["warmup_progress"]) if isinstance(r["warmup_progress"], str) else r["warmup_progress"],
                     "market_open": is_market_open(r["asset"]),
                 })
             return result

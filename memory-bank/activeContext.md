@@ -2,6 +2,12 @@
 
 ## Focus Actuel
 - [2026-07-27 03:00:00] - **Garde-Fous d'Exécution SignalExecutor intégrés** : Max Entry Price dynamique, ATR Gate (P25 Wilder), MHP (3 bougies, signaux inverses uniquement). Module `execution_guards.py`, migration `opened_at` V3, SQL cap 10000, tests 20+11 verts, doc §3 mise à jour. Prochaine étape : validation comportement réel en Phase 2 (logs `paper_evaluations`).
+- [2026-07-27 18:44:00] - **Fix Warmup Progress (SQL Goulot + Métriques + Frontend)** : Résolution du blocage structurel `rn <= 2000` qui étranglait le resampling 45m (49 bougies max au lieu de 50).
+  - **Fix 1 — SQL Dynamique** : Extraction des helpers `_parse_timeframe_minutes()` et `_compute_min_bars_needed()` dans `SignalExecutor`. Calcul de `max_rn = max(2000, min_bars_needed * tf_minutes)` avant la requête batch pour adapter dynamiquement la fenêtre de lecture des bougies 1m.
+  - **Fix 2 — Métriques Warmup** : Nouvelle colonne `warmup_progress JSONB` dans `paper_strategy_configs` avec migration `ADD COLUMN IF NOT EXISTS`. Persistance de `{current_bars, required_bars, progress_pct, timeframe_minutes}` dans les deux chemins WAITING_DATA. Nettoyage à NULL lors du passage à `active` ou `error`. Exposition via `GET /api/configs`.
+  - **Fix 3 — Frontend** : Remplacement du badge statique "Waiting" par une barre de progression `████░░ 49/50 (98.0%)` avec fallback sur l'ancien badge. CSS `.warmup-progress`, `.warmup-bar`, `.warmup-fill`, `.warmup-text`.
+  - **Fichiers** : `signal_executor.py`, `db_setup.py`, `api.py`, `configs.js`, `style.css`. Tests : 10/11 + 13/14 passent (2 échecs pré-existants, zéro régression).
+
 - [2026-07-27 09:18:00] - Résolution des blocages "Postgres price is stale" et "Waiting Data" pour ZEAL.CO et NVO en timeframe 45m (`cybernetic_hilbert` et `momentum_based_zigzag`) :
   - **Script de backfill (`scripts/backfill_candles.py`)** : Développé pour charger 3 000 bougies 1m historiques via MarketFlow et lever l'attente de 2.7 à 4.4 jours de warm-up (50 bougies 45m).
   - **Refactorisation `signal_executor.py`** : Prise en compte des horaires boursiers (`configs/market_hours.json`) pour assigner le statut `MARKET_CLOSED` au lieu d'une alerte trompeuse hors-heures, correction d'un bug de dead code (position check) et enrichissement de l'âge dans le statut `WAITING_DATA`.

@@ -2,6 +2,12 @@
 
 ## Tâches Terminées
 
+- [x] [2026-07-27 18:44:00] - **Fix Warmup Progress (SQL Goulot + Métriques + Frontend)** — 3 fixes pour le statut WAITING_DATA :
+  - **Fix 1 — SQL Dynamique** : Extraction `_parse_timeframe_minutes(tf_str)` et `_compute_min_bars_needed(indicator_params)` comme `@staticmethod` dans `SignalExecutor`. Clause SQL `rn <= max(2000, min_bars * tf_minutes)` calculée avant le batch fetch → débloque `cybernetic_hilbert` ZEAL.CO 45m (49→50 bougies).
+  - **Fix 2 — Métriques Warmup** : Colonne `warmup_progress JSONB DEFAULT NULL` ajoutée à `paper_strategy_configs`. Persistance `{current_bars, required_bars, progress_pct, timeframe_minutes}` dans les 2 chemins WAITING_DATA. Nettoyage à NULL sur transition `active`/`error`. Exposition dans `GET /api/configs`.
+  - **Fix 3 — Frontend** : Badge "Waiting" remplacé par barre de progression `warmup-progress` (fill CSS gradient + fraction `49/50 (98.0%)`). Fallback badge si métriques absentes.
+  - **Fichiers** : `signal_executor.py`, `db_setup.py`, `api.py`, `configs.js`, `style.css`. **Tests** : 10/11 `test_signal_executor.py`, 13/14 `test_paper_trading_engine.py` (2 échecs pré-existants, zéro régression).
+
 - [x] [2026-07-27 12:00:00] - **Refactorisation de la boucle principale Paper Trader** : Élimination du dépassement de cycle 122.2s → cible < 60s.
   - **Phase 1 (Critique)** : A-01 parallélisation `ThreadPoolExecutor` T212+Bybit, A-02 accumulateur `_eval_buffer` + `executemany` batch.
   - **Phase 2 (Haute)** : A-03/A-04 cache `_strategy_result_cache` par `(asset, tf, bar_ts)`, A-08 cache intraday `compute_previous_day_close`.

@@ -1,5 +1,13 @@
 # Journal des Décisions
 
+## [2026-07-27 18:44:00] - Fix Warmup Progress : SQL Dynamique + Métriques JSONB + Frontend Progress Bar
+- **Décision** : Implémentation en 3 fixes du goulot d'étranglement WAITING_DATA identifié sur `ZEAL.CO` (45m) :
+  1. **SQL Dynamique** : Remplacer le hardcode `rn <= 2000` par un calcul `max(2000, min_bars_needed * tf_minutes)` avant le batch fetch. Extraction des helpers `_parse_timeframe_minutes()` (string → int) et `_compute_min_bars_needed()` (lookback indicator_params) en `@staticmethod` dans `SignalExecutor` pour éviter la duplication entre pré-SQL et per-config.
+  2. **Métriques Warmup (JSONB)** : Nouvelle colonne `warmup_progress JSONB DEFAULT NULL` dans `paper_strategy_configs` plutôt qu'une table séparée (simplicité, pas de JOIN). Persistance dans les deux chemins WAITING_DATA (raw candles < 10 et aggregated < min_bars). Nettoyage à NULL sur transitions `active` et `error`. Exposition via `GET /api/configs` (pas de nouvel endpoint).
+  3. **Frontend Progress Bar** : Barre CSS avec gradient linéaire (#f59e0b → #eab308) + fraction texte. Éléments DOM créés via `createElement` (pas d'innerHTML pour le contenu dynamique). Fallback badge `"Waiting"` quand `warmup_progress` est absent pour rétrocompatibilité avec les configs créées avant migration.
+- **Justification** : Éliminer le blocage structurel où le plafond SQL de 2000 minutes ne permettait pas d'atteindre les 50 bougies 45m requises (besoin réel : 2250 minutes). Fournir une transparence complète à l'utilisateur sur l'avancement du warmup sans nécessiter de logs ou d'inspection BDD. Approche JSONB choisie pour la flexibilité du schéma futur (ajout possible de `estimated_activation_utc`, `remaining_market_minutes`, etc.).
+- **Alternatives rejetées** : (a) Relever `rn <= 2000` à 5000 statique — trop rigide, ne s'adapte pas aux stratégies futures avec lookback > 100. (b) Table `paper_warmup_status` séparée — sur-ingénierie pour un champ transitoire. (c) Endpoint REST dédié `/api/warmup-progress` — la charge de polling supplémentaire n'est pas justifiée, les métriques sont incluses dans le flux existant `/api/configs`.
+
 ## [2026-07-27 01:40:00] - Audit et Alignement des Règles de Développement (`AGENTS.md` & `codingstandards.md`)
 - **Décision** : Mise à jour et harmonisation des règles de développement globales dans `AGENTS.md` (section 2) et `.agents/rules/codingstandards.md` pour refléter l'état réel de la base de code après la remédiation backend Paper Trading (PT-01 à PT-26) :
   1. **Clés d'API & Sécurité** : Formalisation du mode fallback sans clés (warning et init réussie pour ingestion publique) vs levée de `ValueError` contrôlée lors des requêtes signées. Failsafe SHA256 des hashes des clés API au démarrage.

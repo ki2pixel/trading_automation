@@ -98,8 +98,28 @@ export const fetchConfigs = async (forceRefresh = false) => {
                 statusSpan.className = 'badge inactive';
                 statusSpan.textContent = 'Inactive';
             } else if (conf.status === 'waiting_data') {
-                statusSpan.className = 'badge warning';
-                statusSpan.textContent = 'Waiting';
+                const wp = conf.warmup_progress;
+                if (wp && wp.current_bars !== undefined && wp.required_bars !== undefined) {
+                    const pct = wp.progress_pct || 0;
+                    const container = document.createElement('div');
+                    container.className = 'warmup-progress';
+                    const bar = document.createElement('div');
+                    bar.className = 'warmup-bar';
+                    const fill = document.createElement('div');
+                    fill.className = 'warmup-fill';
+                    fill.style.width = pct + '%';
+                    bar.appendChild(fill);
+                    const text = document.createElement('span');
+                    text.className = 'warmup-text';
+                    text.textContent = wp.current_bars + '/' + wp.required_bars + ' (' + pct + '%)';
+                    container.appendChild(bar);
+                    container.appendChild(text);
+                    tdStatus.appendChild(container);
+                } else {
+                    statusSpan.className = 'badge warning';
+                    statusSpan.textContent = 'Waiting';
+                    tdStatus.appendChild(statusSpan);
+                }
             } else if (conf.status === 'error') {
                 statusSpan.className = 'badge error';
                 if (conf.last_error) {
