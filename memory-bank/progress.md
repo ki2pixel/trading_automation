@@ -1,6 +1,15 @@
 # Suivi de Progression
 
 ## Tâches Terminées
+
+- [x] [2026-07-27 03:00:00] - **Garde-Fous d'Exécution SignalExecutor (Feuille de Route §3)**
+  - Module `execution_guards.py` créé (fonctions pures, typage Decimal/float selon charte §2.2).
+  - **Max Entry Price dynamique** : cap = close_veille × (1+buffer), buffer +30 % défaut, repli statique BDD.
+  - **ATR Gate** : ATR Wilder P25, lookback 100 bougies, fail-open < 20 bougies fermées.
+  - **MHP** : 3 bougies min pour signaux inverses uniquement (SL/TP/trailing prioritaires). Migration `opened_at` V3 sur `paper_positions` avec backfill best-effort.
+  - **SQL** : cap `rn <= 5000` → `rn <= 10000` (compatibilité ATR lookback 100+).
+  - **API Pydantic** : 7 nouvelles clés typées dans `IndicatorParamsModel` (`extra='allow'`).
+  - **Tests** : 20/20 `test_execution_guards.py`, 11/11 `test_signal_executor.py`. Régression : 630/636 (6 échecs pré-existants).
 - [x] [2026-07-27 09:18:00] - Résolution des blocages "Postgres price is stale" et "Waiting Data" pour ZEAL.CO et NVO en 45m (`cybernetic_hilbert` et `momentum_based_zigzag`) :
   - **Script de backfill (`scripts/backfill_candles.py`)** : Ingestion de 3 000 bougies 1m historiques via l'API MarketFlow (`live_candles_1m`).
   - **Gestion de marché fermé & tolérance `signal_executor.py`** : Prise en compte du calendrier boursier (`configs/market_hours.json`), statut `MARKET_CLOSED` hors-heures, correction du dead code sur les checks de position, et transmission de l'âge exact du prix en secondes dans `WAITING_DATA`.

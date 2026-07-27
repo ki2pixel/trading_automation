@@ -907,6 +907,26 @@ def init_db():
                         ON CONFLICT (version) DO NOTHING;
                     """)
 
+                # Check if Version 3 has been applied (opened_at column)
+                cur.execute("SELECT EXISTS (SELECT 1 FROM schema_version WHERE version = 3)")
+                v3_applied = cur.fetchone()[0]
+
+                if not v3_applied:
+                    cur.execute("ALTER TABLE paper_positions ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP")
+                    # Backfill best-effort from last BUY transaction per (asset, strategy_name)
+                    cur.execute("""
+                        UPDATE paper_positions p SET opened_at = COALESCE(
+                            (SELECT MAX(t.timestamp) FROM paper_transactions t
+                             WHERE t.action = 'BUY' AND t.asset = p.asset AND t.strategy_name = p.strategy_name),
+                            p.updated_at
+                        ) WHERE p.opened_at IS NULL
+                    """)
+                    cur.execute("""
+                        INSERT INTO schema_version (version, description)
+                        VALUES (3, 'opened_at ajouté à paper_positions pour le Minimum Holding Period (MHP).')
+                        ON CONFLICT (version) DO NOTHING;
+                    """)
+
                 # Reconcile allocated balance with actual paper_positions
                 reconcile_allocated_balances(conn)
 

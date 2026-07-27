@@ -295,8 +295,8 @@ class TestSignalExecutor:
 
         # Mock active configs and positions batch
         mock_cursor.fetchall.side_effect = [
-            [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)], # config query
-            [(401, "AAPL", "hma_crossover", Decimal("10.0"), Decimal("150.0"), "5m", "VALIDATED")], # positions batch query
+            [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), {})], # config query (empty → min_bars_needed=2)
+            [(401, "AAPL", "hma_crossover", Decimal("10.0"), Decimal("150.0"), "5m", None)], # positions batch (opened_at=None → MHP fail-open)
             [("trading212", Decimal("100000"), Decimal("100000")), ("bybit", Decimal("100000"), Decimal("100000"))], # balances query
             [
                 (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles
@@ -380,8 +380,8 @@ class TestSignalExecutor:
 
         # Mock active configs and positions batch
         mock_cursor.fetchall.side_effect = [
-            [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), None)],
-            [(401, "AAPL", "hma_crossover", Decimal("10.0001"), Decimal("150.0"), "5m", "VALIDATED")], # positions batch query
+            [(101, "hma_crossover", "AAPL", "5m", Decimal("0.10"), Decimal("100000"), Decimal("5000"), Decimal("10000"), Decimal("200"), {})],
+            [(401, "AAPL", "hma_crossover", Decimal("10.0001"), Decimal("150.0"), "5m", None)], # positions batch query
             [("trading212", Decimal("100000"), Decimal("100000")), ("bybit", Decimal("100000"), Decimal("100000"))], # balances query
             [
                 (datetime.now(), 150.0, 151.0, 149.0, 150.5), # 1m candles

@@ -1,6 +1,7 @@
 # Contexte Actif
 
 ## Focus Actuel
+- [2026-07-27 03:00:00] - **Garde-Fous d'Exécution SignalExecutor intégrés** : Max Entry Price dynamique, ATR Gate (P25 Wilder), MHP (3 bougies, signaux inverses uniquement). Module `execution_guards.py`, migration `opened_at` V3, SQL cap 10000, tests 20+11 verts, doc §3 mise à jour. Prochaine étape : validation comportement réel en Phase 2 (logs `paper_evaluations`).
 - [2026-07-27 09:18:00] - Résolution des blocages "Postgres price is stale" et "Waiting Data" pour ZEAL.CO et NVO en timeframe 45m (`cybernetic_hilbert` et `momentum_based_zigzag`) :
   - **Script de backfill (`scripts/backfill_candles.py`)** : Développé pour charger 3 000 bougies 1m historiques via MarketFlow et lever l'attente de 2.7 à 4.4 jours de warm-up (50 bougies 45m).
   - **Refactorisation `signal_executor.py`** : Prise en compte des horaires boursiers (`configs/market_hours.json`) pour assigner le statut `MARKET_CLOSED` au lieu d'une alerte trompeuse hors-heures, correction d'un bug de dead code (position check) et enrichissement de l'âge dans le statut `WAITING_DATA`.

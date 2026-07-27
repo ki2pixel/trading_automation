@@ -106,6 +106,15 @@ class IndicatorParamsModel(BaseModel):
     safety_max_net_loss_percent: float | None = None
     safety_max_bars_in_trade: int | None = None
 
+    # Execution guard keys (EX-07)
+    max_entry_price_buffer_pct: float | None = None   # default 0.30
+    min_holding_bars: int | None = None               # default 3; 0 = MHP disabled
+    atr_gate_enabled: bool | None = None              # default True
+    atr_gate_length: int | None = None                # default 14
+    atr_gate_lookback: int | None = None              # default 100
+    atr_gate_percentile: float | None = None          # default 25.0
+    atr_gate_min_bars: int | None = None              # default 20
+
     @model_validator(mode='before')
     @classmethod
     def validate_primitive_types(cls, data: Any) -> Any:

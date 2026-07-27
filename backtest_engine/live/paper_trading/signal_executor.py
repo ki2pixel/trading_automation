@@ -9,6 +9,12 @@ import psycopg2
 import requests
 from backtest_engine.live.utils import is_crypto_asset, is_market_open
 from backtest_engine.live.paper_trading.exceptions import PortfolioUpdateError
+from backtest_engine.live.paper_trading.execution_guards import (
+    resolve_max_entry_price,
+    is_entry_blocked_by_atr_gate,
+    is_exit_blocked_by_mhp,
+    count_bars_since_entry,
+)
 
 logger = logging.getLogger("papertrader")
 
@@ -388,10 +394,15 @@ class SignalExecutor:
             configs = cur.fetchall()
             
              # Fetch all active positions to avoid N+1 queries in the loop
-            cur.execute("SELECT id, asset, strategy_name, qty, entry_price, timeframe FROM paper_positions")
+            cur.execute("SELECT id, asset, strategy_name, qty, entry_price, timeframe, opened_at FROM paper_positions")
             positions_rows = cur.fetchall()
             active_positions = {
                 (r[1].lower(), r[2], r[5]): (r[0], Decimal(str(r[3])), Decimal(str(r[4])))
+                for r in positions_rows
+            }
+            # Separate dict for opened_at to avoid breaking tuple consumers (PTC, SELL, NAV)
+            positions_opened_at: Dict[tuple, Optional[datetime]] = {
+                (r[1].lower(), r[2], r[5]): r[6]
                 for r in positions_rows
             }
             
@@ -423,7 +434,7 @@ class SignalExecutor:
                             FROM live_candles_1m
                             WHERE ticker = ANY(%s)
                         ) t
-                        WHERE rn <= 5000
+                        WHERE rn <= 10000
                         ORDER BY ticker, timestamp_minute ASC
                     """, (list(active_assets),))
                     all_candle_rows = cur.fetchall()
@@ -653,17 +664,65 @@ class SignalExecutor:
             if not has_position:
                 # Evaluate Entry (Long Only)
                 if long_entry_signal:
-                    # Check maximum entry price rule
-                    if current_price > Decimal(str(max_entry_price)):
-                        logger.info(f"[PaperTrader] Entry rejected for {asset}: price ({current_price}) exceeds max_entry_price ({max_entry_price})")
+                    # Check maximum entry price rule (EX-03: dynamic MEP with static fallback)
+                    buffer_pct = float(indicator_params.get("max_entry_price_buffer_pct", 0.30))
+                    try:
+                        cap, cap_mode = resolve_max_entry_price(
+                            df_1m=df_1m,
+                            static_max=Decimal(str(max_entry_price)),
+                            buffer_pct=buffer_pct,
+                            now_utc=now_utc,
+                        )
+                    except (ValueError, KeyError, TypeError) as guard_err:
+                        logger.exception("[PaperTrader] MEP guard error for %s — fallback static", asset)
+                        cap, cap_mode = Decimal(str(max_entry_price)), "static_fallback"
+                    if current_price > cap:
+                        logger.info(
+                            "[PaperTrader] Entry rejected for %s: price (%s) exceeds max_entry_price cap=%s (mode=%s, buffer=%.2f%%)",
+                            asset, current_price, cap, cap_mode, buffer_pct * 100,
+                        )
                         self.log_evaluation(
-                            conn, strategy_name, asset, timeframe, 
-                            price=current_price, signal_type='ENTRY', 
-                            signal_triggered=True, status='REJECTED', 
-                            fail_reason=f'Price {current_price} exceeds max_entry_price {max_entry_price}',
-                            details={"price": float(current_price), "max_entry_price": float(max_entry_price)}
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='ENTRY',
+                            signal_triggered=True, status='REJECTED',
+                            fail_reason=f'Price {current_price} > cap {cap} (mode={cap_mode})',
+                            details={
+                                "price": float(current_price),
+                                "cap": float(cap),
+                                "mode": cap_mode,
+                                "buffer_pct": buffer_pct,
+                            }
                         )
                         continue
+
+                    # EX-04: ATR Gate — block entry when volatility is abnormally low
+                    if bool(indicator_params.get("atr_gate_enabled", True)):
+                        atr_blocked: Optional[bool] = None
+                        try:
+                            atr_blocked = is_entry_blocked_by_atr_gate(
+                                df_aggregated.iloc[:-1],
+                                atr_length=int(indicator_params.get("atr_gate_length", 14)),
+                                lookback=int(indicator_params.get("atr_gate_lookback", 100)),
+                                percentile=float(indicator_params.get("atr_gate_percentile", 25.0)),
+                                min_bars=int(indicator_params.get("atr_gate_min_bars", 20)),
+                            )
+                        except (ValueError, KeyError, TypeError) as atr_err:
+                            logger.exception("[PaperTrader] ATR gate error for %s — fail-open", asset)
+                            atr_blocked = None
+                        if atr_blocked is True:
+                            self.log_evaluation(
+                                conn, strategy_name, asset, timeframe,
+                                price=current_price, signal_type='ENTRY',
+                                signal_triggered=True, status='REJECTED',
+                                fail_reason='ATR gate: volatility below percentile threshold',
+                                details={
+                                    "gate": "atr_gate",
+                                    "price": float(current_price),
+                                }
+                            )
+                            continue
+                        if atr_blocked is None:
+                            logger.info("[PaperTrader] ATR gate fail-open for %s (insufficient data)", asset)
                         
                     # Calculate quantity to buy
                     # Determine source depending on asset type
@@ -826,8 +885,8 @@ class SignalExecutor:
                             
                             # 1. Insert position with RETURNING id for intra-cycle dedup (P1-FIX)
                             cur.execute("""
-                                INSERT INTO paper_positions (asset, strategy_name, timeframe, qty, entry_price, current_price, pnl, updated_at)
-                                VALUES (%s, %s, %s, %s, %s, %s, 0, CURRENT_TIMESTAMP)
+                                INSERT INTO paper_positions (asset, strategy_name, timeframe, qty, entry_price, current_price, pnl, updated_at, opened_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                                 RETURNING id
                             """, (asset, strategy_name, timeframe, qty, current_price, current_price))
                             new_pos_id = cur.fetchone()[0]
@@ -896,11 +955,20 @@ class SignalExecutor:
                 # Check exit triggers
                 trigger_exit = False
                 exit_reason = ""
+                mhp_block: Optional[dict] = None
                 
-                # 1. Check strategy's custom long_exit signal
+                # 1. Check strategy's custom long_exit signal (EX-05b: with MHP guard for inverse signals only)
                 if long_exit_signal:
-                    trigger_exit = True
-                    exit_reason = "Strategy Exit Signal"
+                    min_bars = int(indicator_params.get("min_holding_bars", 3))
+                    opened_at = positions_opened_at.get((asset.lower(), strategy_name, timeframe))
+                    if min_bars > 0 and is_exit_blocked_by_mhp(
+                        df_aggregated.index, opened_at, last_closed_time, min_bars,
+                    ):
+                        bars_since = count_bars_since_entry(df_aggregated.index, opened_at, last_closed_time)
+                        mhp_block = {"bars_since": bars_since, "min_bars": min_bars}
+                    else:
+                        trigger_exit = True
+                        exit_reason = "Strategy Exit Signal"
                     
                 # 2. Check Broker ExitRules (fixed/net brackets, trailing stops, safety stops)
                 if not trigger_exit:
@@ -1182,18 +1250,34 @@ class SignalExecutor:
                             fail_reason=f"Database error executing SELL: {db_err}"
                         )
                 else:
-                    self.log_evaluation(
-                        conn, strategy_name, asset, timeframe,
-                        price=current_price, signal_type='EXIT',
-                        signal_triggered=False, status='NO_SIGNAL',
-                        fail_reason='No exit trigger matched',
-                        details={
-                            "qty": float(qty),
-                            "entry_price": float(entry_price),
-                            "current_price": float(current_price),
-                            "current_pnl": float((current_price - entry_price) * qty)
-                        }
-                    )
+                    # If MHP blocked the strategy exit signal, log BLOCKED_MHP; otherwise NO_SIGNAL
+                    if mhp_block:
+                        self.log_evaluation(
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='EXIT',
+                            signal_triggered=True, status='BLOCKED_MHP',
+                            fail_reason=f'Minimum holding period: {mhp_block["bars_since"]} < {mhp_block["min_bars"]} bars',
+                            details={
+                                "qty": float(qty),
+                                "entry_price": float(entry_price),
+                                "current_price": float(current_price),
+                                "bars_since": mhp_block["bars_since"],
+                                "min_bars": mhp_block["min_bars"],
+                            }
+                        )
+                    else:
+                        self.log_evaluation(
+                            conn, strategy_name, asset, timeframe,
+                            price=current_price, signal_type='EXIT',
+                            signal_triggered=False, status='NO_SIGNAL',
+                            fail_reason='No exit trigger matched',
+                            details={
+                                "qty": float(qty),
+                                "entry_price": float(entry_price),
+                                "current_price": float(current_price),
+                                "current_pnl": float((current_price - entry_price) * qty)
+                            }
+                        )
 
     def run_conversion_pipeline(self, conn: Any) -> None:
         """

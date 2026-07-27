@@ -90,14 +90,19 @@ Afin d'étalonner la Phase 2 sur une base 100% vierge et mesurable :
 ## 3. Pistes d'Amélioration & Automatisation Future (Feuille de Route)
 
 ### A. Garde-Fou Dynamique de Prix (`Max Entry Price` Automatique)
+**✅ Intégré — 2026-07-27**
 
 - **Problématique** : Actuellement, le paramètre `max_entry_price` est un nombre fixe en BDD (ex: 50.00 €, 100.00 €, 200.00 €, 300.00 €) servant de filtre anti-anomalie de cours (*bad data spike*). En cas de bull-run prolongé sur plusieurs mois, un ajustement manuel peut être nécessaire si le cours réel dépasse ce plafond.
-- **Solution d'Automatisation Futur** :
-  - Remplacer la limite statique dans `SignalExecutor` par un calcul dynamique basé sur un pourcentage de tolérance au-dessus du cours de clôture récent :
-    $$\text{Max Entry Price Dynamique} = \text{Prix de Clôture (Close) Veille} \times (1 + \text{Buffer})$$
-  - **Exemple** : Avec un buffer de $+30\%$, une action cotant 40 € aura un plafond dynamique automatique de 52 € qui suivra organiquement la hausse du titre sans nécessiter de retouche manuelle.
+- **Solution implémentée** :
+  - Cap dynamique = `close_veille × (1 + buffer_pct)` avec buffer par défaut `+30 %` (`max_entry_price_buffer_pct`).
+  - Repli automatique sur la limite statique BDD si la clôture de veille est incalculable.
+  - Module : `backtest_engine/live/paper_trading/execution_guards.py:resolve_max_entry_price()`.
+  - Surcharge via `indicator_params.max_entry_price_buffer_pct` (API Pydantic).
 
 ### B. Contrôles d'Exécution Génériques au Niveau `SignalExecutor`
+**✅ Intégré — 2026-07-27**
 
 1. **Minimum Holding Period (MHP)** : Intégrer un garde-fou universel interdisant la clôture d'une position par signal inverse si moins de 3 bougies consécutives se sont écoulées depuis l'ouverture (hors déclenchement du Stop-Loss dur).
+   - **Implémenté** : `is_exit_blocked_by_mhp()` + `count_bars_since_entry()`. MHP=3 par défaut (`min_holding_bars`). Portée limitée aux signaux inverses (SL/TP/trailing prioritaires). `opened_at` ajouté à `paper_positions` (migration V3). Colonne `opened_at` renseignée à l'INSERT BUY (`CURRENT_TIMESTAMP`).
 2. **Filtre de Régime de Volatilité (ATR Gate)** : Bloquer les déclenchements de signaux lorsque le marché évolue dans un canal de volatilité extrêmement resserré (ATR < 25e percentile).
+   - **Implémenté** : `is_entry_blocked_by_atr_gate()` — ATR Wilder, lookback 100 bougies, percentile P25 par défaut. Fail-open si < 20 bougies fermées. Surcharge via `indicator_params.atr_gate_*`.
