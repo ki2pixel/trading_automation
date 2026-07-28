@@ -77,29 +77,27 @@ class TestSignalExecutor:
         mock_is_market_open.assert_called_once_with("AAPL", market_hours, current_time=mock_now)
 
     def test_log_evaluation(self):
-        mock_conn = MagicMock()
-        mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
-
+        # Given: A fresh SignalExecutor instance
         executor = SignalExecutor()
+
+        # When: log_evaluation is called (A-02: accumulator pattern, no conn arg)
         executor.log_evaluation(
-            mock_conn, "hma_crossover", "AAPL", "5m", Decimal("150.0"),
+            "hma_crossover", "AAPL", "5m", Decimal("150.0"),
             "ENTRY", True, "EXECUTED", None, {"details_key": Decimal("42.0")}
         )
 
-        mock_cursor.execute.assert_called_once()
-        args = mock_cursor.execute.call_args[0]
-        query = args[0]
-        params = args[1]
-        assert "INSERT INTO paper_evaluations" in query
-        assert params[0] == "hma_crossover"
-        assert params[1] == "AAPL"
-        assert params[2] == "5m"
-        assert params[3] == 150.0
-        assert params[4] == "ENTRY"
-        assert params[5] is True
-        assert params[6] == "EXECUTED"
-        assert params[7] is None
-        assert "42.0" in params[8]  # serialized details
+        # Then: The entry should be accumulated in _eval_buffer
+        assert len(executor._eval_buffer) == 1
+        entry = executor._eval_buffer[0]
+        assert entry[0] == "hma_crossover"
+        assert entry[1] == "AAPL"
+        assert entry[2] == "5m"
+        assert entry[3] == 150.0
+        assert entry[4] == "ENTRY"
+        assert entry[5] is True
+        assert entry[6] == "EXECUTED"
+        assert entry[7] is None
+        assert "42.0" in entry[8]  # serialized details
 
     @patch('backtest_engine.live.connection.get_redis_client')
     @patch('backtest_engine.live.utils.get_eurusd_rate')

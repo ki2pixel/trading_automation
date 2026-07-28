@@ -389,14 +389,21 @@ class TestPaperTradingEngine:
         # WHEN: _evaluate_and_execute_strategies is executed
         engine._evaluate_and_execute_strategies(mock_conn)
 
-        # THEN: The database status should be set to 'error' and last_error recorded
-        error_update_calls = [
-            call[0] for call in mock_cursor.execute.call_args_list
-            if "UPDATE paper_strategy_configs" in call[0][0] and "run_status = 'error'" in call[0][0]
+        # THEN: The status update should be batched via executemany (P3 optimization)
+        executemany_calls = [
+            call for call in mock_cursor.executemany.call_args_list
+            if "UPDATE paper_strategy_configs" in call[0][0]
         ]
-        assert len(error_update_calls) == 1
-        assert "last_error = %s" in error_update_calls[0][0]
-        assert error_update_calls[0][1] == ("Test strategy simulation error", 1)
+        assert len(executemany_calls) == 1
+        batch_query = executemany_calls[0][0][0]
+        batch_params = executemany_calls[0][0][1]
+        assert "run_status = %s" in batch_query
+        assert "last_error = %s" in batch_query
+        # Verify the batch contains our error entry: ('error', None, 'Test strategy simulation error', 1)
+        error_entries = [p for p in batch_params if p[0] == 'error']
+        assert len(error_entries) == 1
+        assert error_entries[0][2] == "Test strategy simulation error"
+        assert error_entries[0][3] == 1
 
     @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
     @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
@@ -462,14 +469,21 @@ class TestPaperTradingEngine:
         # WHEN: _evaluate_and_execute_strategies is executed
         engine._evaluate_and_execute_strategies(mock_conn)
 
-        # THEN: The database status should be set to 'active' and last_error reset to NULL
-        active_update_calls = [
-            call[0] for call in mock_cursor.execute.call_args_list
-            if "UPDATE paper_strategy_configs" in call[0][0] and "run_status = 'active'" in call[0][0]
+        # THEN: The status update should be batched via executemany (P3 optimization)
+        executemany_calls = [
+            call for call in mock_cursor.executemany.call_args_list
+            if "UPDATE paper_strategy_configs" in call[0][0]
         ]
-        assert len(active_update_calls) == 1
-        assert "last_error = NULL" in active_update_calls[0][0]
-        assert active_update_calls[0][1] == (1,)
+        assert len(executemany_calls) == 1
+        batch_query = executemany_calls[0][0][0]
+        batch_params = executemany_calls[0][0][1]
+        assert "run_status = %s" in batch_query
+        # Verify the batch contains our active entry: ('active', None, None, 1)
+        active_entries = [p for p in batch_params if p[0] == 'active']
+        assert len(active_entries) == 1
+        assert active_entries[0][1] is None  # warmup_progress cleared
+        assert active_entries[0][2] is None  # last_error cleared
+        assert active_entries[0][3] == 1     # config_id
 
     @patch('backtest_engine.live.connection.get_redis_client', return_value=None)
     @patch('backtest_engine.strategy_registry.StrategyRegistry.get')
@@ -608,8 +622,8 @@ class TestPaperTradingEngine:
             last_query = mock_cursor.execute.call_args[0][0]
             if "SELECT id, strategy_name, asset, timeframe" in last_query:
                 return [(904, "cybernetic_hilbert", "ltcusdt", "45m", 0.1, 1000.0, 1000.0, 5000.0, 100.0, {"enable_take_profit": True, "take_profit_pct": 5.0})]
-            if "SELECT id, asset, strategy_name, qty, entry_price, timeframe FROM paper_positions" in last_query:
-                return [(99, "ltcusdt", "cybernetic_hilbert", Decimal("10.0"), Decimal("100.0"), "45m")]
+            if "SELECT id, asset, strategy_name, qty, entry_price, timeframe" in last_query and "paper_positions" in last_query:
+                return [(99, "ltcusdt", "cybernetic_hilbert", Decimal("10.0"), Decimal("100.0"), "45m", start_time)]
             if "SELECT source, paper_cash_balance, total_nav FROM paper_portfolio_balance" in last_query:
                 return [("bybit", 15000.0, 15000.0)]
             if "live_candles_1m" in last_query:

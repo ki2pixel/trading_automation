@@ -1,9 +1,10 @@
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional, Union, Callable, Dict
+from typing import Any, Optional, Union, Callable, Dict, Tuple
 import pandas as pd
 
 import psycopg2
@@ -432,10 +433,40 @@ class SignalExecutor:
             conn.rollback()
             raise PortfolioUpdateError("Unexpected error updating NAV") from e
 
+    @staticmethod
+    def _run_strategy_worker(
+        strat_info: Any,
+        df_aggregated: pd.DataFrame,
+        overrides: Any,
+        asset: str,
+        initial_capital_bucket: float,
+        timeframe: str,
+    ) -> Tuple[Any, Optional[Exception]]:
+        """Thread-safe wrapper for strategy run_function (stateless computation)."""
+        try:
+            run_result = strat_info.run_function(
+                data=df_aggregated,
+                symbol=asset,
+                overrides=overrides,
+                initial_capital=initial_capital_bucket,
+                timeframe_minutes=timeframe,
+                compute_full_metrics=False,
+            )
+            return run_result, None
+        except Exception as e:
+            return None, e
+
     def evaluate_and_execute_strategies(self, conn: Any) -> None:
         """
         Evaluate active strategy configurations on recent price history and execute trade signals.
+
+        Performance-optimized (P6 instrumented):
+        - SQL: timestamp range scan instead of ROW_NUMBER() window
+        - Resampling cache: shared (ticker, timeframe) DataFrames
+        - Parallel strategy eval: ThreadPoolExecutor(max_workers=2)
+        - Batch status updates: single executemany + commit
         """
+        t_cycle_start = time.monotonic()
         from backtest_engine.strategy_registry import StrategyRegistry
         from backtest_engine.live.connection import get_redis_client
         redis_client = get_redis_client()
@@ -481,12 +512,13 @@ class SignalExecutor:
                 r[0]: (Decimal(str(r[1])), Decimal(str(r[2])))
                 for r in balance_rows
             }
+        t_after_prefetch = time.monotonic()
             
         # N-01: Filter configs and extract unique tickers for batch fetching
         # A-07: Pre-compute is_market_open per asset (avoid duplicate calls in filter + loop)
         active_assets = set()
         market_open_status: Dict[str, bool] = {}
-        max_rn = 2000
+        max_lookback_minutes = 2000
         for config in configs:
             asset = config[2]
             if asset not in market_open_status:
@@ -496,46 +528,44 @@ class SignalExecutor:
             tf_minutes = self._parse_timeframe_minutes(config[3])
             indicator_params_config = config[9] or {}
             min_bars = self._compute_min_bars_needed(indicator_params_config)
-            max_rn = max(max_rn, min_bars * tf_minutes)
+            max_lookback_minutes = max(max_lookback_minutes, min_bars * tf_minutes)
 
-        # Batch fetch all 1m candles for active assets
-        candles_by_ticker = {}
+        # Batch fetch all 1m candles for active assets (P1: timestamp range scan)
+        candles_by_ticker: Dict[str, list] = {}
         if active_assets:
             try:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT ticker, timestamp_minute, open, high, low, close
-                        FROM (
-                            SELECT ticker, timestamp_minute, open, high, low, close,
-                                   ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY timestamp_minute DESC) as rn
-                            FROM live_candles_1m
-                            WHERE ticker = ANY(%s)
-                        ) t
-                        WHERE rn <= %s
+                        FROM live_candles_1m
+                        WHERE ticker = ANY(%s)
+                          AND timestamp_minute >= NOW() - make_interval(mins => %s)
                         ORDER BY ticker, timestamp_minute ASC
-                    """, (list(active_assets), max_rn))
+                    """, (list(active_assets), max_lookback_minutes))
                     all_candle_rows = cur.fetchall()
                 
                 for row in all_candle_rows:
                     if len(row) == 6:
-                        ticker, timestamp, o, h, l, c = row
+                        ticker, timestamp_val, o, h, l, c = row
                     elif len(row) == 5:
                         logger.warning("[PaperTrader] Candle row has 5 columns (ticker missing) — please run tickercase migration (PT-02)")
                         ticker = configs[0][2].lower() if configs else "unknown"
-                        timestamp, o, h, l, c = row
+                        timestamp_val, o, h, l, c = row
                     else:
                         logger.error("[PaperTrader] Unexpected candle row length %d, skipping", len(row))
                         continue
                     ticker_lower = ticker.lower()
                     if ticker_lower not in candles_by_ticker:
                         candles_by_ticker[ticker_lower] = []
-                    candles_by_ticker[ticker_lower].append((timestamp, o, h, l, c))
+                    candles_by_ticker[ticker_lower].append((timestamp_val, o, h, l, c))
             except psycopg2.Error as db_err:
                 logger.exception("[PaperTrader] Database error batch fetching live_candles_1m")
+        t_after_sql = time.monotonic()
             
         # P2-FIX: Batch-fetch all live prices via Redis MGET before the config loop
+        # B5-FIX: Use pre-computed market_open_status instead of redundant is_market_open() calls
         live_prices_cache: Dict[str, Optional[Decimal]] = {}
-        active_asset_list = list(set(c[2].lower() for c in configs if self.is_market_open(c[2])))
+        active_asset_list = list(set(c[2].lower() for c in configs if market_open_status.get(c[2], False)))
         if redis_client and active_asset_list:
             try:
                 redis_price_keys = [f"price:{t}" for t in active_asset_list]
@@ -553,6 +583,20 @@ class SignalExecutor:
                             logger.warning("[PaperTrader] Failed to parse Redis price for %s: %s", ticker, parse_err)
             except Exception:
                 logger.warning("[PaperTrader] Redis mget error for live prices batch: %s", "timeout or connection issue")
+
+        # P2: Per-cycle resampling cache — keyed by (ticker_lower, timeframe)
+        _resampling_cache: Dict[Tuple[str, str], Tuple[pd.DataFrame, pd.DataFrame]] = {}
+        # P3: Batch status update accumulator — (run_status, warmup_progress_json, last_error, config_id)
+        _status_updates: list[tuple] = []
+
+        # ── P4: Pre-compute strategy evaluations in parallel ──────────────────
+        # Build list of configs that need run_function() evaluation
+        _parallel_tasks: list[tuple] = []  # (config_id, strat_info, df_aggregated, overrides, asset, initial_capital_bucket, timeframe, last_closed_time)
+        _parallel_results: Dict[int, Tuple[Any, Optional[Exception]]] = {}  # config_id -> (run_result, error)
+        # Pre-built data for configs that pass all pre-eval checks
+        _config_precomputed: Dict[int, Tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp]] = {}  # config_id -> (df_1m, df_aggregated, last_closed_time)
+
+        t_after_redis = time.monotonic()
 
         for config_id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params in configs:
             indicator_params = indicator_params or {}
@@ -586,15 +630,8 @@ class SignalExecutor:
                     "progress_pct": 0.0,
                     "timeframe_minutes": tf_minutes,
                 }
-                try:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE paper_strategy_configs SET run_status = 'waiting_data', warmup_progress = %s WHERE id = %s",
-                            (json.dumps(warmup_progress), config_id)
-                        )
-                    conn.commit()
-                except psycopg2.Error as e:
-                    logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
+                # P3: Defer status update to batch flush
+                _status_updates.append(('waiting_data', json.dumps(warmup_progress), None, config_id))
                 self.log_evaluation(
                     strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
@@ -602,28 +639,35 @@ class SignalExecutor:
                     fail_reason='Not enough candle history'
                 )
                 continue
-                
-            # Convert to DataFrame
-            df_1m = pd.DataFrame(candle_rows, columns=["timestamp_minute", "open", "high", "low", "close"])
-            # Convert prices to floats for VectorBT
-            for col in ["open", "high", "low", "close"]:
-                df_1m[col] = df_1m[col].astype(float)
-            df_1m.set_index("timestamp_minute", inplace=True)
-            df_1m.index = pd.to_datetime(df_1m.index)
-            if df_1m.index.tzinfo is None:
-                df_1m.index = df_1m.index.tz_localize('UTC')
+
+            # P2: Resampling cache — share (df_1m, df_aggregated) across configs with same (ticker, timeframe)
+            resample_key = (asset.lower(), timeframe)
+            cached_resample = _resampling_cache.get(resample_key)
+            if cached_resample is not None:
+                df_1m, df_aggregated = cached_resample
             else:
-                df_1m.index = df_1m.index.tz_convert('UTC')
-                
-            # Resample to strategy's timeframe
-            rule = timeframe.replace("m", "min").replace("h", "H")
-            df_aggregated = df_1m.resample(rule).agg({
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last"
-            }).dropna()
-            df_aggregated["volume"] = 0.0 # dummy volume
+                # Convert to DataFrame
+                df_1m = pd.DataFrame(candle_rows, columns=["timestamp_minute", "open", "high", "low", "close"])
+                # Convert prices to floats for VectorBT
+                for col in ["open", "high", "low", "close"]:
+                    df_1m[col] = df_1m[col].astype(float)
+                df_1m.set_index("timestamp_minute", inplace=True)
+                df_1m.index = pd.to_datetime(df_1m.index)
+                if df_1m.index.tzinfo is None:
+                    df_1m.index = df_1m.index.tz_localize('UTC')
+                else:
+                    df_1m.index = df_1m.index.tz_convert('UTC')
+                    
+                # Resample to strategy's timeframe
+                rule = timeframe.replace("m", "min").replace("h", "H")
+                df_aggregated = df_1m.resample(rule).agg({
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last"
+                }).dropna()
+                df_aggregated["volume"] = 0.0  # dummy volume
+                _resampling_cache[resample_key] = (df_1m, df_aggregated)
             
             # Calculate dynamic warmup period based on indicator parameters
             tf_minutes = self._parse_timeframe_minutes(timeframe)
@@ -636,15 +680,8 @@ class SignalExecutor:
                     "progress_pct": round(min(100.0, len(df_aggregated) / min_bars_needed * 100), 1),
                     "timeframe_minutes": tf_minutes,
                 }
-                try:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE paper_strategy_configs SET run_status = 'waiting_data', warmup_progress = %s WHERE id = %s",
-                            (json.dumps(warmup_progress), config_id)
-                        )
-                    conn.commit()
-                except psycopg2.Error as e:
-                    logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
+                # P3: Defer status update to batch flush
+                _status_updates.append(('waiting_data', json.dumps(warmup_progress), None, config_id))
                 self.log_evaluation(
                     strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
@@ -661,7 +698,7 @@ class SignalExecutor:
             if self._last_eval_timestamps.get(config_id) == last_closed_time:
                 continue
             
-            # Let's run the strategy signals on the aggregated data
+            # P4: Queue for parallel strategy evaluation
             try:
                 strat_info = StrategyRegistry.get(strategy_name)
 
@@ -669,28 +706,106 @@ class SignalExecutor:
                 cache_key = (asset.lower(), timeframe, last_closed_time)
                 cached = self._strategy_result_cache.get(cache_key)
                 if cached is not None and cached[0] == last_closed_time:
-                    run_result = cached[1]
+                    # Cache hit — store precomputed result directly
+                    _parallel_results[config_id] = (cached[1], None)
+                    _config_precomputed[config_id] = (df_1m, df_aggregated, last_closed_time)
                     logger.debug("[SignalExecutor] Cache hit for %s/%s @ %s", asset, timeframe, last_closed_time)
                 else:
-                    # Parse config overrides
+                    # Parse config overrides and queue for parallel execution
                     overrides = strat_info.overrides_from_mapping_function(indicator_params)
+                    _parallel_tasks.append((
+                        config_id, strat_info, df_aggregated, overrides,
+                        asset, float(initial_capital_bucket), timeframe, last_closed_time,
+                    ))
+                    _config_precomputed[config_id] = (df_1m, df_aggregated, last_closed_time)
+            except Exception as strat_err:
+                logger.exception(f"[PaperTrader] Error preparing strategy {strategy_name} for {asset}")
+                # P3: Defer status update to batch flush
+                _status_updates.append(('error', None, str(strat_err), config_id))
+                self.log_evaluation(
+                    strategy_name, asset, timeframe, 
+                    price=None, signal_type='EXIT' if has_position else 'ENTRY', 
+                    signal_triggered=False, status='ERROR', 
+                    fail_reason=str(strat_err)
+                )
+                continue
 
-                    run_result = strat_info.run_function(
-                        data=df_aggregated,
-                        symbol=asset,
-                        overrides=overrides,
-                        initial_capital=float(initial_capital_bucket),
-                        timeframe_minutes=timeframe,
-                        compute_full_metrics=False
-                    )
-                    self._strategy_result_cache[cache_key] = (last_closed_time, run_result)
-                    # Periodic cache cleanup: evict entries older than 5 minutes
-                    if len(self._strategy_result_cache) > 50:
-                        stale = [k for k, v in self._strategy_result_cache.items()
-                                  if (pd.Timestamp.now(tz='UTC') - v[0]).total_seconds() > 300]
-                        for k in stale:
-                            del self._strategy_result_cache[k]
-                
+        t_after_preprocess = time.monotonic()
+
+        # ── P4: Execute strategy run_function() calls in parallel ──────────
+        if _parallel_tasks:
+            max_workers = min(2, len(_parallel_tasks))  # Capped for 0.5 CPU Render
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {
+                    pool.submit(
+                        self._run_strategy_worker,
+                        task[1],   # strat_info
+                        task[2],   # df_aggregated
+                        task[3],   # overrides
+                        task[4],   # asset
+                        task[5],   # initial_capital_bucket
+                        task[6],   # timeframe
+                    ): task
+                    for task in _parallel_tasks
+                }
+                for future in as_completed(futures):
+                    task = futures[future]
+                    config_id_f = task[0]
+                    last_closed_time_f = task[7]
+                    try:
+                        run_result, strat_err = future.result()
+                        _parallel_results[config_id_f] = (run_result, strat_err)
+                        # Update strategy result cache on success
+                        if run_result is not None and strat_err is None:
+                            asset_f = task[4]
+                            timeframe_f = task[6]
+                            cache_key_f = (asset_f.lower(), timeframe_f, last_closed_time_f)
+                            self._strategy_result_cache[cache_key_f] = (last_closed_time_f, run_result)
+                    except Exception as exec_err:
+                        _parallel_results[config_id_f] = (None, exec_err)
+
+            # Periodic cache cleanup: evict entries older than 5 minutes
+            if len(self._strategy_result_cache) > 50:
+                stale = [k for k, v in self._strategy_result_cache.items()
+                          if (pd.Timestamp.now(tz='UTC') - v[0]).total_seconds() > 300]
+                for k in stale:
+                    del self._strategy_result_cache[k]
+
+        t_after_strat_eval = time.monotonic()
+
+        # ── Sequential post-processing: signal extraction + trade execution ──
+        for config_id, strategy_name, asset, timeframe, kelly_weight, initial_capital, initial_capital_bucket, max_capital_bucket, max_entry_price, indicator_params in configs:
+            indicator_params = indicator_params or {}
+            position_row = active_positions.get((asset.lower(), strategy_name, timeframe))
+            has_position = position_row is not None
+
+            # Skip configs that were filtered out during pre-processing
+            if config_id not in _config_precomputed:
+                continue
+
+            df_1m, df_aggregated, last_closed_time = _config_precomputed[config_id]
+            last_closed_bar = df_aggregated.loc[last_closed_time]
+            source = 'bybit' if is_crypto_asset(asset) else 'trading212'
+
+            # Retrieve parallel evaluation result
+            parallel_result = _parallel_results.get(config_id)
+            if parallel_result is None:
+                continue  # Should not happen, but defensive guard
+
+            run_result, strat_err = parallel_result
+            if strat_err is not None:
+                logger.exception(f"[PaperTrader] Error running strategy {strategy_name} for {asset}: {strat_err}")
+                # P3: Defer status update to batch flush
+                _status_updates.append(('error', None, str(strat_err), config_id))
+                self.log_evaluation(
+                    strategy_name, asset, timeframe, 
+                    price=None, signal_type='EXIT' if has_position else 'ENTRY', 
+                    signal_triggered=False, status='ERROR', 
+                    fail_reason=str(strat_err)
+                )
+                continue
+
+            try:
                 # Check signals on the last closed bar
                 result_bars = run_result.bars
                 
@@ -700,30 +815,16 @@ class SignalExecutor:
                 long_entry_signal = bool(last_closed_result.get('long_entry', False))
                 long_exit_signal = bool(last_closed_result.get('long_exit', False))
                 
-                # Success - Set status to active and reset last_error / warmup_progress
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        UPDATE paper_strategy_configs 
-                        SET run_status = 'active', last_error = NULL, warmup_progress = NULL
-                        WHERE id = %s
-                    """, (config_id,))
-                conn.commit()
+                # P3: Defer status update to batch flush
+                _status_updates.append(('active', None, None, config_id))
                 
                 # Update last evaluated timestamp
                 self._last_eval_timestamps[config_id] = last_closed_time
                 
             except Exception as strat_err:
-                logger.exception(f"[PaperTrader] Error running strategy {strategy_name} for {asset}")
-                try:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                            UPDATE paper_strategy_configs 
-                            SET run_status = 'error', last_error = %s, warmup_progress = NULL
-                            WHERE id = %s
-                        """, (str(strat_err), config_id))
-                    conn.commit()
-                except psycopg2.Error as e:
-                    logger.exception(f"[PaperTrader] Database error updating run_status for config {config_id}")
+                logger.exception(f"[PaperTrader] Error extracting signals for {strategy_name}/{asset}")
+                # P3: Defer status update to batch flush
+                _status_updates.append(('error', None, str(strat_err), config_id))
                 self.log_evaluation(
                     strategy_name, asset, timeframe, 
                     price=None, signal_type='EXIT' if has_position else 'ENTRY', 
@@ -1394,6 +1495,39 @@ class SignalExecutor:
 
         # A-02: flush accumulated evaluation logs in a single batch
         self._flush_evaluations(conn)
+
+        # P3: Batch flush all deferred paper_strategy_configs status updates
+        if _status_updates:
+            try:
+                with conn.cursor() as cur:
+                    cur.executemany("""
+                        UPDATE paper_strategy_configs
+                        SET run_status = %s, warmup_progress = %s, last_error = %s
+                        WHERE id = %s
+                    """, _status_updates)
+                conn.commit()
+            except psycopg2.Error as e:
+                logger.exception("[PaperTrader] Error batch-flushing strategy config status updates")
+                try:
+                    conn.rollback()
+                except psycopg2.Error:
+                    pass
+
+        # P6: Timing instrumentation
+        t_cycle_end = time.monotonic()
+        logger.info(
+            "[EvalCycle] Prefetch: %.1fs | SQL candles: %.1fs | Redis prices: %.1fs | "
+            "Preprocess+resample: %.1fs | Strategy eval (parallel): %.1fs | "
+            "Trade exec+DB: %.1fs | Total: %.1fs (configs=%d)",
+            t_after_prefetch - t_cycle_start,
+            t_after_sql - t_after_prefetch,
+            t_after_redis - t_after_sql,
+            t_after_preprocess - t_after_redis,
+            t_after_strat_eval - t_after_preprocess,
+            t_cycle_end - t_after_strat_eval,
+            t_cycle_end - t_cycle_start,
+            len(configs),
+        )
 
     def run_conversion_pipeline(self, conn: Any) -> None:
         """

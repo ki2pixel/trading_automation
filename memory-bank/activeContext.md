@@ -1,6 +1,14 @@
 # Contexte Actif
 
 ## Focus Actuel
+- [2026-07-28 09:59:00] - **Optimisation du Cycle d'Évaluation PaperTrader (88.6s → <60s)** : Optimisation complète en 6 phases de `evaluate_and_execute_strategies()` :
+  - **Phase 1 — SQL Index & Timestamp Range Scan** : Index descendant `idx_live_candles_1m_ticker_ts_desc` sur `live_candles_1m(ticker, timestamp_minute DESC)` dans `db_setup.py`. Remplacement de `ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY timestamp_minute DESC)` par un filtrage direct indexé `WHERE timestamp_minute >= NOW() - interval` dans `signal_executor.py`.
+  - **Phase 2 — Cache de Resampling (ticker, timeframe)** : Cache per-cycle `_resampling_cache` évitant la reconstruction de DataFrames et le ré-échantillonnage Pandas redondants pour les stratégies partageant actif + timeframe (ex: 3 configs sur 45m).
+  - **Phase 3 — Batch Updates Statuts** : Remplacement des commits SQL individuels par un accumulateur `_status_updates` et un unique `executemany()` + `conn.commit()` en fin de cycle.
+  - **Phase 4 — Évaluation Parallèle des Stratégies** : Exécution concurrente de `run_function()` via `ThreadPoolExecutor(max_workers=2)` (dimensionné pour le quota Render 0.5 CPU). Post-traitement et exécution des ordres conservés en séquentiel pour la sécurité des transactions.
+  - **Phase 5 — Micro-optimisations** : Remplacement des appels redondants à `is_market_open()` par des recherches O(1) dans le dictionnaire pré-calculé `market_open_status`.
+  - **Phase 6 — Instrumentation Monotonique** : Ajout du logger `[EvalCycle]` mesurant les phases `Prefetch`, `SQL candles`, `Redis prices`, `Preprocess`, `Strategy eval (parallel)`, `Trade exec+DB`.
+  - **Fichiers** : `signal_executor.py`, `db_setup.py`, `test_paper_trading_engine.py`, `test_signal_executor.py`. **Tests** : 40/41 verts (1 échec pré-existant sur `test_stale_redis_price_resolution`).
 - [2026-07-27 03:00:00] - **Garde-Fous d'Exécution SignalExecutor intégrés** : Max Entry Price dynamique, ATR Gate (P25 Wilder), MHP (3 bougies, signaux inverses uniquement). Module `execution_guards.py`, migration `opened_at` V3, SQL cap 10000, tests 20+11 verts, doc §3 mise à jour. Prochaine étape : validation comportement réel en Phase 2 (logs `paper_evaluations`).
 - [2026-07-27 18:44:00] - **Fix Warmup Progress (SQL Goulot + Métriques + Frontend)** : Résolution du blocage structurel `rn <= 2000` qui étranglait le resampling 45m (49 bougies max au lieu de 50).
   - **Fix 1 — SQL Dynamique** : Extraction des helpers `_parse_timeframe_minutes()` et `_compute_min_bars_needed()` dans `SignalExecutor`. Calcul de `max_rn = max(2000, min_bars_needed * tf_minutes)` avant la requête batch pour adapter dynamiquement la fenêtre de lecture des bougies 1m.

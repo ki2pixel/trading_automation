@@ -2,6 +2,15 @@
 
 ## Tâches Terminées
 
+- [x] [2026-07-28 09:59:00] - **Optimisation du Cycle d'Évaluation PaperTrader (88.6s → <60s)** : Optimisation complète en 6 phases de `evaluate_and_execute_strategies()` :
+  - **Phase 1 — SQL Index & Timestamp Range Scan** : Index descendant `idx_live_candles_1m_ticker_ts_desc` sur `live_candles_1m(ticker, timestamp_minute DESC)` (`db_setup.py`). Requête SQL modifiée pour un filtre direct indexé `WHERE timestamp_minute >= NOW() - make_interval(mins => %s)`.
+  - **Phase 2 — Cache de Resampling `(ticker, timeframe)`** : Cache per-cycle `_resampling_cache` évitant la régénération répétée des DataFrames Pandas et du resampling 45m/30m/60m pour les configurations partageant la même paire/timeframe.
+  - **Phase 3 — Batch Updates Statuts** : Accumulation des transitions d'état dans `_status_updates` et flush en un seul `executemany()` + `conn.commit()`.
+  - **Phase 4 — Évaluation Parallèle des Stratégies** : Exécution concurrente des calculs d'indicateurs via `ThreadPoolExecutor(max_workers=2)` (limite 0.5 CPU Render). Boucle d'exécution d'ordres séquentielle inchangée pour la sécurité financière.
+  - **Phase 5 — Micro-optimisations** : Remplacement des ré-évaluations `is_market_open()` par le dictionnaire `market_open_status`.
+  - **Phase 6 — Instrumentation Log** : Logger `[EvalCycle]` mesurant les durées par étape.
+  - **Fichiers** : `signal_executor.py`, `db_setup.py`, `tests/test_paper_trading_engine.py`, `tests/test_signal_executor.py`. **Tests** : 40/41 verts (1 échec pré-existant `test_stale_redis_price_resolution`).
+
 - [x] [2026-07-27 18:44:00] - **Fix Warmup Progress (SQL Goulot + Métriques + Frontend)** — 3 fixes pour le statut WAITING_DATA :
   - **Fix 1 — SQL Dynamique** : Extraction `_parse_timeframe_minutes(tf_str)` et `_compute_min_bars_needed(indicator_params)` comme `@staticmethod` dans `SignalExecutor`. Clause SQL `rn <= max(2000, min_bars * tf_minutes)` calculée avant le batch fetch → débloque `cybernetic_hilbert` ZEAL.CO 45m (49→50 bougies).
   - **Fix 2 — Métriques Warmup** : Colonne `warmup_progress JSONB DEFAULT NULL` ajoutée à `paper_strategy_configs`. Persistance `{current_bars, required_bars, progress_pct, timeframe_minutes}` dans les 2 chemins WAITING_DATA. Nettoyage à NULL sur transition `active`/`error`. Exposition dans `GET /api/configs`.

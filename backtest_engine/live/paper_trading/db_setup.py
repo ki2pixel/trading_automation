@@ -696,6 +696,11 @@ def init_db():
                         PRIMARY KEY (ticker, timestamp_minute)
                     );
                 """)
+                # Performance index for eval cycle candle fetch (DESC scan)
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_live_candles_1m_ticker_ts_desc
+                    ON live_candles_1m (ticker, timestamp_minute DESC);
+                """)
 
                 # 6. Create Evaluations table
                 cur.execute("""
