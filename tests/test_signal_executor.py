@@ -453,14 +453,14 @@ class TestSignalExecutor:
         # 1. Resolver was called to find the ticker
         mock_resolver.resolve.assert_called_once_with("AAPL")
 
-        # 2. Trading 212 Client was called with a quantity protecting the micro-position:
+        # 2. Trading 212 Client was called with a quantity protecting the T212 1.00 minimum:
         # paper qty = 10.0001, real qty = 10.0001, micro_qty = 0.0001
-        # max_sellable = 10.0001 - 0.0001 = 10.0
-        # sell_qty = min(10.0001, max_sellable) = 10.0
+        # T212-FIX: max_sellable = 10.0001 - max(1.00, 0.0001) = 9.0001
+        # sell_qty = min(10.0001, 9.0001) = 9.0001
         from unittest.mock import ANY
         mock_t212_client.place_market_order.assert_called_once_with(
             ticker="AAPL_T212_TICKER",
-            quantity=-10.0,
+            quantity=-9.0001,
             client_order_id=ANY
         )
 

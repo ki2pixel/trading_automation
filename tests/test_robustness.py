@@ -261,15 +261,13 @@ def test_trading212_client_order_capping(mock_request):
     with patch("backtest_engine.live.connection.get_redis_client", return_value=None), \
          patch("backtest_engine.live.connection.get_db_connection", return_value=mock_conn):
 
-        # Case 1: Sell 5.7 units when holding 0.1 -> should cap to 0.1
-        client.place_market_order("AMSe_EQ", -5.7)
+        # Case 1: Sell 5.7 units when holding 0.1 -> below T212 1.00 minimum, skip order
+        res = client.place_market_order("AMSe_EQ", -5.7)
 
-        # Verify that client._request was called with adjusted quantity -0.1
-        client._request.assert_called_once_with(
-            "POST", "/equity/orders/market",
-            json_data={"ticker": "AMSe_EQ", "quantity": -0.1},
-            max_retries=1
-        )
+        # Verify the order is skipped (position 0.1 < 1.00 minimum)
+        assert res["status"] == "FILLED"
+        assert res["comment"] == "Skipped real order (position below 1.00 minimum)"
+        client._request.assert_not_called()
 
         # Reset mocks
         client._request.reset_mock()
@@ -594,26 +592,37 @@ def test_stale_redis_price_resolution():
         def mock_fetchall():
             last_query = cur_mock.execute.call_args[0][0]
             if "SELECT id, strategy_name, asset, timeframe" in last_query:
-                return [(1, "RSI", "AAPL", "1m", 0.1, 1000, 1000, 5000, 10000, {})]
+                # Non-crypto asset (SAP) so the config is routed through the trading212
+                # signal path, where a stale price yields a WAITING_DATA evaluation.
+                return [(1, "RSI", "SAP", "1m", 0.1, 1000, 1000, 5000, 10000, {})]
             if "FROM paper_positions" in last_query:
                 return []
             if "live_candles_1m" in last_query:
                 return mock_candles
             if "live_prices" in last_query:
-                return [("aapl", Decimal("149.0"), stale_sql_time)]
+                return [("sap", Decimal("149.0"), stale_sql_time)]
             return []
 
         cur_mock.fetchall = MagicMock(side_effect=mock_fetchall)
 
+        # A-02: evaluations are batch-flushed via executemany. Spy on the real
+        # args passed (call_args_list on nested MagicMock context cursors is
+        # unreliable), and assert a WAITING_DATA entry with the stale-price
+        # reason was written.
+        # NOTE: _flush_evaluations clears the shared _eval_buffer right after
+        # executemany returns, so the args list must be copied at capture time.
+        flush_args: list = []
+        cur_mock.executemany.side_effect = (
+            lambda sql, args: flush_args.append((sql, list(args)))
+        )
+
         executor.evaluate_and_execute_strategies(conn_mock)
 
-        # Check that it did NOT trigger any trade, and evaluations logged 'WAITING_DATA' due to stale price
-        logged = False
-        for call in cur_mock.execute.call_args_list:
-            args = call[0]
-            if len(args) > 1 and "paper_evaluations" in args[0] and any("No fresh price available" in str(arg) for arg in args[1]):
-                logged = True
-                break
+        logged = any(
+            "paper_evaluations" in str(sql)
+            and any("No fresh price available" in str(arg) for arg in args)
+            for sql, args in flush_args
+        )
         assert logged, "Expected WAITING_DATA evaluation log not found"
 
 

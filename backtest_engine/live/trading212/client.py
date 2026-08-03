@@ -283,7 +283,16 @@ class Trading212Client:
                     print(f"[Trading212Client] Capping SELL order: Broker holds 0 units of {ticker} (requested {quantity}). Skipping real order.")
                     return {"ticker": ticker, "quantity": 0.0, "status": "FILLED", "reconciled": True, "comment": "Skipped real order (0 held)"}
                 elif initial_qty < abs_qty:
-                    adjusted_qty = -initial_qty
+                    # T212-FIX: L'API interprète une quantité négative comme la quantité TOTALE de
+                    # position à vendre et exige qu'une position restante >= 1.00 subsiste.
+                    # Vendre initial_qty (position entière) provoquerait un 400
+                    # "must have opened position at least 1.00" et détruirait la micro-position.
+                    # On ne vend donc que le surplus au-dessus de 1.00.
+                    max_sellable = initial_qty - 1.00
+                    if max_sellable < 0.000001:
+                        print(f"[Trading212Client] Skipping SELL: Broker holds {initial_qty} units of {ticker}, below T212 1.00 minimum (requested {quantity}).")
+                        return {"ticker": ticker, "quantity": 0.0, "status": "FILLED", "reconciled": True, "comment": "Skipped real order (position below 1.00 minimum)"}
+                    adjusted_qty = -max_sellable
                     print(f"[Trading212Client] Capping SELL order: Broker holds {initial_qty} units of {ticker} (requested {quantity}). Adjusting to {adjusted_qty}.")
                     quantity = adjusted_qty
 

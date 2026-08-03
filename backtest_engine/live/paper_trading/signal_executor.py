@@ -1356,8 +1356,14 @@ class SignalExecutor:
                                                 break
                                         
                                         if real_qty > Decimal("0"):
+                                            # T212-FIX: L'API T212 interprète une quantité négative comme la
+                                            # quantité TOTALE de position à vendre, et exige qu'une position
+                                            # restante d'au moins 1.00 unité soit conservée. Vendre
+                                            # real_qty - micro_qty (micro ~0.0001) laisserait une position
+                                            # < 1.00 et provoquerait un 400 "must have opened position at
+                                            # least 1.00". On ne vend donc que le surplus au-dessus de 1.00.
                                             micro_qty = Decimal(str(bootstrapper.micro_qty))
-                                            max_sellable = real_qty - micro_qty
+                                            max_sellable = real_qty - max(Decimal("1.00"), micro_qty)
                                             if max_sellable < Decimal("0"):
                                                 max_sellable = Decimal("0")
                                             sell_qty = min(qty, max_sellable)

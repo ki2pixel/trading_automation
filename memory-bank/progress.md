@@ -2,6 +2,13 @@
 
 ## Tâches Terminées
 
+- [x] [2026-08-03 16:40:00] - **Fix T212 SELL 400 "must have opened position at least 1.00" (NVO/NOVCd_EQ)** : Cause racine identifiée — l'API T212 interprète une quantité négative comme la quantité **totale** de position à vendre et exige une position restante ≥ 1.00. Le code vendait `real_qty - micro_qty` (micro ≈ 0.0001), laissant une position résiduelle < 1.00 → rejet 400.
+  - **`signal_executor.py`** : `max_sellable = real_qty - max(1.00, micro_qty)` au lieu de `real_qty - micro_qty`.
+  - **`trading212/client.py`** : Cap SELL `max_sellable = initial_qty - 1.00`, skip silencieux si `initial_qty < 1.00` (au lieu de vendre la position entière).
+  - **Tests mis à jour** : `test_signal_executor.py` (`-9.0001` au lieu de `-10.0`), `test_robustness.py` (skip au lieu de `-0.1`).
+  - **Fix du test flaky `test_stale_redis_price_resolution`** : le spy `executemany` copie maintenant `list(args)` au moment de la capture (le buffer `_eval_buffer` était vidé par `_flush_evaluations()` avant l'assertion).
+  - **Tests** : 27/27 verts sur `test_robustness.py` + `test_signal_executor.py`. Fichiers modifiés : `signal_executor.py`, `trading212/client.py`, `tests/test_robustness.py`, `tests/test_signal_executor.py`.
+
 - [x] [2026-07-28 09:59:00] - **Optimisation du Cycle d'Évaluation PaperTrader (88.6s → <60s)** : Optimisation complète en 6 phases de `evaluate_and_execute_strategies()` :
   - **Phase 1 — SQL Index & Timestamp Range Scan** : Index descendant `idx_live_candles_1m_ticker_ts_desc` sur `live_candles_1m(ticker, timestamp_minute DESC)` (`db_setup.py`). Requête SQL modifiée pour un filtre direct indexé `WHERE timestamp_minute >= NOW() - make_interval(mins => %s)`.
   - **Phase 2 — Cache de Resampling `(ticker, timeframe)`** : Cache per-cycle `_resampling_cache` évitant la régénération répétée des DataFrames Pandas et du resampling 45m/30m/60m pour les configurations partageant la même paire/timeframe.
@@ -297,6 +304,8 @@
 - Aucune tâche active.
 
 ## Tâches Futures
+
+- [ ] Suivi production : vérifier sur le compte T212 demo que le SELL NVO (NOVCd_EQ) passe sans 400 après déploiement du fix 1.00 (position résiduelle ≥ 1.00).
 
 - [x] [2026-06-09 16:49:00] - Phase 4 "Recherche Machine Learning" TERMINÉE : Lorentzian Classification KNN intégré au backtest_engine (Numba @njit, 5 features normalisées, distance de Lorentz, Kernel Nadaraya-Watson, StrategyRegistry, PARAMETER_DEFINITIONS). 18/18 tests passés.
 - [ ] Conception du moteur de backtest.

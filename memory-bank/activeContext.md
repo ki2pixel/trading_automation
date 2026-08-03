@@ -1,6 +1,7 @@
 # Contexte Actif
 
 ## Focus Actuel
+- [2026-08-03 16:40:00] - **Fix T212 SELL 400 "must have opened position at least 1.00" (NVO/NOVCd_EQ)** : Cause racine — l'API T212 interprète une quantité négative comme la quantité **totale** de position à vendre et exige une position restante ≥ 1.00. Le code vendait `real_qty - micro_qty` (micro ≈ 0.0001), laissant une position résiduelle < 1.00 → 400. Correctif : `max_sellable = real_qty - max(1.00, micro_qty)` dans `signal_executor.py`, cap SELL `initial_qty - 1.00` avec skip si < 1.00 dans `trading212/client.py`. Tests mis à jour (`-9.0001` / skip), + fix du test flaky `test_stale_redis_price_resolution` (copie `list(args)` du spy `executemany`). 27/27 tests verts. Prochaine étape : suivi production SELL NVO sur compte demo.
 - [2026-07-28 09:59:00] - **Optimisation du Cycle d'Évaluation PaperTrader (88.6s → <60s)** : Optimisation complète en 6 phases de `evaluate_and_execute_strategies()` :
   - **Phase 1 — SQL Index & Timestamp Range Scan** : Index descendant `idx_live_candles_1m_ticker_ts_desc` sur `live_candles_1m(ticker, timestamp_minute DESC)` dans `db_setup.py`. Remplacement de `ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY timestamp_minute DESC)` par un filtrage direct indexé `WHERE timestamp_minute >= NOW() - interval` dans `signal_executor.py`.
   - **Phase 2 — Cache de Resampling (ticker, timeframe)** : Cache per-cycle `_resampling_cache` évitant la reconstruction de DataFrames et le ré-échantillonnage Pandas redondants pour les stratégies partageant actif + timeframe (ex: 3 configs sur 45m).
