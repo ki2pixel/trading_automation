@@ -1,6 +1,6 @@
 # Portfolio de Déploiement Immédiat
 
-Ce document consigne la liste exacte des **53 setups** identifiés pour un déploiement en production ou en paper-trading actif, suite à la campagne globale d'optimisation et d'arbitrage.
+Ce document consigne la liste exacte des **51 setups** identifiés pour un déploiement en production ou en paper-trading actif, suite à la campagne globale d'optimisation et d'arbitrage.
 
 ### Critères de Sélection
 Les setups ci-dessous cochent toutes les conditions de robustesse suivantes :
@@ -14,7 +14,7 @@ Les setups ci-dessous cochent toutes les conditions de robustesse suivantes :
 - **`cybernetic_hilbert`** ressort extrêmement fort sur `ZEAL.CO` (nécessite une petite surveillance manuelle initiale pour écarter tout overfitting résiduel).
 - **`momentum_based_zigzag`** et **`lorentzian_classification`** offrent d'excellents Profit Factors et des allocations Kelly élevées, parfaits pour la stabilité.
 
-## Les 53 Setups Validés (Triés par Poids Kelly décroissant)
+## Les 51 Setups Validés (Triés par Poids Kelly décroissant)
 
 | Stratégie | Actif | Timeframe | Profit Factor | Sharpe | Kelly Weight | Rendement Mensuel (€) |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: |
@@ -79,10 +79,9 @@ Extraction par meilleur Rendement Mensuel (€) absolu par combinaison Stratégi
 
 | Stratégie | Actif | Timeframe | Profit Factor | Sharpe | Kelly Weight | Rendement Mensuel (€) |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: |
-| `cybernetic_hilbert` | **ZEAL.CO** | 15m | 1.50 | 3.78 | **0.49%** | 69.42 € |
-| `cybernetic_hilbert` | **ltcusdt** | 45m | 1.56 | 1.54 | **0.54%** | 58.69 € |
-| `momentum_based_zigzag` | **ZEAL.CO** | 1m | 1.68 | 2.26 | **0.52%** | 39.62 € |
-| `momentum_based_zigzag` | **NVO** | 45m | 2.60 | 1.89 | **0.70%** | 18.18 € |
+| `cybernetic_hilbert` | **ZEAL.CO** | 15m | 1.50 | 3.78 | **0.55%** | 69.42 € |
+| `momentum_based_zigzag` | **ZEAL.CO** | 1m | 1.68 | 2.26 | **0.59%** | 39.62 € |
+| `momentum_based_zigzag` | **NVO** | 45m | 2.60 | 1.89 | **0.73%** | 18.18 € |
 | `smart_trader_geometric` | **ZEAL.CO** | 10m | 1.57 | 1.86 | **0.47%** | 13.01 € |
 | `hmm_regime_filter` | **NVO** | 30m | 1.82 | 1.45 | **0.53%** | 10.55 € |
 | `msl_trend` | **NVO** | 30m | 2.01 | 1.03 | **0.85%** | 9.97 € |

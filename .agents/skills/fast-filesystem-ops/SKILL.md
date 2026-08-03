@@ -1,3 +1,8 @@
+---
+name: fast-filesystem-ops
+description: Expert en édition chirurgicale. Obligation d'utiliser edit_file pour préserver les tokens. Recherche globale via fast_search_files.
+---
+
 # Fast Filesystem Operations
 
 > **Expertise** : Édition chirurgicale de fichiers, optimisation token, recherche efficace, manipulation précise de codebase.

@@ -21,6 +21,43 @@ from backtest_engine.live.paper_trading.execution_guards import (
 logger = logging.getLogger("papertrader")
 
 
+def _extract_t212_error_detail(exc: Exception) -> str:
+    """Extrait le detail de l'erreur Trading 212 depuis l'exception pour un fail_reason lisible.
+
+    Priorité : attribut ``t212_detail`` attaché par le client, puis corps JSON de la
+    réponse HTTP (``detail``/``type``/``title``), puis ``str(exc)`` en fallback.
+    """
+    # 1. Detail pré-parsé par Trading212Client (attribut optionnel sur l'exception)
+    attached = getattr(exc, "t212_detail", None)
+    if attached:
+        if isinstance(attached, dict):
+            detail = attached.get("detail") or attached.get("title") or attached.get("type") or ""
+            if detail:
+                return str(detail)
+        elif isinstance(attached, str) and attached.strip():
+            return attached
+
+    # 2. Parcours de la chaîne d'exceptions pour un corps JSON (HTTPError → response)
+    current: Optional[Exception] = exc
+    visited = 0
+    while current is not None and visited < 10:
+        response = getattr(current, "response", None)
+        if response is not None:
+            try:
+                err_data = response.json()
+                if isinstance(err_data, dict):
+                    detail = err_data.get("detail") or err_data.get("title") or err_data.get("type") or ""
+                    if detail:
+                        return str(detail)
+            except Exception:
+                pass
+        current = getattr(current, "__cause__", None) or getattr(current, "__context__", None)
+        visited += 1
+
+    # 3. Fallback : représentation brute de l'exception
+    return str(exc)
+
+
 class SignalExecutor:
     """Encapsulates paper trading strategy evaluation, trade execution, and NAV calculations."""
 
@@ -1071,7 +1108,7 @@ class SignalExecutor:
                                     strategy_name, asset, timeframe,
                                     price=current_price, signal_type='ENTRY',
                                     signal_triggered=True, status='FAILED',
-                                    fail_reason=f"T212 API Order Error: {str(e)}"
+                                    fail_reason=f"T212 API Order Error: {_extract_t212_error_detail(e)}"
                                 )
                                 continue
                         else:
@@ -1344,7 +1381,7 @@ class SignalExecutor:
                                     strategy_name, asset, timeframe,
                                     price=current_price, signal_type='EXIT',
                                     signal_triggered=True, status='FAILED',
-                                    fail_reason=f"T212 API Order Error: {str(e)}",
+                                    fail_reason=f"T212 API Order Error: {_extract_t212_error_detail(e)}",
                                     details={
                                         "qty": float(qty),
                                         "entry_price": float(entry_price),

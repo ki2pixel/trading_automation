@@ -6,6 +6,25 @@ from typing import Any, Dict, List, Optional
 from backtest_engine.live.trading212.config import Trading212Config
 from backtest_engine.live.utils import NETWORK_TIMEOUT_DEFAULT
 
+
+def _parse_400_detail(e: Exception) -> Optional[Dict[str, Any]]:
+    """Extrait le corps JSON d'une erreur 400 T212 (``type``/``detail``/``title``) si disponible."""
+    response = getattr(e, "response", None)
+    if response is None:
+        return None
+    try:
+        err_data = response.json()
+    except Exception:
+        return None
+    if not isinstance(err_data, dict):
+        return None
+    return {
+        "type": str(err_data.get("type", "") or ""),
+        "detail": str(err_data.get("detail", "") or ""),
+        "title": str(err_data.get("title", "") or ""),
+    }
+
+
 class Trading212Client:
     """HTTP client wrapper for the Trading 212 official REST API (Beta)."""
 
@@ -301,33 +320,37 @@ class Trading212Client:
                     if hasattr(e, "response") and e.response is not None:
                         status_code = e.response.status_code
                         if status_code == 400:
-                            try:
-                                err_data = e.response.json()
-                                err_type = err_data.get("type", "")
-                                err_detail = err_data.get("detail", "")
-                                
-                                if "quantity-precision" in err_type or "invalid quantity precision" in err_detail:
-                                    import re
-                                    match = re.search(r"invalid quantity precision (\d+)", err_detail)
-                                    if match:
-                                        allowed_precision = int(match.group(1))
-                                        import math
-                                        factor = 10 ** allowed_precision
-                                        sign = 1 if quantity >= 0 else -1
-                                        new_qty = sign * (math.ceil(abs(quantity) * factor) / factor)
-                                        print(f"[Trading212Client] Precision mismatch detected. Re-rounding quantity from {quantity} to {new_qty} (precision: {allowed_precision}).")
-                                        quantity = new_qty
-                                        payload["quantity"] = float(quantity)
-                                        continue
-                            except Exception as inner_e:
-                                print(f"[Trading212Client] Failed to parse 400 error details: {inner_e}")
+                            err_data = _parse_400_detail(e) or {}
+                            err_type = err_data.get("type", "")
+                            err_detail = err_data.get("detail", "")
+                            
+                            if "quantity-precision" in err_type or "invalid quantity precision" in err_detail:
+                                import re
+                                match = re.search(r"invalid quantity precision (\d+)", err_detail)
+                                if match:
+                                    allowed_precision = int(match.group(1))
+                                    import math
+                                    factor = 10 ** allowed_precision
+                                    sign = 1 if quantity >= 0 else -1
+                                    new_qty = sign * (math.ceil(abs(quantity) * factor) / factor)
+                                    print(f"[Trading212Client] Precision mismatch detected. Re-rounding quantity from {quantity} to {new_qty} (precision: {allowed_precision}).")
+                                    quantity = new_qty
+                                    payload["quantity"] = float(quantity)
+                                    continue
 
                         if status_code < 500 and status_code != 429:
+                            # Attacher le détail parsé pour que le caller puisse remonter la raison exacte
+                            if err_data:
+                                setattr(e, "t212_detail", err_data)
                             raise e
                     
                     import time
                     time.sleep(0.1 * (2 ** attempt)) # Fast backoff for testing and live speed
             
+            if last_error is not None:
+                parsed = _parse_400_detail(last_error)
+                if parsed:
+                    setattr(last_error, "t212_detail", parsed)
             raise last_error or RuntimeError("Order execution failed after multiple reconciled attempts.")
             
         finally:
