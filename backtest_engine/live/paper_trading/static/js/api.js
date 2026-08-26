@@ -162,11 +162,17 @@ export async function getTransactions(limit = 50, offset = 0, cursorTimestamp = 
     if (cursorTimestamp) {
         url += `&cursor_timestamp=${encodeURIComponent(cursorTimestamp)}`;
     }
-    if (cursorId !== null && cursorId !== undefined) {
-        url += `&cursor_id=${encodeURIComponent(cursorId)}`;
+    // Defense-in-depth: only pass cursor_id if it parses to a valid integer
+    if (cursorId !== null && cursorId !== undefined && cursorId !== '') {
+        const parsedId = Number(cursorId);
+        if (Number.isInteger(parsedId)) {
+            url += `&cursor_id=${encodeURIComponent(parsedId)}`;
+        } else {
+            console.warn(`[API] Ignored invalid cursorId '${cursorId}' (integer required)`);
+        }
     }
     if (asset) {
-        url += `&asset=${encodeURIComponent(asset)}`;
+        url += `&asset=${encodeURIComponent(asset.toLowerCase())}`;
     }
     const res = await fetch(url);
     return await res.json();

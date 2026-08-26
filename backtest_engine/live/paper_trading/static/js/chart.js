@@ -7,12 +7,12 @@ let equitySeries = null;
 let bhSeries = null;
 let currentAsset = null;
 
-// Local caching for chart transactions
-let cachedTransactions = null;
+// Local caching for chart transactions indexed by canonical asset
+const cachedTransactionsByAsset = new Map();
 let chartRequestId = 0;
 
 export function invalidateChartCache() {
-    cachedTransactions = null;
+    cachedTransactionsByAsset.clear();
     currentAsset = null;
 }
 
@@ -144,11 +144,15 @@ export async function loadChart(ticker, forceRefresh = false) {
         });
         
         currentAsset = ticker;
-        cachedTransactions = null;
+        if (forceRefresh) {
+            cachedTransactionsByAsset.delete(ticker.toLowerCase());
+        }
     }
     
+    let loadStage = 'candles';
     try {
         // Fetch candles
+        loadStage = 'candles';
         const candlesData = await getCandles(ticker);
         if (requestId !== chartRequestId) return;
         
@@ -182,17 +186,34 @@ export async function loadChart(ticker, forceRefresh = false) {
         
         candleSeries.setData(candlesData);
         
-        // Fetch Transactions for marker overlays (with caching)
+        // Fetch Transactions for marker overlays (isolated & cached per asset)
+        loadStage = 'transactions';
+        const normalizedTicker = ticker.toLowerCase();
         let txData;
-        if (cachedTransactions && !forceRefresh) {
-            txData = cachedTransactions;
+        
+        if (cachedTransactionsByAsset.has(normalizedTicker) && !forceRefresh) {
+            txData = cachedTransactionsByAsset.get(normalizedTicker);
         } else {
-            txData = await getTransactions(5000, 0, null, ticker);
-            if (requestId !== chartRequestId) return;
-            cachedTransactions = txData;
+            try {
+                // Correct signature: limit=5000, offset=0, cursorTimestamp=null, cursorId=null, asset=normalizedTicker
+                const rawTx = await getTransactions(5000, 0, null, null, normalizedTicker);
+                if (requestId !== chartRequestId) return;
+                
+                if (Array.isArray(rawTx)) {
+                    txData = rawTx;
+                    cachedTransactionsByAsset.set(normalizedTicker, txData);
+                } else {
+                    console.warn(`[Chart] Expected array from getTransactions for ${normalizedTicker}, received:`, rawTx);
+                    txData = [];
+                }
+            } catch (txErr) {
+                console.warn(`[Chart] Failed to fetch transactions for ${normalizedTicker} (markers skipped):`, txErr);
+                txData = [];
+            }
         }
         
         // Fetch performance metrics from backend API
+        loadStage = 'metrics';
         const perfData = await getPerformanceMetrics(ticker);
         if (requestId !== chartRequestId) return;
         
@@ -217,12 +238,15 @@ export async function loadChart(ticker, forceRefresh = false) {
         const totalTrades = perfData.total_trades;
         document.getElementById('analytic-tradescount').textContent = totalTrades;
         
-        // Transactions already filtered server-side by asset
-        const sortedTxs = [...txData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        // Render markers defensively
+        loadStage = 'rendering';
+        const safeTxs = Array.isArray(txData) ? txData : [];
+        const sortedTxs = [...safeTxs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         
         // Add BUY / SELL Markers to chart
         const markers = [];
         sortedTxs.forEach(tx => {
+            if (!tx || !tx.timestamp || !tx.action) return;
             const txTimeSecs = Math.floor(new Date(tx.timestamp).getTime() / 1000);
             const candleMinSecs = Math.floor(txTimeSecs / 60) * 60; // align to minute candle
             
@@ -261,7 +285,7 @@ export async function loadChart(ticker, forceRefresh = false) {
 
     } catch (e) {
         if (requestId !== chartRequestId) return;
-        console.error("Error loading chart data", e);
+        console.error(`[Chart] Error in stage '${loadStage}' for ${ticker}:`, e);
         if (currentChart && chartContainer) {
             chartContainer.classList.add('outdated');
         } else {
@@ -286,7 +310,14 @@ export async function loadChart(ticker, forceRefresh = false) {
                 placeholder.appendChild(pDesc);
             }
         }
-        showError("Failed to load financial metrics for " + ticker);
+        
+        if (loadStage === 'candles') {
+            showError("Failed to load candle data for " + ticker);
+        } else if (loadStage === 'metrics') {
+            showError("Failed to load financial metrics for " + ticker);
+        } else {
+            showError("Failed to load chart data for " + ticker);
+        }
         return;
     }
 }
