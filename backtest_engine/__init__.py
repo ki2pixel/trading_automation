@@ -6,3 +6,6 @@ first runner around the already-converted HMA crossover strategy.
 """
 
 __version__ = "0.1.0"
+
+# Apply runtime compatibility patches (e.g. vectorbt + plotly)
+from . import compatibility  # noqa: F401

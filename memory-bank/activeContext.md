@@ -3,6 +3,11 @@
 *Note: Les entrées antérieures sont archivées dans [activeContext_archive_202608.md](file:///home/kidpixel/trading_automation_v2/memory-bank/archives/activeContext_archive_202608.md)*
 
 ## Focus Actuel
+- [2026-08-27 13:15:00] - **Fix VectorBT / Plotly 7 Incompatibilité `scattermapbox` (`momentum_based_zigzag`)** :
+  - **Cause racine** : Sur Render, `requirements-live.txt` ne verrouillait pas `plotly`. Pip a résolu `plotly==7.0.0` (nouvelle release majeure) qui a supprimé les traces Mapbox (`scattermapbox`) au profit de Maplibre (`scattermap`). À l'import de `vectorbt` (déclenché par `momentum_based_zigzag`), `settings.register_templates()` chargeait `templates/dark.json` contenant `"scattermapbox"`, levant `Invalid property specified for object of type plotly.graph_objs.layout.template.Data: 'scattermapbox'`.
+  - **Pinning Dépendances** : Verrouillage explicite `plotly>=6.0,<7` dans `requirements-live.txt` (aligné sur `requirements-backtest.txt`).
+  - **Patch de Compatibilité Runtime** : Création de `backtest_engine/compatibility.py` (importé dans `backtest_engine/__init__.py`) interceptant `pkgutil.get_data` pour migrer dynamiquement les clés obsolètes Mapbox (`scattermapbox` -> `scattermap`, etc.) de vectorbt afin de garantir l'absence de crash même si Plotly 7 est présent.
+  - **Tests** : 28/28 tests verts (`tests/test_vectorbt_plotly_compat.py`, `tests/test_transactions_api.py`, `tests/test_paper_trading_engine.py`, etc.).
 - [2026-08-26 20:00:00] - **Fix Bug 422 `cursor_id`, TypeError `txData` & Faux Positif Métriques (Frontend Chart)** :
   - **Alignement d'Arité** : Correction de l'appel `getTransactions(5000, 0, null, null, normalizedTicker)` dans `chart.js` (l'actif était erronément passé en 4ᵉ position au lieu de la 5ᵉ, alimentant `cursor_id` avec un ticker alphabétique).
   - **Défense en Profondeur** : Assainissement de `cursorId` via `Number.isInteger(Number(cursorId))` dans `api.js` pour empêcher toute 422 FastAPI en amont.

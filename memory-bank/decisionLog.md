@@ -2,6 +2,15 @@
 
 *Note: Les entrées antérieures sont archivées dans [decisionLog_archive_202608.md](file:///home/kidpixel/trading_automation_v2/memory-bank/archives/decisionLog_archive_202608.md)*
 
+## [2026-08-27 13:15:00] - Résolution de l'Incompatibilité VectorBT / Plotly 7 (`scattermapbox`)
+- **Décision** :
+  1. **Pinning Dépendances Live** : Ajouter `plotly>=6.0,<7` dans `requirements-live.txt` pour aligner les dépendances de production sur `requirements-backtest.txt` et interdire à pip d'installer Plotly 7.0.0+ sur Render.
+  2. **Patch de Compatibilité Automatique (`backtest_engine/compatibility.py`)** : Intercepter `pkgutil.get_data` au chargement de `backtest_engine` (`__init__.py`) pour remplacer au vol les traces Mapbox obsolètes (`scattermapbox`, `densitymapbox`, `choroplethmapbox`) par les équivalents Maplibre (`scattermap`, `densitymap`, `choroplethmap`) dans les templates vectorbt (`dark.json`, `light.json`).
+- **Justification** : Plotly 7.0.0 a formellement supprimé `scattermapbox`. VectorBT 1.0.0 intégrant ces clés en dur dans ses fichiers JSON de thème, l'import de `vectorbt` (provoqué par `momentum_based_zigzag`) levait une exception `ValueError` immédiate qui plantait l'évaluation des stratégies sur le Paper Trader.
+- **Alternatives rejetées** :
+  - Modifier les fichiers internes de vectorbt dans le virtualenv : Non reproductible lors des builds Docker ou sur les environnements CI/CD.
+  - Supprimer vectorbt de `momentum_based_zigzag` : N'aurait pas protégé les autres indicateurs qui l'utilisent (`msl_trend`, `pivot_retest`, `lorentzian_classification`, etc.).
+
 ## [2026-08-26 20:00:00] - Résolution du Bug 422 `cursor_id`, Erreur d'Itérabilité `TypeError: txData` et Faux Positifs Frontend
 - **Décision** :
   1. **Alignement d'Arité & Contrat** : Passer `cursorId = null` et `asset = normalizedTicker` dans `chart.js` (`getTransactions(5000, 0, null, null, normalizedTicker)`). Maintien strict de la rétrocompatibilité pour `modules/logs.js`.

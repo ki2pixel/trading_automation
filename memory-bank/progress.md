@@ -4,6 +4,12 @@
 
 ## Tâches Terminées
 
+- [x] [2026-08-27 13:15:00] - **Fix VectorBT / Plotly 7 Incompatibilité `scattermapbox` (`momentum_based_zigzag`)** :
+  - **`requirements-live.txt`** : Pinning `plotly>=6.0,<7` pour aligner les dépendances de production sur `requirements-backtest.txt` et empêcher pip d'installer Plotly 7.0+ sur Render.
+  - **`backtest_engine/compatibility.py` & `__init__.py`** : Patch automatique runtime interceptant `pkgutil.get_data` pour transformer les traces obsolètes Mapbox (`scattermapbox` etc.) en Maplibre (`scattermap`) dans les thèmes vectorbt.
+  - **`tests/test_vectorbt_plotly_compat.py`** : Tests unitaires de non-régression validant le chargement des templates vectorbt et l'exécution sans erreur de `momentum_based_zigzag`.
+  - **Tests** : 28/28 tests verts.
+
 - [x] [2026-08-26 20:00:00] - **Fix Bug 422 `cursor_id`, TypeError `txData` & Faux Positif Métriques (Frontend Chart)** :
   - **`chart.js`** : Réalignement des arguments `getTransactions(5000, 0, null, null, normalizedTicker)`. Migration de `cachedTransactions` vers `const cachedTransactionsByAsset = new Map()` étanche par ticker normalisé. Encapsulation `try/catch` de la récupération des transactions avec validation `Array.isArray()` et fallback `[]` prévenant `TypeError: txData is not iterable`. Suivi d'état `loadStage` pour éliminer le faux positif `Failed to load financial metrics`.
   - **`api.js`** : Validation stricte `Number.isInteger(Number(cursorId))` empêchant toute transmission d'une valeur non numérique comme `cursor_id` vers FastAPI. Normalisation `asset.toLowerCase()`.
